@@ -45,20 +45,20 @@ module bessel_functions
         
         ! Local variables
 
-        double precision  :: v
-        double precision  :: log_x, log_v
-        double precision  :: terms(0:N_TERMS-1)
-        double precision  :: v_power(0:13)
-        double precision  :: t_power(0:N_TERMS-1)
-        double precision  :: mu, curr_term, inner_sum
-        double precision  :: x_prime, x_prime_2, sqrt_1_plus_x2, t, eta
-        double precision  :: log_x2_over_4, x2_over_4, inv_x2_over_4, v_inv_x2_over_4
-        double precision  :: sum_terms
+        double precision             :: v
+        double precision             :: log_x, log_v
+        double precision             :: terms(0:N_TERMS-1)
+        double precision             :: v_power(0:13)
+        double precision             :: t_power(0:N_TERMS-1)
+        double precision             :: mu, curr_term, inner_sum
+        double precision             :: x_prime, x_prime_2, sqrt_1_plus_x2, t, eta
+        double precision             :: log_x2_over_4, x2_over_4, inv_x2_over_4, v_inv_x2_over_4
+        double precision             :: sum_terms
 
         double precision,parameter   :: pi = 3.14159265358979323846D00
 
-        integer           :: k, c, i
-        integer           :: peak_k
+        integer                      :: k, c, i
+        integer                      :: peak_k
         
         ! Input validation
         if (x < 0.0d0 .or. (v_in < 0.0d0 .and. v_in /= floor(v_in))) then
@@ -289,7 +289,7 @@ module bessel_functions
             log_Iv = v * (log_x - LOG_2) + terms(peak_k) + log(sum_terms) - x 
             
         end if
-        
+ 
       end function iv_log
     
       function iv_scaled(v_in, x) result(Iv)

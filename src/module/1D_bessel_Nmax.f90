@@ -2,14 +2,16 @@ module table_1d_lookup
       implicit none
       
       ! 1D table data
-      double precision, allocatable :: A_table(:)
-      integer, allocatable          :: Nmax_table(:)
-      logical                       :: table_loaded = .false.
-      integer                       :: total_records
+      double precision, allocatable      :: A_table(:)
+      integer, allocatable               :: Nmax_table(:)
+      logical                            :: table_loaded = .false.
+      integer                            :: total_records
       
 contains
 
       subroutine load_table_1d(filename)
+            
+            implicit none
             character(len=*), intent(in) :: filename
             integer                      :: file_unit, ios, i
             real                         :: start_time, end_time
@@ -26,25 +28,28 @@ contains
                  form='unformatted', access='stream', iostat=ios)
             
             if (ios /= 0) then
-                  print*, 'ERROR: Cannot open 1D binary file ', trim(filename)
-                  print*, 'Please generate the table first using number_of_terms program'
+                  write(*,*) 'ERROR: Cannot open 1D binary file ', trim(filename)
+                  write(*,*) 'Please generate the table first using number_of_terms program'
                   stop
             end if
             
-            print*, 'Loading 1D table from: ', trim(filename)
+            write(*,'(A)') ''
+            write(*,'(A)') '************************************************************************'
+            write(*,'(A,4x,A)') 'Loading 1D table from: ', trim(filename)
+            write(*,'(A)') ''
             
             ! Get file size and calculate number of records
             inquire(unit=file_unit, size=total_records)
-            ! Each record: 8 bytes (A) + 4 bytes (Nmax) = 12 bytes
+            ! Each record: 8 bytes (A) + 4 bytes (Nmax) = 12 bytes       
             total_records = total_records / 12
             
             if (total_records == 0) then
-                  print*, 'ERROR: File is empty!'
+                  write(*,*) 'ERROR: File is empty!'
                   close(file_unit)
                   stop
             end if
             
-            print*, '  Found', total_records, 'records in table'
+            write(*,'(A,4x,I0,4x,A)') '  Found', total_records, 'records in table'
             
             ! Allocate arrays
             allocate(A_table(total_records))
@@ -66,18 +71,23 @@ contains
             
             call cpu_time(end_time)
             
-            print*, '  1D table loaded successfully!'
-            print*, '  A range:', A_table(1), 'to', A_table(total_records)
-            print*, '  Load time:', end_time - start_time, 'seconds'
-            print*, '  Memory: ~', (total_records * 12.0) / (1024.0*1024.0), 'MB'
-            print*, ''
+            
+            write(*,'(A,4x,ES10.0,4x,A,ES10.0)') '  A range:', A_table(1), '  to  ', A_table(total_records)
+            write(*,'(A,F12.8,4x,A)') '  Load time   :', end_time - start_time, 'seconds'
+            write(*,'(A,F12.8,4x,A)') '  Memory usage:', (total_records * 12.d0) / (1024.d0*1024.d0), 'MB'
+            write(*,'(A)') ''
+            write(*,'(A)') '1D table loaded successfully!'
+            write(*,'(A)') '************************************************************************'
+            write(*,'(A)') ''
             
       end subroutine load_table_1d
       
       
       integer function get_Nmax_from_bessel_1D(A_target)
+            
+            implicit none 
             double precision, intent(in) :: A_target
-            integer :: low, high, mid
+            integer                      :: low, high, mid
             
             if (.not. table_loaded) then
                   print*, 'ERROR: 1D table not loaded! Call load_table_1d() first.'
@@ -123,27 +133,5 @@ contains
             end if
             
       end function get_Nmax_from_bessel_1D
-      
-      
-      subroutine cleanup_table_1d()
-            if (allocated(A_table)) deallocate(A_table)
-            if (allocated(Nmax_table)) deallocate(Nmax_table)
-            table_loaded = .false.
-            print*, '1D table cleaned up'
-      end subroutine cleanup_table_1d
-      
-      
-      ! Optional: Function to print table info
-      subroutine print_table_info()
-            if (.not. table_loaded) then
-                  print*, '1D table not loaded'
-                  return
-            end if
-            print*, '1D Table Info:'
-            print*, '  Records:', total_records
-            print*, '  A_min:', A_table(1)
-            print*, '  A_max:', A_table(total_records)
-            print*, '  Step size:', A_table(2) - A_table(1)
-      end subroutine print_table_info
       
 end module table_1d_lookup

@@ -15,7 +15,7 @@ subroutine print_RHF_SAO(nBas,nO,e,c,ENuc,ET,EV,EJ,Ex,EHF,blk)
       complex(dpc),intent(in)            :: c(nBas,nBas)
 
       double precision                   :: e_sorted(nBas)
-      integer                            :: HOMO,LUMO , i , j , o , b
+      integer                            :: HOMO,LUMO , i , j , b
       double precision                   :: Gap
       double precision,parameter         :: autoev = 27.21138602d0
 

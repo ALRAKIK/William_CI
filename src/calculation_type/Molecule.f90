@@ -31,7 +31,6 @@ subroutine molecule(n_atoms,number_of_functions,atoms,geometry,OV,K,NA,ERI)
       call header(" OBC Calculation ",-1)
       call header_under(" Calculate the integerals ",-1)
 
-
       call cpu_time(start)
 
         call overlap_matrix             (n_atoms,number_of_functions,geometry,atoms,OV)

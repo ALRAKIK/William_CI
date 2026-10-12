@@ -106,7 +106,7 @@ subroutine ERI_integral_4_function_toroidal(one,two,three,four,value)
               yq     = (gamma * yc + delta * yd) * inv_gade
               zq     = (gamma * zc + delta * zd) * inv_gade
 
-              const  = (c1*c2*c3*c4) * 2.d0 /dsqrt(pi) * (Lx * Lx) * dexp(- reduced_mu * (Yab*Yab) ) * dexp(- reduced_nu * (Ycd*Ycd) ) * dexp(- reduced_mu * (Zab*Zab) ) * dexp(- reduced_nu * (Zcd*Zcd) )
+              const  = (c1*c2*c3*c4) * 2.d0 /dsqrt(pi) * (Lx * Lx) * dexp(- reduced_mu * (Yab*Yab + Zab*Zab) ) * dexp(- reduced_nu * (Ycd*Ycd + Zcd*Zcd) )
 
               test = dexp(-0.5d0*(alpha+beta+gamma+delta-mu_x-nu_x)*(Lx*Lx)/(pi*pi)) * const
 
@@ -176,9 +176,6 @@ subroutine ERI_integral_4_function_toroidal_new(one,two,three,four,value)
       double precision                :: albe     , gade
       double precision                :: inv_albe , inv_gade
       double precision                :: reduced_mu , reduced_nu
-
-
-
       !-----------------------------------------------------------------!
 
       value   = 0.d0 
@@ -241,8 +238,6 @@ subroutine ERI_integral_4_function_toroidal_new(one,two,three,four,value)
 
               yq     = (gamma * yc + delta * yd) * inv_gade
               zq     = (gamma * zc + delta * zd) * inv_gade
-
-              
 
               const  = (c1*c2*c3*c4) * 2.d0 /dsqrt(pi) * (Lx * Lx) * dexp(- reduced_mu * (Yab*Yab) ) * dexp(- reduced_nu * (Ycd*Ycd) ) * dexp(- reduced_mu * (Zab*Zab) ) * dexp(- reduced_nu * (Zcd*Zcd) )
 

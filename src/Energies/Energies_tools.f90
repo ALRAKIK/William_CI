@@ -447,7 +447,7 @@ subroutine matout(m,n,A)
           do j=1,num
             if(abs(B(j)) < small) B(j) = 0d0
           enddo
-          write(outfile,'(I7,10F15.8)') i,(B(j),j=1,num)
+          write(outfile,'(6x,I4,10F15.8)') i,(B(j),j=1,num)
         enddo
       enddo
   

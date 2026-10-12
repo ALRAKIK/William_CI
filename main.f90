@@ -59,6 +59,10 @@ program CI
       integer                         ::          n_alpha , n_beta
       integer                         ::                  ERI_size
 
+
+      integer                         :: start_count, end_count, count_rate
+      double precision                :: elapsed
+
       !-----------------------------------------------------------------!
       !                        END variables                            !
       !-----------------------------------------------------------------!
@@ -96,13 +100,6 @@ program CI
       c_save     = any(keyword == 'Save'     )
       c_DIIS     = any(keyword == 'DIIS'     )     
       c_MCDE     = any(keyword == 'MCDE'     )     ! 20
-
-      ! --------------------------------------------------------------- !
-      !                     Read the table for Nmax                     !
-      ! --------------------------------------------------------------- !
-
-      call load_table   ('table.bin'   )
-      call load_table_1d('table_1D.bin')
 
       ! --------------------------------------------------------------- !
       !            Read number of alpha and beta electrons              !
@@ -159,6 +156,14 @@ program CI
         
           call Torus_def()
 
+      ! --------------------------------------------------------------- !
+      !                     Read the table for Nmax                     !
+      ! --------------------------------------------------------------- !      
+
+          call load_table   ('table.bin'   )
+          call load_table_1d('table_1D.bin')
+          
+
       end if 
 
       ! --------------------------------------------------------------- !
@@ -191,6 +196,8 @@ program CI
       ! --------------------------------------------------------------- !
 
       Call Title()
+
+      call system_clock(count=start_count, count_rate=count_rate)
 
       Call Print_the_input_file() 
 
@@ -372,15 +379,15 @@ program CI
 
         select case (trim(calculation_type))
           case ("OBC", "Ring", "OBC2D")
-            call molecule(n_atoms,nBas,atoms,geometry,S,T,V,ERI)                     ! Molecule 
+            call molecule(n_atoms,nBas,atoms,geometry,S,T,V,ERI)            ! Molecule 
           case ("Torus")
-            call Torus_PBC(n_atoms,nBas,atoms,AO,geometry)                           ! Torus with PBC 
+            call Torus_PBC(n_atoms,nBas,atoms,AO,geometry)                  ! Torus with PBC 
           case ("Tori1D")
-            call Tori1D(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)                  ! Toroidal 1D Gaussian TRR
+            call Tori1D(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)           ! Toroidal 1D Gaussian TRR
           case ("Tori2D")
-            call Tori2D(n_atoms,nBas,atoms,AO,geometry)                              ! Real Toroidal 2D Gaussian
+            call Tori2D(n_atoms,nBas,atoms,AO,geometry)                     ! Real Toroidal 2D Gaussian
           case ("Tori3D")
-            call Tori3D(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)                    ! Real Toroidal 3D Gaussian
+            call Tori3D(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)           ! Real Toroidal 3D Gaussian
           case default
             write(outfile,'(A)') 'Unknown calculation type: ',          &
             &                     trim(calculation_type)
@@ -485,7 +492,6 @@ program CI
         time = end - start
       end if 
 
-
       
       !-----------------------------------------------------------------!
       ! AO to MO transformation
@@ -576,6 +582,18 @@ program CI
         
       ! --------------------------------------------------------------- !
       ! --------------------------------------------------------------- !
+
+
+      call system_clock(count=end_count)
+
+      elapsed = real(end_count - start_count) / real(count_rate)
+
+      write(outfile, '(6x, a, i2.2, ":", i2.2, ":", i2.2)') &
+      "Elapsed time : ", &
+      int(elapsed) / 3600, &
+      mod(int(elapsed), 3600) / 60, &
+      mod(int(elapsed), 60)
+      
 
       close(outfile)
 

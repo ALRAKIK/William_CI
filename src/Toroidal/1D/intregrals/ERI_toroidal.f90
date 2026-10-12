@@ -59,12 +59,8 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
       !                   Precompute Bessel functions                   !
 
       call initialize_bessel_table_64_Lx()
-      call precompute_gauss_legendre_64()
+      !call precompute_gauss_legendre_64()
       call gauss_legendre_64_points()
-
-      do i = 1 , 64
-        write(*,'(I3,2X,F12.4,F12.4)') i, gl_t_nodes(i), gl_t_weights(i)
-      end do
 
       !-----------------------------------------------------------------!
 
@@ -229,15 +225,15 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
               two_electron(i,j,k,l) = val
               two_electron(i,j,l,k) = val
 
-              !$omp critical
-              integrals_done = integrals_done + 1.d0
-              current_pct = int((integrals_done * 100.0d0) / num_total_int)
-              if (current_pct > last_pct .and. mod(current_pct, 5) == 0) then
-                  write(*,'(I3,"% done")') current_pct
-                  flush(6)
-                  last_pct = current_pct
-              endif
-              !$omp end critical
+               !$omp critical
+               integrals_done = integrals_done + 1.d0
+               current_pct = int((integrals_done * 100.0d0) / num_total_int)
+               if (current_pct > last_pct .and. mod(current_pct, 5) == 0) then
+                   write(*,'(I3,"% done")') current_pct
+                   flush(6)
+                   last_pct = current_pct
+               endif
+               !$omp end critical
 
             end if
           end do

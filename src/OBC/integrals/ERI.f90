@@ -14,15 +14,26 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
 
 
       type(ERI_function),allocatable :: ERI  (:)
-      integer                        :: i , j , k , l  , p , q  , actual_total_int
+      integer                        :: i , j , k , l
       integer                        :: number_of_functions
       double precision               :: geometry(number_of_atoms,3)
       double precision               :: two_electron(number_of_functions,number_of_functions,number_of_functions,number_of_functions)
       double precision               :: value 
 
+      double precision               :: num_total_int
+
+
+      ! ----------------------    Time     ---------------------------- !
       double precision               :: start_time, end_time
       integer                        :: days, hours, minutes, seconds , t 
-
+      !-----------------------------------------------------------------!
+      integer                        :: total_ij_pairs, ij_index
+      integer, allocatable           :: i_index(:), j_index(:)
+      integer                        :: num_threads, optimal_chunk_size
+      !-----------------------------------------------------------------!
+      integer                        :: current_pct 
+      integer                        :: last_pct = -1
+      double precision               :: integrals_done = 0.d0
       !-----------------------------------------------------------------!
       !                      Schwarz screening                          !
       
@@ -43,25 +54,59 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
 
       !$omp parallel
       if (omp_get_thread_num() == 0) then
-        print *, "Running with", omp_get_num_threads(), "threads"
+        write(*,'(A)')    ""
+        write(*,'(A,I0)') "Number of threads available: ", omp_get_num_threads()
       endif
       !$omp end parallel
 
+      !$omp    parallel
+          !$omp     single
+            num_threads = omp_get_num_threads()
+          !$omp end single
+      !$omp end parallel
+
+      ! Calculate optimal chunk size based on available threads
+
+      if (num_threads <= 16) then
+        optimal_chunk_size = 16           ! Good for laptops (8-16 cores)
+      else if (num_threads <= 64) then
+        optimal_chunk_size = 8            ! Good for medium clusters
+      else 
+        optimal_chunk_size = 1            ! Good for large clusters (128+ cores)
+      end if
+
       start_time = omp_get_wtime()
 
-      ! 8-fold symmetry implementation ((i,j),(k,l) permutation only)
+      ! Precompute all i-j pairs for manual collapse
 
-      actual_total_int = 0 
-
+      total_ij_pairs = 0
       do i = 1, number_of_functions
-        do j = 1, i
-            do k = 1, number_of_functions
-                do l = 1, k
-                    p = i*(i-1)/2 + j
-                    q = k*(k-1)/2 + l
-                    if (p >= q) actual_total_int = actual_total_int + 1
-                end do
-            end do
+        do j = i, number_of_functions
+          total_ij_pairs = total_ij_pairs + 1
+        end do
+      end do
+
+      allocate(i_index(total_ij_pairs), j_index(total_ij_pairs))
+
+      total_ij_pairs = 0
+      do i = 1, number_of_functions
+        do j = i, number_of_functions
+          total_ij_pairs = total_ij_pairs + 1
+          i_index(total_ij_pairs) = i
+          j_index(total_ij_pairs) = j
+        end do
+      end do
+
+      num_total_int = 0.d0
+      do ij_index = 1, total_ij_pairs
+        i = i_index(ij_index)
+        j = j_index(ij_index)
+        do k = 1, number_of_functions
+          do l = k, number_of_functions
+            if (i <= k .or. (i == k .and. j <= l)) then
+              num_total_int = num_total_int + 1.d0
+            end if 
+          end do
         end do
       end do
 
@@ -73,8 +118,8 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
 
       allocate(Q_schwarz(number_of_functions, number_of_functions))
       Q_schwarz = 0.d0
-      write(*,'(A)') 'Precomputing Schwarz screening matrix...'
-      write(outfile,'(A)') 'Precomputing Schwarz screening matrix...'
+      write(*,'(A)')          'Precomputing Schwarz screening matrix...'
+      write(outfile,'(6x,A)') 'Precomputing Schwarz screening matrix...'
 
 
       do i = 1, number_of_functions
@@ -85,8 +130,8 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
         end do
       end do
 
-      write(*,'(A)') 'Schwarz matrix done.'
-      write(outfile,'(A)') 'Schwarz matrix done.'
+      write(*,'(A)')       'Schwarz matrix done'
+      write(outfile,'(6x,A)') 'Schwarz matrix done'
       flush(outfile)
 
       write(*,'(A)') 'Sample Q_schwarz values:'
@@ -94,19 +139,60 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
       write(*,'(A,ES12.4)') 'Min Q value = ', minval(Q_schwarz)
       write(*,'(A,ES12.4)') 'Threshold   = ', schwarz_thresh
 
-      write(*,*) 'Will compute ', actual_total_int, ' unique integrals'
+      ! --- Diagnostic: count how many integrals survive ---
 
-!$omp parallel do private(j,k,l,value,p,q) shared(two_electron,ERI)
+      n_screened = 0
+      n_computed = 0
+      do ij_index = 1, total_ij_pairs
+        i = i_index(ij_index)
+        j = j_index(ij_index)
+        do k = 1, number_of_functions
+          do l = k, number_of_functions
+            if (i <= k .or. (i == k .and. j <= l)) then
+              if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) then
+                n_screened = n_screened + 1
+              else
+                n_computed = n_computed + 1
+              end if
+            end if
+          end do
+        end do
+      end do
       
-       do i = 1, number_of_functions
-         do j = 1, i
-             do k = 1, number_of_functions
-                 do l = 1, k
+      write(*,'(A,I0)')   'Total number of unique integrals :    ', int(num_total_int,16)
+      write(*,'(A,I0)')   'Screened out by Schwarz:              ', n_screened
+      write(*,'(A,I0)')   'Total unique integrals will computed: ', n_computed
+      write(*,'(A,F8.2,A)') 'Reduction:                 ', &
+        100.d0 * dble(n_screened) / num_total_int, ' %'
 
-                    p = i*(i-1)/2 + j
-                    q = k*(k-1)/2 + l
+      write(*,'(A)') ''
 
-                    if (p >= q) then
+      write(outfile,'(6x,A,I0)')   'Total number of unique integrals :    ', int(num_total_int,16)
+      write(outfile,'(6x,A,I0)')   'Screened out by Schwarz:              ', n_screened
+      write(outfile,'(6x,A,I0)')   'Total unique integrals will computed: ', n_computed
+      write(outfile,'(6x,A,F8.2,A)') 'Reduction:                 ', &
+        100.d0 * dble(n_screened) / num_total_int, ' %'
+
+      write(outfile,'(A)') ''
+      flush(outfile)
+        
+      ! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> !
+
+      two_electron = 0.d0 
+
+      ! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> !
+
+      !$omp parallel do private(ij_index,i,j,k,l,value) &
+      !$omp shared(two_electron, ERI, i_index, j_index, Q_schwarz) &
+      !$omp schedule(dynamic,optimal_chunk_size)
+
+      do ij_index = 1, total_ij_pairs
+          i = i_index(ij_index)
+          j = j_index(ij_index)
+        do k = 1, number_of_functions
+          do l = k, number_of_functions
+
+            if (i <= k .or. (i == k .and. j <= l)) then
 
                         ! ---- Schwarz screen: ONE multiply + ONE compare ----
                         if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) then
@@ -124,27 +210,46 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
                         two_electron(k,l,j,i) = value
                         two_electron(l,k,j,i) = value
 
-                    end if
-                end do
-            end do
+              !$omp critical
+              integrals_done = integrals_done + 1.d0
+              current_pct = int((integrals_done * 100.0d0) / n_computed)
+              if (current_pct > last_pct .and. mod(current_pct, 5) == 0) then
+                  write(*,'(I3,"% done")') current_pct
+                  flush(6)
+                  last_pct = current_pct
+              endif
+              !$omp end critical
+
+            end if 
+            
+          end do
         end do
+
       end do
-!$omp end parallel do
+      
+      !$omp end parallel do
+
+      write(*,'(a)') ""
+      write(*,'(a)') "*************************************************"
+      write(*,'(a)') "* Two-electron integrals calculation completed  *"
+      write(*,'(a)') "*************************************************"
+      flush(6)
+      write(*,'(a)') ""
+
+      deallocate(i_index, j_index)
+      deallocate(Q_schwarz)
 
       end_time = omp_get_wtime()
-
-      write(outfile,"(a)") ""
-      write(outfile,"(a)") " (8-fold) symmetry applied to integrals"
-      write(outfile,"(a)") "" 
-
+    
       t = int(end_time - start_time)
       days= (t/86400)
       hours=mod(t,86400)/3600
       minutes=mod(mod(t,86400),3600)/60
       seconds=mod(mod(mod(t,86400),3600),60)
 
-      write(outfile,'(A65,5X,I0,a,I0,a,I0,a,I0,4x,a)') '2 el-integrals calculation time = ',days,":",hours,":",minutes,":",seconds, "days:hour:min:sec     "
+      write(outfile,'(A65,5X,I0,a,I0,a,I0,a,I0,4x,a)') '2 el-integrals calculation time = ',days,":",hours,":",minutes,":",seconds, "days:hour:min:sec"
       write(outfile,"(a)") "" 
+      FLUSH(outfile)
 
 
 end subroutine
