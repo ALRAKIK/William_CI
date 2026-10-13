@@ -46,6 +46,7 @@ contains
             stop
       end if
       
+      write(*,"(A)") ""
       write(*,"(A)") "************************************************************************" 
       write(*,"(A,A,A)")  'Loading binary table from: ', trim(filename) , " For the S function maximum terms"
       write(*,"(A)") ""

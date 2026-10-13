@@ -1,4 +1,4 @@
-subroutine nuclear_attraction_matrix_toroidal_1D_SAO(number_of_atoms,nBas,geometry,atoms,AO,NA)
+subroutine nuclear_attraction_matrix_toroidal_SAO_1D(number_of_atoms,nBas,geometry,atoms,AO,NA)
 
       use files
       use atom_basis
@@ -129,17 +129,7 @@ subroutine nuclear_attraction_matrix_toroidal_1D_SAO(number_of_atoms,nBas,geomet
        end do 
       end do
 
-      do i = nfuc + 1  , nBas
-        do j = nfuc + 1 , nBas
-          NA(i,j) = NA(i-nfuc,j-nfuc)
-        end do 
-      end do 
- 
-      do i = 1 , nBas - 1 
-       do j = i , nBas
-         NA(j,i) = NA(i,j)
-       end do 
-      end do
+      call fill_with_symmetry(nBas, NA)
 
       if (c_NA) then 
         write(outfile,'(a)') ""
@@ -154,4 +144,4 @@ subroutine nuclear_attraction_matrix_toroidal_1D_SAO(number_of_atoms,nBas,geomet
         end do 
       end if 
 
-end subroutine nuclear_attraction_matrix_toroidal_1D_SAO
+end subroutine nuclear_attraction_matrix_toroidal_SAO_1D

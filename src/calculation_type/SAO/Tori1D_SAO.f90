@@ -44,15 +44,15 @@ subroutine Tori1D_SAO(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
 
       call cpu_time(start)
 
-      call overlap_matrix_toroidal_SAO(nBas,AO,OV)
+      call overlap_matrix_toroidal_SAO_1D(nBas,AO,OV)
       call check_the_overlap(nBas,OV)
-      call kinetic_matrix_toroidal_SAO(nBas,AO,K)
-      call nuclear_attraction_matrix_toroidal_1D_SAO(n_atoms,nBas,geometry,atoms,AO,NA)
+      call kinetic_matrix_toroidal_SAO_1D(nBas,AO,K)
+      call nuclear_attraction_matrix_toroidal_SAO_1D(n_atoms,nBas,geometry,atoms,AO,NA)
 
       if (c_One) then 
         ERI = 0.d0
       else 
-        call ERI_integral_toroidal_SAO(n_atoms,geometry,nBas,atoms,ERI)
+        call ERI_integral_toroidal_SAO_1D(n_atoms,geometry,nBas,atoms,ERI)
       end if 
         
       call cpu_time(end)

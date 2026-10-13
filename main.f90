@@ -365,7 +365,9 @@ program CI
 
       if (c_SAO) then 
         write(outfile,'(A)') 'The integrals will be calculated'
-        call Tori1D_SAO(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)
+        if (trim(calculation_type) == "Tori1D") call Tori1D_SAO(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)
+        !if (trim(calculation_type) == "Tori2D") call Tori2D_SAO(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)
+        if (trim(calculation_type) == "Tori3D") call Tori3D_SAO(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)
         go to 100
       end if 
 

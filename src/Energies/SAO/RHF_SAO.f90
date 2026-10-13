@@ -143,7 +143,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
 
       ! --------------------------------------------------------------- !
 
-      call transform_AO_to_SAO(nBas,nfuc,N_cell,S,S_SAO)
+      call transform_AO_to_SAO(nBas,S,S_SAO)
 
       call get_X_from_overlap_complex(nBas,S_SAO,X_SAO)
 
@@ -197,7 +197,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
     
       F(:,:) = Hc(:,:) + J(:,:) + K(:,:)
 
-      call transform_AO_to_SAO(nBas,nfuc,N_cell, F, F_SAO)
+      call transform_AO_to_SAO(nBas,F,F_SAO)
 
       !   Compute the error vector and extract the convergence criterion
 
@@ -295,6 +295,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
       !   Transform for the Fock matrix F in the orthogonal basis 
       
       Fp_SAO = matmul(conjg(transpose(X_SAO)), matmul(F_SAO, X_SAO)) 
+
             
       !   Diagonalize F' to get MO coefficients (eigenvectors in the orthogonal basis) c' and MO energies (eigenvalues) e
       
@@ -337,12 +338,11 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
         end do
       end do
 
-      call transform_SAO_to_AO(nBas,nfuc,N_cell,P_SAO,P_SAO_AO)
+      call transform_SAO_to_AO(nBas,P_SAO,P_SAO_AO)
 
       P(:,:) = dble(P_SAO_AO(:,:))
 
       if (c_details) then 
-
 
       call header_HF("The Real orbital coeff c ", -1)
       write(HFfile,'(17x,1000(i3,15x))') (i,i=1,nBas)

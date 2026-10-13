@@ -1,4 +1,4 @@
-subroutine ERI_integral_toroidal_SAO(number_of_atoms,geometry,nBas,atoms,two_electron)
+subroutine ERI_integral_toroidal_SAO_1D(number_of_atoms,geometry,nBas,atoms,two_electron)
 
       use files
       use keywords
@@ -285,4 +285,4 @@ subroutine ERI_integral_toroidal_SAO(number_of_atoms,geometry,nBas,atoms,two_ele
 
       deallocate(ERI)
 
-end subroutine ERI_integral_toroidal_SAO
+end subroutine ERI_integral_toroidal_SAO_1D

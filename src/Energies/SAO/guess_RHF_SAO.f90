@@ -2,6 +2,8 @@ subroutine guess_AO_RHF_SAO(nBas,c_details,nO,HC,X,ENuc,S,T,V,P,ERI)
 
       use files
       use unitcell_module
+      use constants_module
+
 
       implicit none 
 

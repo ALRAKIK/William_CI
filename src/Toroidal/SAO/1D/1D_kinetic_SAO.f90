@@ -1,4 +1,4 @@
-subroutine kinetic_matrix_toroidal_SAO(nBas,AO,kinetic)
+subroutine kinetic_matrix_toroidal_SAO_1D(nBas,AO,kinetic)
 
       use files 
       use torus_init
@@ -58,17 +58,7 @@ subroutine kinetic_matrix_toroidal_SAO(nBas,AO,kinetic)
         end do 
       end do 
 
-      do i = nfuc + 1   , nBas
-        do j = nfuc + 1 , nBas
-          kinetic(i,j) = kinetic(i-nfuc,j-nfuc)
-        end do 
-      end do 
-
-      do i = 1 , nBas - 1 
-        do j = i , nBas
-          kinetic(j,i) = kinetic(i,j)
-        end do 
-      end do
+      call fill_with_symmetry(nBas, kinetic)
 
 
       if (c_K) then 
@@ -86,4 +76,4 @@ subroutine kinetic_matrix_toroidal_SAO(nBas,AO,kinetic)
 
 
 
-end subroutine kinetic_matrix_toroidal_SAO
+end subroutine kinetic_matrix_toroidal_SAO_1D

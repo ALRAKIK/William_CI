@@ -450,8 +450,6 @@ subroutine nuclear_attraction_integral_toroidal_1D(pattern_id,n_atoms,geometry,a
       NA       = 0.d0
       NA_prime = 0.d0 
 
-
-
       do i = 1 , size(AO1%exponent)
         alpha = AO1%exponent(i)
         c1    = AO1%coefficient(i)

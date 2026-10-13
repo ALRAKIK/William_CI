@@ -87,9 +87,6 @@ subroutine details_integrals(nBas,S,T,V,ERI)
 end subroutine
 
 
-
-
-
 subroutine details_integrals_SAO(nBas,S,T,V,ERI)
 
       use files 

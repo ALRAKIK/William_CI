@@ -1,4 +1,4 @@
-subroutine overlap_matrix_toroidal_SAO(nBas,AO,overlap)
+subroutine overlap_matrix_toroidal_SAO_1D(nBas,AO,overlap)
 
       use files
       use atom_basis
@@ -60,17 +60,7 @@ subroutine overlap_matrix_toroidal_SAO(nBas,AO,overlap)
         end do 
       end do 
 
-      do i = nfuc + 1   , nBas
-        do j = nfuc + 1 , nBas
-          overlap(i,j) = overlap(i-nfuc,j-nfuc)
-        end do 
-      end do 
- 
-      do i = 1 , nBas - 1 
-        do j = i , nBas
-          overlap(j,i) = overlap(i,j)
-        end do 
-      end do
+      call fill_with_symmetry(nBas, overlap)
       
 
       if (c_OV) then 
@@ -86,4 +76,4 @@ subroutine overlap_matrix_toroidal_SAO(nBas,AO,overlap)
         end do 
       end if 
 
-end subroutine overlap_matrix_toroidal_SAO
+end subroutine overlap_matrix_toroidal_SAO_1D

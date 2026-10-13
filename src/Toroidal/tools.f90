@@ -211,7 +211,10 @@ subroutine bary_exponent_y(e1,e2,y,p)
         p = e12 + e22 + 2.d0 * e1 * e2 * dcos(ay*y)
         p = dsqrt(dabs(p))
       end if
-      
+
+      if (p > e1 + e2) p = e1+e2
+
+      if (e1+e2-p < 1.d-14) p = e1 + e2 
 
 end subroutine bary_exponent_y
 
@@ -250,6 +253,10 @@ subroutine bary_exponent_z(e1,e2,z,p)
         p = e12 + e22 + 2.d0 * e1 * e2 * dcos(az*z)
         p = dsqrt(dabs(p))
       end if
+
+      if (p > e1 + e2) p = e1+e2
+
+      if (e1+e2-p < 1.d-14) p = e1 + e2 
       
 
 end subroutine bary_exponent_z
