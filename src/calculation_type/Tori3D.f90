@@ -39,12 +39,9 @@ subroutine Tori3D(n_atoms,number_of_functions,atoms,AO,geometry,OV,K,NA,ERI)
       call cpu_time(start)
 
       call overlap_matrix_toroidal_3D(n_atoms,number_of_functions,atoms,AO,OV)
-      write(*,'(A)') " The overlap integral!                Done"
       call check_the_overlap(number_of_functions,OV)
       call kinetic_matrix_toroidal_3D(n_atoms,number_of_functions,atoms,AO,K)
-      write(*,'(A)') " The kinetic integral!                Done"
       call nuclear_attraction_matrix_toroidal_3D(n_atoms,number_of_functions,geometry,atoms,AO,NA)
-      write(*,'(A)') " The nuclear attraction integral!     Done"
       if (.not. c_One) call ERI_integral_toroidal_3D(n_atoms,geometry,number_of_functions,atoms,ERI)
 
       call cpu_time(end)

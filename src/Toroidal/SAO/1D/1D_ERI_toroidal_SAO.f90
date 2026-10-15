@@ -137,7 +137,7 @@ subroutine ERI_integral_toroidal_SAO_1D(number_of_atoms,geometry,nBas,atoms,two_
 
       do i = 1, nBas
         do j = i, nBas
-          call ERI_integral_4_function_toroidal_new(ERI(i), ERI(j), ERI(i), ERI(j), val_iijj)
+          call ERI_integral_4_function_toroidal(ERI(i), ERI(j), ERI(i), ERI(j), val_iijj)
           !call ERI_integral_4_function(ERI(i), ERI(j), ERI(i), ERI(j), val_iijj)
           Q_schwarz(i,j) = dsqrt(dabs(val_iijj))
           Q_schwarz(j,i) = Q_schwarz(i,j)
@@ -210,7 +210,7 @@ subroutine ERI_integral_toroidal_SAO_1D(number_of_atoms,geometry,nBas,atoms,two_
                cycle
              end if
 
-              call ERI_integral_4_function_toroidal_new(ERI(i),ERI(j),ERI(k),ERI(l), val)         ! chemist notation
+              call ERI_integral_4_function_toroidal(ERI(i),ERI(j),ERI(k),ERI(l), val)         ! chemist notation
               !call ERI_integral_4_function(ERI(i),ERI(j),ERI(k),ERI(l), val)         ! physicist notation
 
               two_electron(i,j,k,l) = val
