@@ -58,7 +58,6 @@ MODULES_IN_ORDER = constants_module \
                    ERI_mod \
                    bessel_derivative \
                    filter \
-                   gauss_legendre_integrals \
                    heaviside \
                    unitcell \
                    functions \

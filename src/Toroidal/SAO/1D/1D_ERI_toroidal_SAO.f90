@@ -9,7 +9,6 @@ subroutine ERI_integral_toroidal_SAO_1D(number_of_atoms,geometry,nBas,atoms,two_
       use classification_ERI
       use unitcell_module
       use precomputed_bessel
-      use gauss_legendre_quadrature      
 
       implicit none 
 
@@ -56,13 +55,8 @@ subroutine ERI_integral_toroidal_SAO_1D(number_of_atoms,geometry,nBas,atoms,two_
 
       !                   Precompute Bessel functions                   !
 
-      call initialize_bessel_table_64_Lx()
-      !call precompute_gauss_legendre_64()
-      call gauss_legendre_64_points()
-
-      ! do i = 1 , 64
-      !   write(*,'(I3,2X,F12.4,F12.4)') i, gl_t_nodes(i), gl_t_weights(i)
-      ! end do
+      call initialize_bessel_table()
+      call gauss_legendre_points()
 
       !-----------------------------------------------------------------!
 

@@ -8,7 +8,6 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
       use classification_ERI
       use precomputed_bessel
       use keywords
-      use gauss_legendre_quadrature
 
       implicit none 
 
@@ -49,13 +48,8 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
       integer(8)                    :: n_screened, n_computed
       !-----------------------------------------------------------------!
 
-
-      call initialize_bessel_table_64_Lx()
-      call initialize_bessel_table_64_Ly()
-      call initialize_bessel_table_64_Lz()
-      !call precompute_gauss_legendre_64()
-      call gauss_legendre_64_points()
-
+      call initialize_bessel_table()
+      call gauss_legendre_points()
       
       !-----------------------------------------------------------------!
 

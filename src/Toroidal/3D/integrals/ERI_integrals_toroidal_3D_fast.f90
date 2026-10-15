@@ -131,7 +131,7 @@ subroutine integrate_ERI_3D_fast(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb
 
       use iso_c_binding
       use torus_init
-      use gauss_legendre_quadrature
+      use precomputed_bessel
       use table_1d_lookup
       use constants_module
       use table_lookup_module
@@ -222,9 +222,9 @@ subroutine integrate_ERI_3D_fast(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb
       integer                              :: n
 
 
-      integer                              :: Nmax_x(64)
-      integer                              :: Nmax_y(64)
-      integer                              :: Nmax_z(64)
+      integer                              :: Nmax_x(nquad_point)
+      integer                              :: Nmax_y(nquad_point)
+      integer                              :: Nmax_z(nquad_point)
 
       ! --------------------------------------------------------------- !
 
@@ -284,7 +284,7 @@ subroutine integrate_ERI_3D_fast(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb
 
       ! -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- !
 
-      do n = 1, 64
+      do n = 1, nquad_point
         CCx = inv_ax2 * 2.d0 * t_val(n) * t_val(n) 
         CCy = inv_ay2 * 2.d0 * t_val(n) * t_val(n) 
         CCz = inv_az2 * 2.d0 * t_val(n) * t_val(n) 
@@ -6994,7 +6994,7 @@ subroutine integrate_ERI_3D_fast(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb
 
       result = 0.0d0
 
-      do n = 1, 64
+      do n = 1, nquad_point
         result = result + w_val(n) * S(n)
       end do
 

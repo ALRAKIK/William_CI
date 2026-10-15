@@ -32,7 +32,7 @@ subroutine build_super_molecule(keyword,num_atom_per_unitcell)
 
       ! output !
 
-      character(len=10),intent(out)  ::            keyword(20)
+      character(len=10),intent(out)  ::            keyword(30)
       integer                        :: num_atom_per_unitcell
 
       !-----------------------------------------------------------------!
@@ -276,7 +276,7 @@ subroutine read_keywords(keyword)
       character(len=100)             :: line
       integer                        :: io_stat
 
-      character(len=10),intent(out)  :: keyword(20)
+      character(len=10),intent(out)  :: keyword(30)
       logical                        :: reading_cell
 
       do
@@ -334,6 +334,8 @@ subroutine read_keywords(keyword)
         if (trim(line) == 'DIIS'     )   keyword(19) = 'DIIS'
 
         if (trim(line) == 'MCDE'     )   keyword(20) = 'MCDE'
+
+        if (trim(line) == 'nquad_128' )  keyword(21) = 'nquad_128'
 
       end do
 

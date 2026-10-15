@@ -9,8 +9,10 @@ program CI
       use keywords
       use table_lookup_module
       use table_1d_lookup
+      use precomputed_bessel
       use unitcell_module
       use MCDE_module
+
 
       implicit none
 
@@ -80,26 +82,27 @@ program CI
       !                        Read key words                           !
       ! --------------------------------------------------------------- !
 
-      c_integral = any(keyword == 'Integrals')
-      c_read     = any(keyword == 'Read'     )
-      c_trexio   = any(keyword == 'Trexio'   )
-      c_Angstrom = any(keyword == 'Angstrom' )
-      c_plot     = any(keyword == 'Plot'     )     ! 5
-      c_details  = any(keyword == 'Details'  )
-      c_MO       = any(keyword == 'MO'       )
-      c_UHF      = any(keyword == 'UHF'      )
-      c_Huckel   = any(keyword == 'Huckel'   )
-      c_MP2      = any(keyword == 'MP2'      )     ! 10
-      c_OV       = any(keyword == 'OV'       )
-      c_K        = any(keyword == 'K'        )
-      c_NA       = any(keyword == 'NA'       )
-      c_ERI      = any(keyword == 'ERI'      )
-      c_One      = any(keyword == 'One'      )     ! 15
-      c_Orbitals = any(keyword == 'Orbitals' )
-      c_SAO      = any(keyword == 'SAO'      )
-      c_save     = any(keyword == 'Save'     )
-      c_DIIS     = any(keyword == 'DIIS'     )     
-      c_MCDE     = any(keyword == 'MCDE'     )     ! 20
+      c_integral  = any(keyword == 'Integrals')
+      c_read      = any(keyword == 'Read'     )
+      c_trexio    = any(keyword == 'Trexio'   )
+      c_Angstrom  = any(keyword == 'Angstrom' )
+      c_plot      = any(keyword == 'Plot'     )     ! 5
+      c_details   = any(keyword == 'Details'  )
+      c_MO        = any(keyword == 'MO'       )
+      c_UHF       = any(keyword == 'UHF'      )
+      c_Huckel    = any(keyword == 'Huckel'   )
+      c_MP2       = any(keyword == 'MP2'      )     ! 10
+      c_OV        = any(keyword == 'OV'       )
+      c_K         = any(keyword == 'K'        )
+      c_NA        = any(keyword == 'NA'       )
+      c_ERI       = any(keyword == 'ERI'      )
+      c_One       = any(keyword == 'One'      )     ! 15
+      c_Orbitals  = any(keyword == 'Orbitals' )
+      c_SAO       = any(keyword == 'SAO'      )
+      c_save      = any(keyword == 'Save'     )
+      c_DIIS      = any(keyword == 'DIIS'     )     
+      c_MCDE      = any(keyword == 'MCDE'     )     ! 20
+      c_nquad_128 = any(keyword == 'nquad_128')
 
       ! --------------------------------------------------------------- !
       !            Read number of alpha and beta electrons              !
@@ -362,6 +365,14 @@ program CI
       !                  calculate the integrals                       !
       !              ---------------------------------                 !
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+      if (c_nquad_128) then 
+        write(*,'(A)') 'The integrals will be calculated using 128 point quadrature'
+        nquad_point = 128 
+      else 
+        write(*,'(A)') 'The integrals will be calculated using 64 point quadrature'
+        nquad_point = 64
+      end if
 
       if (c_SAO) then 
         write(outfile,'(A)') 'The integrals will be calculated'

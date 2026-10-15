@@ -132,7 +132,7 @@ subroutine integrate_ERI_3D(pattern_id    ,p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,x
       use quadpack , only : dqagi , dqag , dqags
       use iso_c_binding
       use torus_init
-      use gauss_legendre_quadrature
+      !use gauss_legendre_quadrature
       use table_1d_lookup
       use constants_module
 
@@ -288,7 +288,7 @@ subroutine integrate_ERI_3D(pattern_id    ,p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,x
       c2xqcd = dcos(ax*(2.d0*xq-xC-xD)) ; c2yqcd = dcos(ay*(2.d0*yq-yC-yD)) ; c2zqcd = dcos(az*(2.d0*zq-zC-zD)) 
       s2xqcd = dsin(ax*(2.d0*xq-xC-xD)) ; s2yqcd = dsin(ay*(2.d0*yq-yC-yD)) ; s2zqcd = dsin(az*(2.d0*zq-zC-zD)) 
       
-      call gauss_legendre_64(transformed_integrand, 0.0d0, 1.0d0, result)
+      !call gauss_legendre_64(transformed_integrand, 0.0d0, 1.0d0, result)
 
       ! if (ier /= 0) then
       !   write(*,'(A,I8,A)') 'Error code = ', ier

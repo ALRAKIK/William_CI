@@ -9,7 +9,7 @@ subroutine integrate_ERI_sum(pattern_id,p,q,p_x,q_x,phi,xpA,xpB,xqC,xqD,xa,xb,xc
       use files
       use table_lookup_module
       use table_1d_lookup 
-      use gauss_legendre_quadrature 
+      !use gauss_legendre_quadrature 
       use precomputed_bessel
 
       use, intrinsic :: ieee_arithmetic
@@ -152,7 +152,7 @@ subroutine integrate_ERI_sum(pattern_id,p,q,p_x,q_x,phi,xpA,xpB,xqC,xqD,xa,xb,xc
 
       !call gauss_legendre_auto(transformed_integrand, 0.0d0, 1.0d0, result, 2)
       
-      call gauss_legendre_64(transformed_integrand, 0.0d0, 1.0d0, result)
+      !call gauss_legendre_64(transformed_integrand, 0.0d0, 1.0d0, result)
 
       contains
  
