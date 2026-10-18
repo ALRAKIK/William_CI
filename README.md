@@ -38,7 +38,7 @@
   </ol>
 </details>
 
-# CI_pop
+# William_CI
 A program to calculate the integrals needed in a quantum chemistry code, and calculate the energy of the ground state using the Hartree-Fock mechanism (if required).
 
 # Prerequisite
@@ -54,17 +54,11 @@ sudo apt install gfortran
 sudo apt install liblapack-dev libopenblas-dev libomp-dev
 ```
 
-* 3 - gsl library:
-
-```
-sudo apt-get install libgsl-dev
-```
-
-* 4 - quadpack library:
+* 3 - quadpack library:
 
 Have a look at https://github.com/jacobwilliams/quadpack
 
-* 5 - trexio:
+* 4 - trexio:
 
 Have a look at https://github.com/TREX-CoE/trexio
 
@@ -168,7 +162,7 @@ Arjan Berger        - arjan.berger@irsamc.ups-tlse.fr
 
 Stefano Evangelisti - stefano.lcpq@gmail.com
 
-Project Link: [https://github.com/ALRAKIK/Thomson](https://github.com/ALRAKIK/CI_pop)
+Project Link: [https://github.com/ALRAKIK/William](https://github.com/ALRAKIK/CI_pop)
 
 # License
 
