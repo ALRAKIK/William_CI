@@ -23,20 +23,30 @@ subroutine exchange_potential_SAO(nBas,P,ERI,K)
       
       K(:,:) = 0d0
       
+      if (c_physicist) then 
+
       do nu=1,nBas
         do si=1,nBas
           do la=1,nBas
             do mu=1,nfuc
-              K(mu,nu) = K(mu,nu) - 0.5d0 * P(la,si)*ERI(mu,la,si,nu)
+              K(mu,nu) = K(mu,nu) - 0.5d0 * P(la,si)*ERI(mu,si,la,nu)  ! physicist notation
             end do
           end do
         end do
       end do
 
-      do mu = 1 , nfuc 
-        do nu = 1 , nBas 
-          if (dabs(K(mu,nu)) < 1.d-14) K(mu,nu) = 0.d0
-        end do 
-      end do 
+      else 
+
+      do nu=1,nBas
+        do si=1,nBas
+          do la=1,nBas
+            do mu=1,nfuc
+              K(mu,nu) = K(mu,nu) - 0.5d0 * P(la,si)*ERI(mu,la,si,nu)   ! chemist   notation
+            end do
+          end do
+        end do
+      end do
+
+      end if 
 
 end subroutine exchange_potential_SAO

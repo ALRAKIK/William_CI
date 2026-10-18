@@ -1,13 +1,14 @@
-subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions,atoms,two_electron_integrals)
+subroutine ERI_integral_toroidal_1D(number_of_atoms,geometry,nBas,atoms,two_electron_integrals)
 
       use files
+      use keywords
       use omp_lib
       use files
       use torus_init
       use atom_basis
       use classification_ERI
+      use unitcell_module
       use precomputed_bessel
-      use keywords
 
       implicit none 
 
@@ -15,16 +16,17 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
 
       integer                        :: i , j , k , l
       integer                        :: number_of_atoms
-      integer                        :: number_of_functions
+      integer                        :: nBas
       type(atom)                     :: atoms(number_of_atoms)
       type(ERI_function),allocatable :: ERI  (:)
 
       double precision               :: geometry(number_of_atoms,3)
       double precision,allocatable   :: two_electron(:,:,:,:)
       double precision               :: num_total_int
-      integer                        :: fpuc
 
-      double precision,intent(out)   :: two_electron_integrals(number_of_functions,number_of_functions,number_of_functions,number_of_functions)
+      ! --------------------------------------------------------------- !
+      
+      double precision,intent(out)   :: two_electron_integrals(nBas,nBas,nBas,nBas)
 
       ! ----------------------    Time     ---------------------------- !
       integer                        :: days, hours, minutes, seconds , t , time 
@@ -39,38 +41,35 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
       integer                        :: current_pct 
       integer                        :: last_pct = -1
       double precision               :: integrals_done = 0.d0
+      double precision               :: val
 
       !-----------------------------------------------------------------!
       !                      Schwarz screening                          !
+      
       double precision, allocatable :: Q_schwarz(:,:)
       double precision              :: val_iijj
-      double precision, parameter   :: schwarz_thresh = 1.0d-14   ! tune this
+      double precision, parameter   :: schwarz_thresh = 1.d-14
       integer(8)                    :: n_screened, n_computed
+
       !-----------------------------------------------------------------!
+        
+      !-----------------------------------------------------------------!
+
+      !                   Precompute Bessel functions                   !
 
       call initialize_bessel_table()
       call gauss_legendre_points()
       
       !-----------------------------------------------------------------!
 
-
-      ! functions_per_unitcell ! 
-
-      fpuc = 0 
-
-      do i = 1 , number_of_atom_in_unitcell 
-        fpuc = fpuc + atoms(i)%num_s_function + 3 *  atoms(i)%num_p_function
-      end do 
-
-      !-----------------------------------------------------------------!
-
       call omp_set_dynamic(.false.)
       call omp_set_num_threads(omp_get_max_threads())
 
-      allocate(ERI(number_of_functions))
-      allocate(two_electron(fpuc,number_of_functions,number_of_functions,number_of_functions))
 
-      call classification_tor(number_of_atoms,number_of_functions,geometry,atoms,ERI)
+      allocate(ERI(nBas))
+      allocate(two_electron(nfuc,nBas,nBas,nBas))
+
+      call classification_tor(number_of_atoms,nBas,geometry,atoms,ERI)
 
       !$omp parallel
       if (omp_get_thread_num() == 0) then
@@ -78,21 +77,20 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
       endif
       !$omp end parallel
 
-
-      !$omp parallel
-        !$omp single
-          num_threads = omp_get_num_threads()
-        !$omp end single
+      !$omp    parallel
+          !$omp     single
+            num_threads = omp_get_num_threads()
+          !$omp end single
       !$omp end parallel
 
-
       ! Calculate optimal chunk size based on available threads
+
       if (num_threads <= 16) then
-        optimal_chunk_size = 16    ! Good for laptops (8-16 cores)
+        optimal_chunk_size = 16           ! Good for laptops (8-16 cores)
       else if (num_threads <= 64) then
-        optimal_chunk_size = 8     ! Good for medium clusters
+        optimal_chunk_size = 8            ! Good for medium clusters
       else 
-        optimal_chunk_size = 1     ! Good for large clusters (128+ cores)
+        optimal_chunk_size = 1            ! Good for large clusters (128+ cores)
       end if
 
       start_time = omp_get_wtime()
@@ -100,9 +98,8 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
       ! Precompute all i-j pairs for manual collapse
 
       total_ij_pairs = 0
-      do i = 1, fpuc
-      !do i = 1, number_of_functions
-        do j = i, number_of_functions
+      do i = 1, nfuc
+        do j = i, nBas
           total_ij_pairs = total_ij_pairs + 1
         end do
       end do
@@ -110,9 +107,8 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
       allocate(i_index(total_ij_pairs), j_index(total_ij_pairs))
 
       total_ij_pairs = 0
-      do i = 1, fpuc
-      !do i = 1, number_of_functions
-        do j = i, number_of_functions
+      do i = 1, nfuc
+        do j = i, nBas
           total_ij_pairs = total_ij_pairs + 1
           i_index(total_ij_pairs) = i
           j_index(total_ij_pairs) = j
@@ -123,8 +119,8 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
       do ij_index = 1, total_ij_pairs
         i = i_index(ij_index)
         j = j_index(ij_index)
-        do k = 1, number_of_functions
-          do l = k, number_of_functions    
+        do k = 1, nBas
+          do l = k, nBas
             if (i <= k .or. (i == k .and. j <= l)) then
               num_total_int = num_total_int + 1.d0
             end if
@@ -143,17 +139,18 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
       !   Q_schwarz(i,j) = sqrt(|(ij|ij)|)  for all unique pairs        !
       !   Done ONCE here, reused for every screening check below        !
       !-----------------------------------------------------------------!
-      allocate(Q_schwarz(number_of_functions, number_of_functions))
+
+      allocate(Q_schwarz(nBas, nBas))
       Q_schwarz = 0.d0
       write(*,'(A)') 'Precomputing Schwarz screening matrix...'
       write(outfile,'(A)') 'Precomputing Schwarz screening matrix...'
 
-      do i = 1, number_of_functions
-        do j = i, number_of_functions
-          call ERI_integral_4_function_toroidal_3D_fast(ERI(i), ERI(j), &
-                                                        ERI(i), ERI(j), val_iijj)
+
+      do i = 1, nBas
+        do j = i, nBas
+          call ERI_integral_4_function_toroidal(ERI(i), ERI(j), ERI(i), ERI(j), val_iijj)
           Q_schwarz(i,j) = dsqrt(dabs(val_iijj))
-          Q_schwarz(j,i) = Q_schwarz(i,j)   ! symmetric
+          Q_schwarz(j,i) = Q_schwarz(i,j)
         end do
       end do
 
@@ -167,13 +164,14 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
       write(*,'(A,ES12.4)') 'Threshold   = ', schwarz_thresh
 
       ! --- Diagnostic: count how many integrals survive ---
+
       n_screened = 0
       n_computed = 0
       do ij_index = 1, total_ij_pairs
         i = i_index(ij_index)
         j = j_index(ij_index)
-        do k = 1, number_of_functions
-          do l = k, number_of_functions
+        do k = 1, nBas
+          do l = k, nBas
             if (i <= k .or. (i == k .and. j <= l)) then
               n_computed = n_computed + 1
               if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) then
@@ -183,6 +181,7 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
           end do
         end do
       end do
+
       write(*,'(A,I0)')   'Total unique integrals:    ', n_computed
       write(*,'(A,I0)')   'Screened out by Schwarz:   ', n_screened
       write(*,'(A,F8.2,A)') 'Reduction:                 ', &
@@ -191,44 +190,59 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
       write(outfile,'(A,I0)')   'Screened out by Schwarz:   ', n_screened
       write(outfile,'(A,F8.2,A)') 'Reduction:                 ', &
         100.d0 * dble(n_screened) / dble(n_computed), ' %'
+      write(outfile,'(A)') ''
       flush(outfile)
       !-----------------------------------------------------------------!
+      
+      ! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> !
 
-      !$omp parallel do private(ij_index,i,j,k,l) &
-      !$omp shared(two_electron, ERI, i_index, j_index,Q_schwarz) &
+      two_electron = 0.d0 
+
+      ! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> !
+
+      !$omp parallel do private(ij_index,i,j,k,l,val) &
+      !$omp shared(two_electron, ERI, i_index, j_index, Q_schwarz) &
       !$omp schedule(dynamic,optimal_chunk_size)
 
       do ij_index = 1, total_ij_pairs
           i = i_index(ij_index)
           j = j_index(ij_index)
-        do k = 1, number_of_functions
-          do l = k, number_of_functions
+        do k = 1, nBas 
+          do l = k, nBas
 
             if (i <= k .or. (i == k .and. j <= l)) then
 
-            ! ---- Schwarz screen: ONE multiply + ONE compare ----
-            if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) then
-              two_electron(i,j,k,l) = 0.d0   ! screened integrals are zero
-              cycle
-            end if
+             ! ---- Schwarz screen: ONE multiply + ONE compare ----
+             if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) then
+               two_electron(i,j,k,l) = 0.d0   ! screened integrals are zero
+               cycle
+             end if
 
-              !call ERI_integral_4_function_toroidal_3D(ERI(i),ERI(j),ERI(k),ERI(l), two_electron(i,j,k,l))
-              call ERI_integral_4_function_toroidal_3D_fast(ERI(i),ERI(j),ERI(k),ERI(l), two_electron(i,j,k,l))
+              call ERI_integral_4_function_toroidal(ERI(i),ERI(j),ERI(k),ERI(l), val)
 
-              !$omp critical
-              integrals_done = integrals_done + 1.d0
-              current_pct = int((integrals_done * 100.0d0) / num_total_int)
-              if (current_pct > last_pct .and. mod(current_pct, 5) == 0) then
-                  write(*,'(I3,"% done")', advance='no') current_pct
-                  write(*,'(A)') repeat(char(8), 10)
-                  flush(6)
-                  last_pct = current_pct
-              endif
-              !$omp end critical
+              if (c_physicist) then 
+                ! Store in physicist notation:
+                two_electron(i,k,j,l) = val    ! <ik|jl> = (ij|kl)_chem
+                two_electron(i,l,j,k) = val    ! <il|jk> = (ij|lk)_chem = (ij|kl)_chem
+              else 
+                two_electron(i,j,k,l) = val
+                two_electron(i,j,l,k) = val
+              end if
+
+               !$omp critical
+               integrals_done = integrals_done + 1.d0
+               current_pct = int((integrals_done * 100.0d0) / num_total_int)
+               if (current_pct > last_pct .and. mod(current_pct, 5) == 0) then
+                   write(*,'(I3,"% done")') current_pct
+                   flush(6)
+                   last_pct = current_pct
+               endif
+               !$omp end critical
 
             end if
           end do
         end do
+
       end do
       
       !$omp end parallel do
@@ -239,7 +253,6 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
       write(*,'(a)') "*************************************************"
       flush(6)
       write(*,'(a)') ""
-
 
       deallocate(i_index, j_index)
       deallocate(Q_schwarz)
@@ -262,11 +275,11 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
       !-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-!
 
       if (c_save) then 
-        call save_two_electron_integrals(fpuc,number_of_functions,two_electron)
+        call save_two_electron_integrals(nfuc,nBas,two_electron)
       end if
 
       call cpu_time(start)
-        call symmetry_of_integrals_ERI(number_of_functions,fpuc,two_electron,two_electron_integrals)
+        call symmetry_of_integrals_ERI_mod(nBas,nfuc,two_electron,two_electron_integrals)
       call cpu_time(end)
 
       time = int(end - start)
@@ -283,4 +296,4 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,number_of_functions
       deallocate(ERI)
       deallocate(two_electron)
 
-end subroutine ERI_integral_toroidal_3D
+end subroutine ERI_integral_toroidal_1D

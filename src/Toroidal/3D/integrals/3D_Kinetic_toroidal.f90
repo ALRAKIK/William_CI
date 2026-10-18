@@ -1,50 +1,37 @@
-subroutine kinetic_matrix_toroidal_3D(number_of_atoms,number_of_functions,atoms,AO,kinetic)
+subroutine kinetic_matrix_toroidal_3D(nBas,AO,kinetic)
 
       use files 
       use torus_init
       use atom_basis
       use classification_ERI
+      use keywords
+      use unitcell_module
 
       implicit none 
 
       !-----------------------------------------------------------------!
 
-      integer                      :: i , j , k , l 
-      integer                      :: number_of_atoms
-      integer                      :: number_of_functions
-      integer                      :: fpuc
+      integer                      :: i , j
+      integer                      :: nBas
 
-      type(atom)                   :: atoms(number_of_atoms)
-
-      type(ERI_function)           :: AO (number_of_functions)
+      type(ERI_function)           :: AO (nBas)
       type(ERI_function)           :: AO1 , AO2
 
 
       double precision             :: r1(3) , r2(3)
 
+      integer                      :: pattern_id, encode_orbital_pattern_AO
+
       ! output ! 
 
-      double precision             :: kinetic_tmp(number_of_functions,number_of_functions)
-      double precision,intent(out) :: kinetic(number_of_functions,number_of_functions)
+      double precision,intent(out) :: kinetic(nBas,nBas)
 
       !-----------------------------------------------------------------!
+
+      kinetic(:,:) = 0.d0
       
-      ! functions_per_unitcell ! 
-
-      fpuc = 0 
-
-      do i = 1 , number_of_atom_in_unitcell 
-        fpuc = fpuc + atoms(i)%num_s_function +  3 * atoms(i)%num_p_function
-      end do 
-
-      !-----------------------------------------------------------------!
-
-
-      kinetic(:,:) = 0.d0 
-
-      do i = 1 , fpuc
-      !do i = 1 , number_of_functions
-        do j = 1 , number_of_functions
+      do i = 1 , nfuc
+        do j = 1 , nBas
 
           AO1 = AO(i)
           AO2 = AO(j)
@@ -53,63 +40,40 @@ subroutine kinetic_matrix_toroidal_3D(number_of_atoms,number_of_functions,atoms,
           r1(2) = AO1%y ; r2(2) = AO2%y
           r1(3) = AO1%z ; r2(3) = AO2%z
 
-          if (AO1%orbital =="s" .and. AO2%orbital == "s") then
-        
-            do k = 1 , size  (AO1%exponent)
-              do l = 1 , size  (AO2%exponent)
-                call kinetic_integral_ss_toroidal_3D(r1,r2,AO1,AO2,kinetic_tmp(i,j))
-              end do 
-            end do 
 
-          end if        
+          pattern_id = encode_orbital_pattern_AO(AO1%orbital, AO2%orbital)
 
-          if (AO1%orbital =="s" .and. AO2%orbital(:1) == "p") then
-            
-            do k = 1 , size  (AO1%exponent)
-              do l = 1 , size  (AO2%exponent)
-                call kinetic_integral_sp_toroidal_3D(r1,r2,AO1,AO2,kinetic_tmp(i,j))
-              end do 
-            end do
-
-          end if
-
-          if (AO1%orbital(:1) == "p" .and. AO2%orbital == "s") then
-                
-            do k = 1, size(AO1%exponent)
-              do l = 1, size(AO2%exponent)
-                call kinetic_integral_sp_toroidal_3D(r2, r1, AO2, AO1, kinetic_tmp(i,j))
-              end do 
-            end do
-
-          end if
-
-          if (AO1%orbital(:1) == "p" .and. AO2%orbital(:1) == "p") then
-                
-            do k = 1, size(AO1%exponent)
-              do l = 1, size(AO2%exponent)
-                call kinetic_integral_pp_toroidal_3D(r1, r2, AO1, AO2, kinetic_tmp(i,j))
-              end do 
-            end do
-
-          end if
-
-        
+          call Kinetic_integral_toroidal_3D(pattern_id,r1,r2,AO1,AO2,kinetic(i,j))
+          
         end do 
       end do 
 
-!      !-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-!
-!      !                    symmetry of the integrals                    !
-!      !-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-!
+      !-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-!
+      !                    symmetry of the integrals                    !
+      !-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-!
+
+      do i = 1 , nfuc
+        do j = 1 , nBas
+          if (abs(kinetic(i,j)) < 1e-14) kinetic(i,j) = 0.d0 
+        end do 
+      end do 
+
+      call fill_with_symmetry(nBas, kinetic)
 
 
-      call symmetry_of_integrals(number_of_functions,fpuc,kinetic_tmp,kinetic)
+      if (c_K) then 
+        write(outfile,'(a)') ""
+        write(outfile,'(a)') "------------------"
+        write(outfile,'(a)') "The kinetic matrix"
+        write(outfile,'(a)') "------------------"
+        write(outfile,'(a)') ""
+        do i = 1 , nBas - 1 
+          do j = i , nBas
+            write(outfile,'(i3,i3, 6x,1000(f16.12,2x))') i , j, kinetic(i,j)
+          end do
+        end do 
+      end if 
 
-      ! do i = 1 , number_of_functions - 1 
-      !   do j = 1 , number_of_functions
-      !     if (abs(kinetic(i,j)) < 1e-15) kinetic(i,j) = 0.d0 
-      !     kinetic(j,i) = kinetic(i,j)
-      !   end do 
-      ! end do
 
 
 end subroutine kinetic_matrix_toroidal_3D

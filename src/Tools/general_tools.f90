@@ -370,9 +370,6 @@ subroutine print_band_structure(nBas, nfuc, Nc, e, filename)
 
 end subroutine print_band_structure
 
-
-
-
 subroutine chemist_to_physics_notation(nBas, ERI)
 
   implicit none

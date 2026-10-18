@@ -12,7 +12,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
 
       ! Input variables
 
-      integer,intent(in)            :: nBas
+      integer,intent(in)            ::                    nBas
   
       integer,intent(in)            ::                      nO
       double precision,intent(in)   ::             S(nBas,nBas)
@@ -22,56 +22,57 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
       double precision,intent(in)   ::             X(nBas,nBas) 
       double precision,intent(in)   :: ERI(nfuc,nBas,nBas,nBas)
 
-      double precision,intent(in)   :: ENuc
+      double precision,intent(in)   ::                     ENuc
   
       ! Local variables
   
-      integer,parameter             :: maxSCF = 100
-      double precision,parameter    :: thresh = 1d-8
-      integer                       :: nSCF
-      double precision              :: Conv
-      double precision              :: Gap
-      double precision              :: ET,EV,EJ , EHF_old
-      double precision              :: EK
-      double precision,allocatable  :: cp(:,:)
-      double precision,allocatable  :: P(:,:)
-      double precision,allocatable  :: J(:,:)
-      double precision,allocatable  :: K(:,:)
-      double precision,allocatable  :: F(:,:),Fp(:,:)
-      double precision,allocatable  :: error(:,:)
-      double precision,external     :: trace_matrix
+      integer,parameter             ::             maxSCF = 100
+      double precision,parameter    ::            thresh = 1d-8
+      integer                       ::                     nSCF
+      double precision              ::                     Conv
+      double precision              ::                      Gap
+      double precision              ::                    ET,EV
+      double precision              ::                    EJ,EK
+      double precision              ::                  EHF_old
+      double precision,allocatable  ::                   P(:,:)
+      double precision,allocatable  ::                   J(:,:)
+      double precision,allocatable  ::                   K(:,:)
+      double precision,allocatable  ::           F(:,:),Fp(:,:)
+      double precision,allocatable  ::               error(:,:)
+      double precision,external     ::             trace_matrix
 
-      integer                       :: max_diis = 5
-      integer                       :: n_diis
-      integer                       :: i  , o
-      integer                       :: mu , nu 
-      double precision              :: sum 
-      double precision              :: sum_o(nbas)
-      double precision              :: rcond
-      double precision,allocatable  :: err_diis(:,:)
-      double precision,allocatable  :: F_diis(:,:)
+      integer                       ::             max_diis = 5
+      integer                       ::                   n_diis
+      integer                       ::                   i  , o
+      integer                       ::                  mu , nu 
+      double precision              ::                      sum 
+      double precision              ::              sum_o(nbas)
+      double precision              ::                    rcond
+      double precision,allocatable  ::            err_diis(:,:)
+      double precision,allocatable  ::              F_diis(:,:)
   
       ! Output variables
   
-      double precision,intent(out)  :: EHF 
-      double precision,intent(out)  :: e(nBas)
-      complex(dpc)    ,intent(out)  :: coeff_SAO(nBas,nBas)
+      double precision,intent(out)  ::                      EHF 
+      double precision,intent(out)  ::                  e(nBas)
+      complex(dpc)    ,intent(out)  ::     coeff_SAO(nBas,nBas)
 
 
       ! ----------------------    SAO     ----------------------------- !
 
-      complex(dpc)                  ::     S_SAO(nBas,nBas)
-      complex(dpc)                  ::     X_SAO(nBas,nBas)
+      complex(dpc),allocatable      ::              S_SAO(:,:)
+      complex(dpc),allocatable      ::              X_SAO(:,:)
 
-      complex(dpc)                  ::     F_SAO(nBas,nBas)
-      complex(dpc)                  ::    Fp_SAO(nBas,nBas)
-      complex(dpc)                  ::     P_SAO(nBas,nBas)
-      complex(dpc)                  ::  P_SAO_AO(nBas,nBas)
+      complex(dpc),allocatable      ::              F_SAO(:,:)
+      complex(dpc),allocatable      ::             Fp_SAO(:,:)
+      complex(dpc),allocatable      ::              P_SAO(:,:)
+      complex(dpc),allocatable      ::           P_SAO_AO(:,:)
 
-      integer                       :: idx(nBas) , tmp , occ_col
-      double precision              :: e_sorted(nBas)
+      integer,allocatable           ::                  idx(:) 
+      integer                       ::            tmp, occ_col
+      double precision,allocatable  ::             e_sorted(:)
 
-      type(K_block), allocatable    :: blk(:)
+      type(K_block), allocatable    ::                  blk(:)
 
       
       !-----------------------------------------------------------------!
@@ -88,19 +89,25 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
   
       ! Memory allocation
   
-      allocate(cp(nBas,nBas), P(nBas,nBas) ,error(nBas,nBas))
-      allocate(J(nBas,nBas) , K(nBas,nBas))
-      allocate(F(nBas,nBas) ,Fp(nBas,nBas))
+      allocate(P(nBas,nBas) ,error(nBas,nBas))
+      allocate(J(nBas,nBas) ,    K(nBas,nBas))
+      allocate(F(nBas,nBas) ,   Fp(nBas,nBas))
 
       allocate(err_diis(nBas*nBas,max_diis))
       allocate(  F_diis(nBas*nBas,max_diis))
+
+      allocate(S_SAO(nBas,nBas) ,      X_SAO(nBas,nBas))
+      allocate(P_SAO(nBas,nBas) ,   P_SAO_AO(nBas,nBas))
+      allocate(F_SAO(nBas,nBas) ,     Fp_SAO(nBas,nBas))
+
+      allocate(idx(nBas) ,   e_sorted(nBas))
        
       if (c_Huckel) then 
         call header_under("Huckel guess",-1)
-        call guess_Huckel_RHF_SAO(nBas,c_details,nO,Hc,X,ENuc,S,T,V,P,ERI)
+        call guess_Huckel_RHF_SAO(nBas,c_details,nO,Hc,X,ENuc,S,T,V,P)
       else 
         call header_under("AO guess",-1)
-        call guess_AO_RHF_SAO(nBas,c_details,nO,HC,X,ENuc,S,T,V,P,ERI)
+        call guess_AO_RHF_SAO(nBas,c_details,nO,HC,X,ENuc,S,T,V,P)
       end if 
          
       ! --------------------------------------------------------------- !
@@ -202,6 +209,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
       !   Compute the error vector and extract the convergence criterion
 
       error = matmul(F,matmul(P,S)) - matmul(matmul(S,P),F)
+
       if(nSCF > 1) Conv = maxval(abs(error))
       if (Conv < thresh) exit 
 
@@ -217,23 +225,23 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
 
     
       call header_HF("Hartree potential J = P(la,si)*ERI(mu,nu,la,si)",-1)
-      write(HFfile,'(17x,1000(i3,15x))') (i,i=1,nfuc)
+      write(HFfile,'(17x,*(i3,15x))') (i,i=1,nfuc)
       do i = 1 , size(j,1)
-        write(HFfile,'(i3,6x,1000(f16.10,2x))') i ,  (j(o,i),o=1,nfuc)
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (j(o,i),o=1,nfuc)
       end do 
       write(HFfile,'(a)') ""
 
       call header_HF("Exchange potential K = -0.5 P(la,si)*ERI(mu,la,si,nu)",-1)
-      write(HFfile,'(17x,1000(i3,15x))') (i,i=1,nfuc)
+      write(HFfile,'(17x,*(i3,15x))') (i,i=1,nfuc)
       do i = 1 , size(k,1)
-        write(HFfile,'(i3,6x,1000(f16.10,2x))') i ,  (k(o,i),o=1,nfuc)
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (k(o,i),o=1,nfuc)
       end do 
       write(HFfile,'(a)') ""
 
       call header_HF("Fock matrix F = Hc + J + K", -1)
-      write(HFfile,'(17x,1000(i3,15x))') (i,i=1,nfuc)
+      write(HFfile,'(17x,*(i3,15x))') (i,i=1,nfuc)
       do i = 1 , size(F,1)
-        write(HFfile,'(i3,6x,1000(f16.10,2x))') i ,  (F(o,i),o=1,nfuc)
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (F(o,i),o=1,nfuc)
       end do 
       write(HFfile,'(a)') ""
 
@@ -267,19 +275,8 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
 
       if ((abs(EHF - EHF_old) < thresh ) .and. nSCF > 2 ) exit
 
-      if (nSCF > 2) then 
-        EHF_old = EHF 
-      end if 
+      EHF_old = EHF
 
-      !   Compute HOMO-LUMO gap
-
-      if (nBas > nO) then
-        e_sorted = e
-        call sort_array(e_sorted, nBas)
-        Gap = e_sorted(nO+1) - e_sorted(nO)
-      else
-        Gap = 0.0_dp
-      endif
 
       ! ****************** !
 
@@ -295,7 +292,6 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
       !   Transform for the Fock matrix F in the orthogonal basis 
       
       Fp_SAO = matmul(conjg(transpose(X_SAO)), matmul(F_SAO, X_SAO)) 
-
             
       !   Diagonalize F' to get MO coefficients (eigenvectors in the orthogonal basis) c' and MO energies (eigenvalues) e
       
@@ -342,32 +338,43 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
 
       P(:,:) = dble(P_SAO_AO(:,:))
 
+
+      !   Compute HOMO-LUMO gap
+
+      if (nBas > nO) then
+        e_sorted = e
+        call sort_array(e_sorted, nBas)
+        Gap = e_sorted(nO+1) - e_sorted(nO)
+      else
+        Gap = 0d0
+      endif
+
       if (c_details) then 
 
       call header_HF("The Real orbital coeff c ", -1)
-      write(HFfile,'(17x,1000(i3,15x))') (i,i=1,nBas)
+      write(HFfile,'(17x,*(i3,15x))') (i,i=1,nBas)
       do i = 1 , nBas
-        write(HFfile,'(i3,6x,1000(f16.10,2x))') i ,  (real(coeff_SAO(o,i)),o=1,nBas)
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (real(coeff_SAO(o,i)),o=1,nBas)
       end do 
       write(HFfile,'(a)') ""
 
       call header_HF("The imag orbital coeff c ", -1)
-      write(HFfile,'(17x,1000(i3,15x))') (i,i=1,nBas)
+      write(HFfile,'(17x,*(i3,15x))') (i,i=1,nBas)
       do i = 1 , nBas
-        write(HFfile,'(i3,6x,1000(f16.10,2x))') i ,  (aimag(coeff_SAO(o,i)),o=1,nBas)
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (aimag(coeff_SAO(o,i)),o=1,nBas)
       end do 
       write(HFfile,'(a)') ""
       
       call header_HF("Density matrix P = 2 c c^t", -1)
-      write(HFfile,'(17x,1000(i3,15x))') (i,i=1,nfuc)
+      write(HFfile,'(17x,*(i3,15x))') (i,i=1,nfuc)
       do i = 1 , size(P,1)
-        write(HFfile,'(i3,6x,1000(f16.10,2x))') i ,  (P(o,i),o=1,nfuc)
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (P(o,i),o=1,nfuc)
       end do 
       write(HFfile,'(a)') ""
 
       call header_HF("HF Orbital Energies", -1)
       do i = 1 , size(e)
-        write(HFfile,'(i3,6x,1000(f16.10,2x))') i ,  e(i)
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  e(i)
       end do
 
       write(HFfile,'(a)') ""
@@ -416,6 +423,8 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
         write(outfile,*)
 
         call print_RHF_SAO(nBas,nO,e,coeff_SAO,ENuc,ET,EV,EJ,EK,EHF,blk)
+
+        deallocate(P,error,J,K,F,Fp,err_diis,F_diis,S_SAO,X_SAO,P_SAO,P_SAO_AO,F_SAO,Fp_SAO,idx,e_sorted)
   
         stop
   
@@ -424,6 +433,10 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
         ! Compute final HF energy
 
         call print_RHF_SAO(nBas,nO,e,coeff_SAO,ENuc,ET,EV,EJ,EK,EHF,blk)
+
+
+
+        deallocate(P,error,J,K,F,Fp,err_diis,F_diis,S_SAO,X_SAO,P_SAO,P_SAO_AO,F_SAO,Fp_SAO,idx,e_sorted)
 
         
 end subroutine RHF_SAO

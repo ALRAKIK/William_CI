@@ -1,4 +1,4 @@
-subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electron_integrals)
+subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_electron_integrals)
 
       use files
       use keywords
@@ -9,6 +9,7 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
       use classification_ERI
       use unitcell_module
       use precomputed_bessel
+
 
       implicit none 
 
@@ -23,9 +24,8 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
       double precision               :: geometry(number_of_atoms,3)
       double precision,allocatable   :: two_electron(:,:,:,:)
       double precision               :: num_total_int
+      double precision               :: val
 
-      ! --------------------------------------------------------------- !
-      
       double precision,intent(out)   :: two_electron_integrals(nBas,nBas,nBas,nBas)
 
       ! ----------------------    Time     ---------------------------- !
@@ -41,21 +41,14 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
       integer                        :: current_pct 
       integer                        :: last_pct = -1
       double precision               :: integrals_done = 0.d0
-      double precision               :: val
 
       !-----------------------------------------------------------------!
       !                      Schwarz screening                          !
-      
       double precision, allocatable :: Q_schwarz(:,:)
       double precision              :: val_iijj
       double precision, parameter   :: schwarz_thresh = 1.d-14
       integer(8)                    :: n_screened, n_computed
-
       !-----------------------------------------------------------------!
-        
-      !-----------------------------------------------------------------!
-
-      !                   Precompute Bessel functions                   !
 
       call initialize_bessel_table()
       call gauss_legendre_points()
@@ -65,7 +58,6 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
       call omp_set_dynamic(.false.)
       call omp_set_num_threads(omp_get_max_threads())
 
-
       allocate(ERI(nBas))
       allocate(two_electron(nfuc,nBas,nBas,nBas))
 
@@ -73,24 +65,28 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
 
       !$omp parallel
       if (omp_get_thread_num() == 0) then
-        print *, "Running with", omp_get_num_threads(), "threads"
+        write(*,'(A)')    ""
+        write(*,'(A,I0)') "Number of threads available: ", omp_get_num_threads()
       endif
       !$omp end parallel
 
-      !$omp    parallel
-          !$omp     single
-            num_threads = omp_get_num_threads()
-          !$omp end single
+
+      !$omp parallel
+        !$omp single
+          num_threads = omp_get_num_threads()
+        !$omp end single
       !$omp end parallel
 
-      ! Calculate optimal chunk size based on available threads
 
+      ! Calculate optimal chunk size based on available threads
+      
+      
       if (num_threads <= 16) then
-        optimal_chunk_size = 16           ! Good for laptops (8-16 cores)
+        optimal_chunk_size = 16    ! Good for laptops (8-16 cores)
       else if (num_threads <= 64) then
-        optimal_chunk_size = 8            ! Good for medium clusters
+        optimal_chunk_size = 8     ! Good for medium clusters
       else 
-        optimal_chunk_size = 1            ! Good for large clusters (128+ cores)
+        optimal_chunk_size = 1     ! Good for large clusters (128+ cores)
       end if
 
       start_time = omp_get_wtime()
@@ -99,6 +95,7 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
 
       total_ij_pairs = 0
       do i = 1, nfuc
+      !do i = 1, nBas
         do j = i, nBas
           total_ij_pairs = total_ij_pairs + 1
         end do
@@ -108,6 +105,7 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
 
       total_ij_pairs = 0
       do i = 1, nfuc
+      !do i = 1, nBas
         do j = i, nBas
           total_ij_pairs = total_ij_pairs + 1
           i_index(total_ij_pairs) = i
@@ -120,7 +118,7 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
         i = i_index(ij_index)
         j = j_index(ij_index)
         do k = 1, nBas
-          do l = k, nBas
+          do l = k, nBas    
             if (i <= k .or. (i == k .and. j <= l)) then
               num_total_int = num_total_int + 1.d0
             end if
@@ -128,34 +126,27 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
         end do
       end do
 
-      write(outfile,'(a,I0,a)') 'Need to  compute ', int(num_total_int,16), ' unique integrals (Two electron Integrals)'
-      write(*      ,'(a,I0,a)') 'Need to  compute ', int(num_total_int,16), ' unique integrals (Two electron Integrals)'
-      write(outfile,*) ''
-      flush(outfile)
-
-
       !-----------------------------------------------------------------!
       !              Schwarz screening precomputation                   !
       !   Q_schwarz(i,j) = sqrt(|(ij|ij)|)  for all unique pairs        !
       !   Done ONCE here, reused for every screening check below        !
       !-----------------------------------------------------------------!
-
+      
       allocate(Q_schwarz(nBas, nBas))
       Q_schwarz = 0.d0
-      write(*,'(A)') 'Precomputing Schwarz screening matrix...'
-      write(outfile,'(A)') 'Precomputing Schwarz screening matrix...'
-
+      write(*,'(A)')          'Precomputing Schwarz screening matrix...'
+      write(outfile,'(6x,A)') 'Precomputing Schwarz screening matrix...'
 
       do i = 1, nBas
         do j = i, nBas
-          call ERI_integral_4_function_toroidal(ERI(i), ERI(j), ERI(i), ERI(j), val_iijj)
+          call ERI_integral_4_function_toroidal_3D(ERI(i), ERI(j), ERI(i), ERI(j), val_iijj)
           Q_schwarz(i,j) = dsqrt(dabs(val_iijj))
           Q_schwarz(j,i) = Q_schwarz(i,j)
         end do
       end do
 
-      write(*,'(A)') 'Schwarz matrix done.'
-      write(outfile,'(A)') 'Schwarz matrix done.'
+      write(*,'(A)')       'Schwarz matrix done'
+      write(outfile,'(6x,A)') 'Schwarz matrix done'
       flush(outfile)
 
       write(*,'(A)') 'Sample Q_schwarz values:'
@@ -164,7 +155,6 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
       write(*,'(A,ES12.4)') 'Threshold   = ', schwarz_thresh
 
       ! --- Diagnostic: count how many integrals survive ---
-
       n_screened = 0
       n_computed = 0
       do ij_index = 1, total_ij_pairs
@@ -181,62 +171,72 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
           end do
         end do
       end do
-
-      write(*,'(A,I0)')   'Total unique integrals:    ', n_computed
-      write(*,'(A,I0)')   'Screened out by Schwarz:   ', n_screened
+      
+      write(*,'(A,I0)')   'Total number of unique integrals :    ', int(num_total_int,16)
+      write(*,'(A,I0)')   'Screened out by Schwarz:              ', n_screened
+      write(*,'(A,I0)')   'Total unique integrals will computed: ', n_computed
       write(*,'(A,F8.2,A)') 'Reduction:                 ', &
-        100.d0 * dble(n_screened) / dble(n_computed), ' %'
-      write(outfile,'(A,I0)')   'Total unique integrals:    ', n_computed
-      write(outfile,'(A,I0)')   'Screened out by Schwarz:   ', n_screened
-      write(outfile,'(A,F8.2,A)') 'Reduction:                 ', &
-        100.d0 * dble(n_screened) / dble(n_computed), ' %'
+        100.d0 * dble(n_screened) / num_total_int, ' %'
+
+      write(*,'(A)') ''
+
+      write(outfile,'(6x,A,I0)')   'Total number of unique integrals :    ', int(num_total_int,16)
+      write(outfile,'(6x,A,I0)')   'Screened out by Schwarz:              ', n_screened
+      write(outfile,'(6x,A,I0)')   'Total unique integrals will computed: ', n_computed
+      write(outfile,'(6x,A,F8.2,A)') 'Reduction:                 ', &
+        100.d0 * dble(n_screened) / num_total_int, ' %'
+
       write(outfile,'(A)') ''
       flush(outfile)
-      !-----------------------------------------------------------------!
-      
+        
       ! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> !
 
       two_electron = 0.d0 
 
       ! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> !
 
-      !$omp parallel do private(ij_index,i,j,k,l,val) &
-      !$omp shared(two_electron, ERI, i_index, j_index, Q_schwarz) &
+      !$omp parallel do private(ij_index,i,j,k,l) &
+      !$omp shared(two_electron, ERI, i_index, j_index,Q_schwarz) &
       !$omp schedule(dynamic,optimal_chunk_size)
 
       do ij_index = 1, total_ij_pairs
           i = i_index(ij_index)
           j = j_index(ij_index)
-        do k = 1, nBas 
+        do k = 1, nBas
           do l = k, nBas
 
             if (i <= k .or. (i == k .and. j <= l)) then
 
-             ! ---- Schwarz screen: ONE multiply + ONE compare ----
-             if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) then
-               two_electron(i,j,k,l) = 0.d0   ! screened integrals are zero
-               cycle
-             end if
+            ! ---- Schwarz screen: ONE multiply + ONE compare ----
+            if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) then
+              two_electron(i,j,k,l) = 0.d0   ! screened integrals are zero
+              cycle
+            end if
 
-              call ERI_integral_4_function_toroidal(ERI(i),ERI(j),ERI(k),ERI(l), val)         ! chemist notation
+              call ERI_integral_4_function_toroidal_3D(ERI(i),ERI(j),ERI(k),ERI(l), val)
 
-              two_electron(i,j,k,l) = val
-              two_electron(i,j,l,k) = val
+              if (c_physicist) then 
+                ! Store in physicist notation:
+                two_electron(i,k,j,l) = val    ! <ik|jl> = (ij|kl)_chem
+                two_electron(i,l,j,k) = val    ! <il|jk> = (ij|lk)_chem = (ij|kl)_chem
+              else 
+                two_electron(i,j,k,l) = val
+                two_electron(i,j,l,k) = val
+              end if
 
-               !$omp critical
-               integrals_done = integrals_done + 1.d0
-               current_pct = int((integrals_done * 100.0d0) / num_total_int)
-               if (current_pct > last_pct .and. mod(current_pct, 5) == 0) then
-                   write(*,'(I3,"% done")') current_pct
-                   flush(6)
-                   last_pct = current_pct
-               endif
-               !$omp end critical
+              !$omp critical
+              integrals_done = integrals_done + 1.d0
+              current_pct = int((integrals_done * 100.0d0) / n_computed)
+              if (current_pct > last_pct .and. mod(current_pct, 5) == 0) then
+                  write(*,'(I3,"% done")') current_pct
+                  flush(6)
+                  last_pct = current_pct
+              endif
+              !$omp end critical
 
             end if
           end do
         end do
-
       end do
       
       !$omp end parallel do
@@ -247,6 +247,7 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
       write(*,'(a)') "*************************************************"
       flush(6)
       write(*,'(a)') ""
+
 
       deallocate(i_index, j_index)
       deallocate(Q_schwarz)
@@ -273,7 +274,7 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
       end if
 
       call cpu_time(start)
-        call symmetry_of_integrals_ERI_mod(nBas,nfuc,two_electron,two_electron_integrals)
+        call symmetry_of_integrals_ERI(nBas,nfuc,two_electron,two_electron_integrals)
       call cpu_time(end)
 
       time = int(end - start)
@@ -290,4 +291,4 @@ subroutine ERI_integral_toroidal(number_of_atoms,geometry,nBas,atoms,two_electro
       deallocate(ERI)
       deallocate(two_electron)
 
-end subroutine ERI_integral_toroidal
+end subroutine ERI_integral_toroidal_3D

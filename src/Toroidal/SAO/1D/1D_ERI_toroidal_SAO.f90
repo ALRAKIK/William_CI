@@ -211,10 +211,15 @@ subroutine ERI_integral_toroidal_SAO_1D(number_of_atoms,geometry,nBas,atoms,two_
              end if
 
               call ERI_integral_4_function_toroidal(ERI(i),ERI(j),ERI(k),ERI(l), val)         ! chemist notation
-              !call ERI_integral_4_function(ERI(i),ERI(j),ERI(k),ERI(l), val)         ! physicist notation
 
-              two_electron(i,j,k,l) = val
-              two_electron(i,j,l,k) = val
+              if (c_physicist) then 
+                ! Store in physicist notation:
+                two_electron(i,k,j,l) = val    ! <ik|jl> = (ij|kl)_chem
+                two_electron(i,l,j,k) = val    ! <il|jk> = (ij|lk)_chem = (ij|kl)_chem
+              else 
+                two_electron(i,j,k,l) = val
+                two_electron(i,j,l,k) = val
+              end if
 
               !$omp critical
               integrals_done = integrals_done + 1.d0
@@ -259,15 +264,31 @@ subroutine ERI_integral_toroidal_SAO_1D(number_of_atoms,geometry,nBas,atoms,two_
       !                    add the missing integrals                    !
       !-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-!
 
+      if (c_physicist) then 
+
       do i = 1, nfuc
-        do j = 1 , nfuc
+        do k = 1, i-1                     ! k < i  ⇒  pos1 > pos3 in destination
+          do j = 1, nBas
+            do l = 1, nBas
+              two_electron(i,j,k,l) = two_electron(k,l,i,j)
+            end do
+          end do
+        end do
+      end do
+
+      else 
+
+      do i = 1, nfuc
+        do j = 1 , i-1                    ! j < i  ⇒  pos1 > pos2 in destination
           do k = 1 , nBas
             do l = 1 , nBas
-              two_electron(j,i,k,l) = two_electron(i,j,k,l)
+              two_electron(i,j,k,l) = two_electron(j,i,k,l)
             end do 
           end do 
         end do 
       end do 
+
+      end if 
 
       if (c_save) then 
         call save_two_electron_integrals(nfuc,nBas,two_electron)

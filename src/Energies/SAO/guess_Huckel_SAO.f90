@@ -1,4 +1,4 @@
-subroutine guess_Huckel_RHF_SAO(nBas,c_details,nO,HC,X,ENuc,S,T,V,P,ERI)
+subroutine guess_Huckel_RHF_SAO(nBas,c_details,nO,HC,X,ENuc,S,T,V,P)
 
       use files
       use unitcell_module
@@ -12,18 +12,17 @@ subroutine guess_Huckel_RHF_SAO(nBas,c_details,nO,HC,X,ENuc,S,T,V,P,ERI)
       double precision, intent(in)  ::              T(nBas,nBas)
       double precision, intent(in)  ::              V(nBas,nBas)
       double precision, intent(in)  ::              S(nBas,nBas)
-      double precision, intent(in)  ::  ERI(nfuc,nBas,nBas,nBas)
       double precision, intent(in)  ::                     ENuc
       logical         , intent(in)  ::                c_details
       double precision,external     ::             trace_matrix
       ! --------------------------------------------------------------- !
       double precision,allocatable  :: cp(:,:), c(:,:) , e(:) , ct(:,:)
-      double precision              :: Har(nBas,nBas) , exch(nBas,nBas)
       integer                       :: i, o, j 
-      double precision              :: ET, EV, EJ, EK
+      double precision              :: ET, EV
       ! --------------------------------------------------------------- !
       double precision, intent(out) :: P(nbas,nbas)
       ! --------------------------------------------------------------- !
+      ! extended Huckel parameter
       double precision,parameter    :: alpha = 0.875d0 
       ! --------------------------------------------------------------- !
 
@@ -53,12 +52,6 @@ subroutine guess_Huckel_RHF_SAO(nBas,c_details,nO,HC,X,ENuc,S,T,V,P,ERI)
 
       ET = trace_matrix(nBas,matmul(P,T))
       EV = trace_matrix(nBas,matmul(P,V))
-
-      call   hartree_potential_SAO(nBas,P,ERI,har)
-      call exchange_potential_SAO(nBas,P,ERI,exch)
-
-      EJ = 0.5d0*trace_matrix(nBas,matmul(P,har))
-      EK = 0.5d0*trace_matrix(nBas,matmul(P,exch))
 
       if (c_details) then 
 
@@ -101,10 +94,8 @@ subroutine guess_Huckel_RHF_SAO(nBas,c_details,nO,HC,X,ENuc,S,T,V,P,ERI)
       write(HFfile,'(a,f24.16)')   "      The Kinetic   Energy    = ", ET
       write(HFfile,'(a,f24.16)')   "      The Potential Energy    = ", EV
       write(HFfile,'(a,f24.16,a)') "      The Nuclear   Energy    = ", ENuc
-      write(HFfile,'(a,f24.16,a)') "      The Hartree   Energy    = ", EJ 
-      write(HFfile,'(a,f24.16,a)') "      The exchange  Energy    = ", EK , "  +"
       write(HFfile,'(a,f24.16)')   "-----------------------------------"
-      write(HFfile,'(a,f24.16)') " The Energy of the guess  = ", ET+EV+ENuc+EJ+EK
+      write(HFfile,'(a,f24.16)') " The Energy of the guess  = ", ET+EV+ENuc
       write(HFfile,'(a)') ""
 
       write(HFfile,'(2a)')  repeat('*_',36) , "*"
@@ -116,10 +107,8 @@ subroutine guess_Huckel_RHF_SAO(nBas,c_details,nO,HC,X,ENuc,S,T,V,P,ERI)
       write(outfile,'(a,f24.16)')   "      The Kinetic   Energy    = ", ET
       write(outfile,'(a,f24.16)')   "      The Potential Energy    = ", EV
       write(outfile,'(a,f24.16,a)') "      The Nuclear   Energy    = ", ENuc
-      write(outfile,'(a,f24.16,a)') "      The Hartree   Energy    = ", EJ 
-      write(outfile,'(a,f24.16,a)') "      The exchange  Energy    = ", EK , "  +"
       write(outfile,'(a,f24.16)')   "      -----------------------------------"
-      write(outfile,'(a,f24.16)')   "      The guess Energy        = ", ET+EV+ENuc+EJ+EK
+      write(outfile,'(a,f24.16)')   "      The guess Energy        = ", ET+EV+ENuc
       write(outfile,'(a)') ""
 
 

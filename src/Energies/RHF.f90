@@ -11,49 +11,50 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
 
       integer,intent(in)            :: nBas
   
-      integer,intent(in)            :: nO
-      double precision,intent(in)   :: S(nBas,nBas)
-      double precision,intent(in)   :: T(nBas,nBas)
-      double precision,intent(in)   :: V(nBas,nBas)
-      double precision,intent(in)   :: Hc(nBas,nBas) 
-      double precision,intent(in)   :: X(nBas,nBas) 
+      integer,intent(in)            ::                      nO
+      double precision,intent(in)   ::             S(nBas,nBas)
+      double precision,intent(in)   ::             T(nBas,nBas)
+      double precision,intent(in)   ::             V(nBas,nBas)
+      double precision,intent(in)   ::            Hc(nBas,nBas) 
+      double precision,intent(in)   ::             X(nBas,nBas) 
       double precision,intent(in)   :: ERI(nBas,nBas,nBas,nBas)
 
       double precision,intent(in)   :: ENuc
   
       ! Local variables
   
-      integer,parameter             :: maxSCF = 100
-      double precision,parameter    :: thresh = 1d-8
-      integer                       :: nSCF
-      double precision              :: Conv
-      double precision              :: Gap
-      double precision              :: ET,EV,EJ , EHF_old
-      double precision              :: EK
-      double precision,allocatable  :: P(:,:)
-      double precision,allocatable  :: J(:,:)
-      double precision,allocatable  :: K(:,:)
-      double precision,allocatable  :: F(:,:),Fp(:,:)
-      double precision,allocatable  :: error(:,:)
-      double precision,external     :: trace_matrix
+      integer,parameter             ::             maxSCF = 100
+      double precision,parameter    ::            thresh = 1d-8
+      integer                       ::                     nSCF
+      double precision              ::                     Conv
+      double precision              ::                      Gap
+      double precision              ::                    ET,EV
+      double precision              ::                    EJ,EK
+      double precision              ::                  EHF_old
+      double precision,allocatable  ::                   P(:,:)
+      double precision,allocatable  ::                   J(:,:)
+      double precision,allocatable  ::                   K(:,:)
+      double precision,allocatable  ::           F(:,:),Fp(:,:)
+      double precision,allocatable  ::               error(:,:)
+      double precision,external     ::             trace_matrix
 
-      integer                       :: max_diis = 5
-      integer                       :: n_diis
-      integer                       :: i  , o
-      integer                       :: mu , nu 
-      double precision              :: sum 
-      double precision              :: sum_o(nbas)
-      double precision              :: rcond
-      double precision,allocatable  :: err_diis(:,:)
-      double precision,allocatable  :: F_diis(:,:)
+      integer                       ::             max_diis = 5
+      integer                       ::                   n_diis
+      integer                       ::                   i  , o
+      integer                       ::                  mu , nu 
+      double precision              ::                      sum 
+      double precision              ::              sum_o(nbas)
+      double precision              ::                    rcond
+      double precision,allocatable  ::            err_diis(:,:)
+      double precision,allocatable  ::              F_diis(:,:)
   
       ! Output variables
   
-      double precision,intent(out)  :: EHF 
-      double precision,intent(out)  :: e(nBas)
-      double precision,intent(out)  :: c(nBas,nBas)
+      double precision,intent(out)  ::                      EHF 
+      double precision,intent(out)  ::                  e(nBas)
+      double precision,intent(out)  ::             c(nBas,nBas)
 
-      ! ----------------------    Time     ---------------------------- !
+
 
       !-----------------------------------------------------------------!
 
@@ -71,18 +72,18 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
       ! Memory allocation
   
       allocate(P(nBas,nBas) ,error(nBas,nBas))
-      allocate(J(nBas,nBas) , K(nBas,nBas))
-      allocate(F(nBas,nBas) ,Fp(nBas,nBas))
+      allocate(J(nBas,nBas) ,    K(nBas,nBas))
+      allocate(F(nBas,nBas) ,   Fp(nBas,nBas))
 
       allocate(err_diis(nBas*nBas,max_diis))
       allocate(F_diis(nBas*nBas,max_diis))
        
       if (c_Huckel) then 
          call header_under("Huckel guess",-1)
-         call guess_Huckel_RHF(nBas,c_details,nO,Hc,X,ENuc,S,T,V,P,ERI)
+         call guess_Huckel_RHF(nBas,c_details,nO,Hc,X,ENuc,S,T,V,P)
       else 
          call header_under("AO guess",-1)
-      call    guess_AO_RHF(nBas,c_details,nO,HC,X,ENuc,S,T,V,P,ERI)
+      call    guess_AO_RHF(nBas,c_details,nO,HC,X,ENuc,S,T,V,P)
       end if 
          
       ! --------------------------------------------------------------- !
@@ -190,23 +191,23 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
 
     
       call header_HF("Hartree potential J = P(la,si)*ERI(mu,nu,la,si)",-1)
-      write(HFfile,'(15x,1000(i3,15x))') (i,i=1,size(j,1))
+      write(HFfile,'(17x,*(i3,15x))') (i,i=1,size(j,1))
       do i = 1 , size(j,1)
-        write(HFfile,'(i3,6x,1000(f16.10,2x))') i ,  (j(i,o),o=1,size(j,1))
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (j(i,o),o=1,size(j,1))
       end do 
       write(HFfile,'(a)') ""
 
       call header_HF("Exchange potential K = -0.5 P(la,si)*ERI(mu,la,si,nu)",-1)
-      write(HFfile,'(15x,1000(i3,15x))') (i,i=1,size(k,1))
+      write(HFfile,'(17x,*(i3,15x))') (i,i=1,size(k,1))
       do i = 1 , size(k,1)
-        write(HFfile,'(i3,6x,1000(f16.10,2x))') i ,  (k(i,o),o=1,size(k,1))
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (k(i,o),o=1,size(k,1))
       end do 
       write(HFfile,'(a)') ""
 
       call header_HF("Fock matrix F = Hc + J + K", -1)
-      write(HFfile,'(15x,1000(i3,15x))') (i,i=1,size(F,1))
+      write(HFfile,'(17x,*(i3,15x))') (i,i=1,size(F,1))
       do i = 1 , size(F,1)
-        write(HFfile,'(i3,6x,1000(f16.10,2x))') i ,  (F(i,o),o=1,size(F,1))
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (F(i,o),o=1,size(F,1))
       end do 
       write(HFfile,'(a)') ""
 
@@ -240,17 +241,7 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
 
       if ((abs(EHF - EHF_old) < thresh ) .and. nSCF > 2 ) exit
 
-      if (nSCF > 2) then 
-        EHF_old = EHF 
-      end if 
-
-      !   Compute HOMO-LUMO gap
-
-      if(nBas > nO) then
-        Gap = e(nO+1) - e(nO)
-      else
-        Gap = 0d0
-      endif
+      EHF_old = EHF 
 
       ! ****************** !
 
@@ -280,20 +271,28 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
 
       P(:,:) = 2d0*matmul(c(:,1:nO),transpose(c(:,1:nO)))
 
+      !   Compute HOMO-LUMO gap
+
+      if(nBas > nO) then
+        Gap = e(nO+1) - e(nO)
+      else
+        Gap = 0d0
+      endif
+
 
       if (c_details) then 
 
       
       call header_HF("Density matrix P = 2 c c^t", -1)
-      write(HFfile,'(15x,1000(i3,15x))') (i,i=1,size(P,1))
+      write(HFfile,'(17x,*(i3,15x))') (i,i=1,size(P,1))
       do i = 1 , size(P,1)
-        write(HFfile,'(i3,6x,1000(f16.10,2x))') i ,  (P(i,o),o=1,size(P,1))
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (P(i,o),o=1,size(P,1))
       end do 
       write(HFfile,'(a)') ""
 
       call header_HF("HF Orbital Energies", -1)
       do i = 1 , size(e)
-        write(HFfile,'(i3,6x,1000(f16.10,2x))') i ,  e(i)
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  e(i)
       end do
 
       write(HFfile,'(a)') ""
@@ -338,6 +337,7 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
         write(outfile,*)
 
         call print_RHF(nBas,nO,e,C,ENuc,ET,EV,EJ,EK,EHF)
+        deallocate(P,error,J,K,F,Fp,err_diis,F_diis)
   
         stop
   
@@ -346,5 +346,9 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
         ! Compute final HF energy
 
         call print_RHF(nBas,nO,e,C,ENuc,ET,EV,EJ,EK,EHF)
+	
+	      ! Memory deallocation
+	
+        deallocate(P,error,J,K,F,Fp,err_diis,F_diis)
   
 end subroutine RHF

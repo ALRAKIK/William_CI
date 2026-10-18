@@ -103,6 +103,7 @@ program CI
       c_DIIS      = any(keyword == 'DIIS'     )     
       c_MCDE      = any(keyword == 'MCDE'     )     ! 20
       c_nquad_128 = any(keyword == 'nquad_128')
+      c_physicist = any(keyword == 'physicist')
 
       ! --------------------------------------------------------------- !
       !            Read number of alpha and beta electrons              !

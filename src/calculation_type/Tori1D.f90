@@ -48,7 +48,7 @@ subroutine Tori1D(n_atoms,number_of_functions,atoms,AO,geometry,OV,K,NA,ERI)
       if (c_One) then 
         ERI = 0.d0
       else 
-        call ERI_integral_toroidal(n_atoms,geometry,number_of_functions,atoms,ERI) 
+        call ERI_integral_toroidal_1D(n_atoms,geometry,number_of_functions,atoms,ERI) 
       end if
         
       call cpu_time(end)

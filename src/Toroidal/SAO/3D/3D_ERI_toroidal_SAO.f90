@@ -137,8 +137,7 @@ subroutine ERI_integral_toroidal_SAO_3D(number_of_atoms,geometry,nBas,atoms,two_
 
       do i = 1, nBas
         do j = i, nBas
-          call ERI_integral_4_function_toroidal_3D_fast(ERI(i), ERI(j), ERI(i), ERI(j), val_iijj)
-          !call ERI_integral_4_function(ERI(i), ERI(j), ERI(i), ERI(j), val_iijj)
+          call ERI_integral_4_function_toroidal_3D(ERI(i), ERI(j), ERI(i), ERI(j), val_iijj)
           Q_schwarz(i,j) = dsqrt(dabs(val_iijj))
           Q_schwarz(j,i) = Q_schwarz(i,j)
         end do
@@ -205,16 +204,18 @@ subroutine ERI_integral_toroidal_SAO_3D(number_of_atoms,geometry,nBas,atoms,two_
           do l = k, nBas
 
              ! ---- Schwarz screen: ONE multiply + ONE compare ----
-             if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) then
-               two_electron(i,j,k,l) = 0.d0   ! screened integrals are zero
-               cycle
-             end if
+             if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) cycle
 
-              call ERI_integral_4_function_toroidal_3D_fast(ERI(i),ERI(j),ERI(k),ERI(l), val)         ! chemist notation
-              !call ERI_integral_4_function(ERI(i),ERI(j),ERI(k),ERI(l), val)         ! physicist notation
+              call ERI_integral_4_function_toroidal_3D(ERI(i),ERI(j),ERI(k),ERI(l), val)         ! chemist notation
 
-              two_electron(i,j,k,l) = val
-              two_electron(i,j,l,k) = val
+              if (c_physicist) then 
+                ! Store in physicist notation:
+                two_electron(i,k,j,l) = val    ! <ik|jl> = (ij|kl)_chem
+                two_electron(i,l,j,k) = val    ! <il|jk> = (ij|lk)_chem = (ij|kl)_chem
+              else 
+                two_electron(i,j,k,l) = val
+                two_electron(i,j,l,k) = val
+              end if
 
               !$omp critical
               integrals_done = integrals_done + 1.d0
@@ -259,15 +260,32 @@ subroutine ERI_integral_toroidal_SAO_3D(number_of_atoms,geometry,nBas,atoms,two_
       !                    add the missing integrals                    !
       !-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-!
 
+      if (c_physicist) then 
+
       do i = 1, nfuc
-        do j = 1 , nfuc
+        do k = 1, i-1                     ! k < i  ⇒  pos1 > pos3 in destination
+          do j = 1, nBas
+            do l = 1, nBas
+              two_electron(i,j,k,l) = two_electron(k,l,i,j)
+            end do
+          end do
+        end do
+      end do
+
+      else 
+
+      do i = 1, nfuc
+        do j = 1 , i-1                    ! j < i  ⇒  pos1 > pos2 in destination
           do k = 1 , nBas
             do l = 1 , nBas
-              two_electron(j,i,k,l) = two_electron(i,j,k,l)
+              two_electron(i,j,k,l) = two_electron(j,i,k,l)
             end do 
           end do 
         end do 
       end do 
+
+      end if 
+
 
       if (c_save) then 
         call save_two_electron_integrals(nfuc,nBas,two_electron)

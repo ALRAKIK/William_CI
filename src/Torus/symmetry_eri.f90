@@ -12,8 +12,8 @@ subroutine shift_integrals(known_integrals, full_integrals, nbasis,nbasis_unitce
 
       ! Local variables
 
-      integer :: index_i , index_j , index_k , index_l , shift 
-      integer :: i, j, k, l , atom_i 
+      integer                        :: index_i , index_j , index_k , index_l , shift 
+      integer                        :: i, j, k, l , atom_i 
 
 
       full_integrals = 0.0D0

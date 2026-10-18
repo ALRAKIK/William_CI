@@ -26,21 +26,33 @@ subroutine hartree_potential_SAO(nBas,P,ERI,J)
       J(:,:) = 0d0
 
 
+      if (c_physicist) then 
+
       do si=1,nBas
         do la=1,nBas
           do nu=1,nBas
             do mu=1,nfuc
-              J(mu,nu) = J(mu,nu) + P(la,si)*ERI(mu,nu,la,si)
+              J(mu,nu) = J(mu,nu) + P(la,si)*ERI(mu,la,nu,si)  ! physicist notation
             end do
           end do
         end do
       end do
 
-      do mu = 1 , nfuc 
-        do nu = 1 , nBas 
-          if (dabs(J(mu,nu)) < 1.d-14) J(mu,nu) = 0.d0
-        end do 
-      end do 
+      else 
+
+      do si=1,nBas
+        do la=1,nBas
+          do nu=1,nBas
+            do mu=1,nfuc
+              J(mu,nu) = J(mu,nu) + P(la,si)*ERI(mu,nu,la,si)   ! chemist   notation
+            end do
+          end do
+        end do
+      end do
+
+      end if 
+
+
 
 
 end subroutine hartree_potential_SAO
