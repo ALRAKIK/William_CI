@@ -337,6 +337,8 @@ subroutine read_keywords(keyword)
 
         if (trim(line) == 'nquad_128' )  keyword(21) = 'nquad_128'
 
+        if (trim(line) == 'physicist' )  keyword(22) = 'physicist'
+
       end do
 
 end subroutine

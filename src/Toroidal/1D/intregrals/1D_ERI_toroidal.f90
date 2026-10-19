@@ -73,7 +73,8 @@ subroutine ERI_integral_toroidal_1D(number_of_atoms,geometry,nBas,atoms,two_elec
 
       !$omp parallel
       if (omp_get_thread_num() == 0) then
-        print *, "Running with", omp_get_num_threads(), "threads"
+        write(*,'(A)')    ""
+        write(*,'(A,I0)') "Number of threads available: ", omp_get_num_threads()
       endif
       !$omp end parallel
 
@@ -128,12 +129,6 @@ subroutine ERI_integral_toroidal_1D(number_of_atoms,geometry,nBas,atoms,two_elec
         end do
       end do
 
-      write(outfile,'(a,I0,a)') 'Need to  compute ', int(num_total_int,16), ' unique integrals (Two electron Integrals)'
-      write(*      ,'(a,I0,a)') 'Need to  compute ', int(num_total_int,16), ' unique integrals (Two electron Integrals)'
-      write(outfile,*) ''
-      flush(outfile)
-
-
       !-----------------------------------------------------------------!
       !              Schwarz screening precomputation                   !
       !   Q_schwarz(i,j) = sqrt(|(ij|ij)|)  for all unique pairs        !
@@ -142,9 +137,8 @@ subroutine ERI_integral_toroidal_1D(number_of_atoms,geometry,nBas,atoms,two_elec
 
       allocate(Q_schwarz(nBas, nBas))
       Q_schwarz = 0.d0
-      write(*,'(A)') 'Precomputing Schwarz screening matrix...'
-      write(outfile,'(A)') 'Precomputing Schwarz screening matrix...'
-
+      write(*,'(A)')          'Precomputing Schwarz screening matrix...'
+      write(outfile,'(6x,A)') 'Precomputing Schwarz screening matrix...'
 
       do i = 1, nBas
         do j = i, nBas
@@ -154,8 +148,8 @@ subroutine ERI_integral_toroidal_1D(number_of_atoms,geometry,nBas,atoms,two_elec
         end do
       end do
 
-      write(*,'(A)') 'Schwarz matrix done.'
-      write(outfile,'(A)') 'Schwarz matrix done.'
+      write(*,'(A)')       'Schwarz matrix done'
+      write(outfile,'(6x,A)') 'Schwarz matrix done'
       flush(outfile)
 
       write(*,'(A)') 'Sample Q_schwarz values:'
@@ -181,19 +175,24 @@ subroutine ERI_integral_toroidal_1D(number_of_atoms,geometry,nBas,atoms,two_elec
           end do
         end do
       end do
-
-      write(*,'(A,I0)')   'Total unique integrals:    ', n_computed
-      write(*,'(A,I0)')   'Screened out by Schwarz:   ', n_screened
+      
+      write(*,'(A,I0)')   'Total number of unique integrals :    ', int(num_total_int,16)
+      write(*,'(A,I0)')   'Screened out by Schwarz:              ', n_screened
+      write(*,'(A,I0)')   'Total unique integrals will computed: ', n_computed
       write(*,'(A,F8.2,A)') 'Reduction:                 ', &
-        100.d0 * dble(n_screened) / dble(n_computed), ' %'
-      write(outfile,'(A,I0)')   'Total unique integrals:    ', n_computed
-      write(outfile,'(A,I0)')   'Screened out by Schwarz:   ', n_screened
-      write(outfile,'(A,F8.2,A)') 'Reduction:                 ', &
-        100.d0 * dble(n_screened) / dble(n_computed), ' %'
+        100.d0 * dble(n_screened) / num_total_int, ' %'
+
+      write(*,'(A)') ''
+
+      write(outfile,'(6x,A,I0)')   'Total number of unique integrals :    ', int(num_total_int,16)
+      write(outfile,'(6x,A,I0)')   'Screened out by Schwarz:              ', n_screened
+      write(outfile,'(6x,A,I0)')   'Total unique integrals will computed: ', n_computed
+      write(outfile,'(6x,A,F8.2,A)') 'Reduction:                 ', &
+        100.d0 * dble(n_screened) / num_total_int, ' %'
+
       write(outfile,'(A)') ''
       flush(outfile)
-      !-----------------------------------------------------------------!
-      
+        
       ! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> !
 
       two_electron = 0.d0 
@@ -213,31 +212,40 @@ subroutine ERI_integral_toroidal_1D(number_of_atoms,geometry,nBas,atoms,two_elec
             if (i <= k .or. (i == k .and. j <= l)) then
 
              ! ---- Schwarz screen: ONE multiply + ONE compare ----
-             if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) then
-               two_electron(i,j,k,l) = 0.d0   ! screened integrals are zero
-               cycle
-             end if
+             if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) cycle
 
-              call ERI_integral_4_function_toroidal(ERI(i),ERI(j),ERI(k),ERI(l), val)
+              call ERI_integral_4_function_toroidal(ERI(i),ERI(j),ERI(k),ERI(l), val)         ! chemist notation
 
               if (c_physicist) then 
                 ! Store in physicist notation:
-                two_electron(i,k,j,l) = val    ! <ik|jl> = (ij|kl)_chem
-                two_electron(i,l,j,k) = val    ! <il|jk> = (ij|lk)_chem = (ij|kl)_chem
+                if (i <= nfuc) two_electron(i,k,j,l) = val
+                if (j <= nfuc) two_electron(j,k,i,l) = val
+                if (i <= nfuc) two_electron(i,l,j,k) = val
+                if (j <= nfuc) two_electron(j,l,i,k) = val
+                if (k <= nfuc) two_electron(k,i,l,j) = val
+                if (l <= nfuc) two_electron(l,i,k,j) = val
+                if (k <= nfuc) two_electron(k,j,l,i) = val
+                if (l <= nfuc) two_electron(l,j,k,i) = val
               else 
-                two_electron(i,j,k,l) = val
-                two_electron(i,j,l,k) = val
+                if (i <= nfuc) two_electron(i,j,k,l) = val
+                if (j <= nfuc) two_electron(j,i,k,l) = val
+                if (i <= nfuc) two_electron(i,j,l,k) = val
+                if (j <= nfuc) two_electron(j,i,l,k) = val
+                if (k <= nfuc) two_electron(k,l,i,j) = val
+                if (l <= nfuc) two_electron(l,k,i,j) = val
+                if (k <= nfuc) two_electron(k,l,j,i) = val
+                if (l <= nfuc) two_electron(l,k,j,i) = val
               end if
 
-               !$omp critical
-               integrals_done = integrals_done + 1.d0
-               current_pct = int((integrals_done * 100.0d0) / num_total_int)
-               if (current_pct > last_pct .and. mod(current_pct, 5) == 0) then
-                   write(*,'(I3,"% done")') current_pct
-                   flush(6)
-                   last_pct = current_pct
-               endif
-               !$omp end critical
+              !$omp critical
+              integrals_done = integrals_done + 1.d0
+              current_pct = int((integrals_done * 100.0d0) / n_computed)
+              if (current_pct > last_pct .and. mod(current_pct, 5) == 0) then
+                  write(*,'(I3,"% done")') current_pct
+                  flush(6)
+                  last_pct = current_pct
+              endif
+              !$omp end critical
 
             end if
           end do
@@ -279,7 +287,7 @@ subroutine ERI_integral_toroidal_1D(number_of_atoms,geometry,nBas,atoms,two_elec
       end if
 
       call cpu_time(start)
-        call symmetry_of_integrals_ERI_mod(nBas,nfuc,two_electron,two_electron_integrals)
+        call symmetry_of_integrals_ERI(nBas,nfuc,two_electron,two_electron_integrals)
       call cpu_time(end)
 
       time = int(end - start)

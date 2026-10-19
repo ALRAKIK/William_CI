@@ -95,7 +95,6 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
 
       total_ij_pairs = 0
       do i = 1, nfuc
-      !do i = 1, nBas
         do j = i, nBas
           total_ij_pairs = total_ij_pairs + 1
         end do
@@ -105,7 +104,6 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
 
       total_ij_pairs = 0
       do i = 1, nfuc
-      !do i = 1, nBas
         do j = i, nBas
           total_ij_pairs = total_ij_pairs + 1
           i_index(total_ij_pairs) = i
@@ -195,7 +193,7 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
 
       ! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> !
 
-      !$omp parallel do private(ij_index,i,j,k,l) &
+      !$omp parallel do private(ij_index,i,j,k,l,val) &
       !$omp shared(two_electron, ERI, i_index, j_index,Q_schwarz) &
       !$omp schedule(dynamic,optimal_chunk_size)
 
@@ -208,20 +206,29 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
             if (i <= k .or. (i == k .and. j <= l)) then
 
             ! ---- Schwarz screen: ONE multiply + ONE compare ----
-            if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) then
-              two_electron(i,j,k,l) = 0.d0   ! screened integrals are zero
-              cycle
-            end if
+            if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) cycle
 
               call ERI_integral_4_function_toroidal_3D(ERI(i),ERI(j),ERI(k),ERI(l), val)
 
               if (c_physicist) then 
                 ! Store in physicist notation:
-                two_electron(i,k,j,l) = val    ! <ik|jl> = (ij|kl)_chem
-                two_electron(i,l,j,k) = val    ! <il|jk> = (ij|lk)_chem = (ij|kl)_chem
+                if (i <= nfuc) two_electron(i,k,j,l) = val
+                if (j <= nfuc) two_electron(j,k,i,l) = val
+                if (i <= nfuc) two_electron(i,l,j,k) = val
+                if (j <= nfuc) two_electron(j,l,i,k) = val
+                if (k <= nfuc) two_electron(k,i,l,j) = val
+                if (l <= nfuc) two_electron(l,i,k,j) = val
+                if (k <= nfuc) two_electron(k,j,l,i) = val
+                if (l <= nfuc) two_electron(l,j,k,i) = val
               else 
-                two_electron(i,j,k,l) = val
-                two_electron(i,j,l,k) = val
+                if (i <= nfuc) two_electron(i,j,k,l) = val
+                if (j <= nfuc) two_electron(j,i,k,l) = val
+                if (i <= nfuc) two_electron(i,j,l,k) = val
+                if (j <= nfuc) two_electron(j,i,l,k) = val
+                if (k <= nfuc) two_electron(k,l,i,j) = val
+                if (l <= nfuc) two_electron(l,k,i,j) = val
+                if (k <= nfuc) two_electron(k,l,j,i) = val
+                if (l <= nfuc) two_electron(l,k,j,i) = val
               end if
 
               !$omp critical

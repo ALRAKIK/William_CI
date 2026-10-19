@@ -1,8 +1,9 @@
-subroutine AO_to_MO_ERI(nBas,c,ERI_AO,ERI_MO)
+subroutine AO_to_MO_ERI_chemist(nBas,c,ERI_AO,ERI_MO)
 
       ! Expression of bi-electronic integrals in the MO basis set
 
       use files 
+      use keywords
 
       implicit none
 
@@ -31,9 +32,9 @@ subroutine AO_to_MO_ERI(nBas,c,ERI_AO,ERI_MO)
       allocate(scr(nBas,nBas,nBas,nBas))
 
   
-!--------------------------------------
-! AO to MO transformation starts here !
-!--------------------------------------
+      !--------------------------------------
+      ! AO to MO transformation starts here !
+      !--------------------------------------
 
       ! Transform 4th index
 
@@ -137,4 +138,5 @@ subroutine AO_to_MO_ERI(nBas,c,ERI_AO,ERI_MO)
       !write(outfile,*) "============================================="
 
 
-end subroutine AO_to_MO_ERI
+end subroutine AO_to_MO_ERI_chemist
+

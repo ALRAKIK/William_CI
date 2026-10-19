@@ -261,199 +261,11 @@ subroutine bary_exponent_z(e1,e2,z,p)
 
 end subroutine bary_exponent_z
 
-      ! ----------------------------------------------------------------!
-      ! ----------------------------------------------------------------!
+      !-----------------------------------------------------------------!
+      !-----------------------------------------------------------------!
+
 
 subroutine symmetry_of_integrals_ERI(nf, fpuc, eri_tmp, eri)
-
-      use unitcell_module
-      use omp_lib
-
-      implicit none 
-
-      integer                      :: i, j, k, l
-      integer                      :: i_cell, j_cell, k_cell
-      integer                      :: i_shift, j_shift, k_shift
-      integer                      :: m, n, p
-      integer                      :: nf
-      integer                      :: fpuc
-      integer                      :: func_i, func_j, func_k, func_l
-      integer                      :: equiv_j, equiv_k, equiv_l
-
-      double precision             :: eri_tmp(fpuc, nf, nf, nf)
-      double precision,intent(out) ::     eri(nf, nf, nf, nf)
-      double precision             :: val 
-
-      ! ----------------------    Time     ---------------------------- !
-      integer                        :: days, hours, minutes, seconds , time 
-      double precision               :: start,end
-      !-----------------------------------------------------------------!
-
-
-      !-----------------------------------------------------------------!
-
-      eri(:,:,:,:) = 0.d0
-    
-      ! First, copy what you already computed (first index up to fpuc)
-
-      call cpu_time(start)
-
-      do i = 1, fpuc
-        do j = 1, nf
-          do k = 1, nf
-            do l = 1, nf
-              if (dabs(eri_tmp(i,j,k,l)) > 1.d-12) eri(i,j,k,l) = eri_tmp(i,j,k,l)
-            end do
-          end do
-        end do
-      end do
-
-      call cpu_time(end)
-
-      time = int(end - start)
-      days = (time/86400)
-      hours=mod(time,86400)/3600
-      minutes=mod(mod(time,86400),3600)/60
-      seconds=mod(mod(mod(time,86400),3600),60)
-
-      write(*,'(A65,5X,I0,a,I0,a,I0,a,I0,4x,a)') 'CPU time for The first loop of The Translational and 8 fold symmetry = ',days,":",hours,":",minutes,":",seconds, "days:hour:min:sec"
-
-      call cpu_time(start)
-
-      !$OMP PARALLEL DO PRIVATE(i,j,k,l,val) SCHEDULE(static)
-      do i = 1, nf
-        do j = i, nf
-          do k = 1, nf
-            do l = k, nf
-              val = eri(i,j,k,l)
-              if (val /= 0.d0) then
-                eri(i,j,l,k) = val
-                eri(j,i,k,l) = val
-                eri(j,i,l,k) = val
-                eri(k,l,i,j) = val
-                eri(k,l,j,i) = val
-                eri(l,k,i,j) = val
-                eri(l,k,j,i) = val
-              end if
-            end do
-          end do
-        end do
-      end do
-      !$OMP END PARALLEL DO
-
-      call cpu_time(end)
-
-      time = int(end - start)
-      days = (time/86400)
-      hours=mod(time,86400)/3600
-      minutes=mod(mod(time,86400),3600)/60
-      seconds=mod(mod(mod(time,86400),3600),60)
-
-      write(*,'(A65,5X,I0,a,I0,a,I0,a,I0,4x,a)') 'CPU time for The second loop of The Translational and 8 fold symmetry = ',days,":",hours,":",minutes,":",seconds, "days:hour:min:sec"
-
-      call cpu_time(start)
-
-      ! Now fill the rest using symmetry
-    
-      do i = fpuc + 1, nf
-        ! Find which unit cell and function i corresponds to
-        call find_cell_and_function(i, fpuc, i_cell, j_cell, k_cell, func_i)
-        
-        do j = 1, nf
-          ! Find which unit cell and function j corresponds to  
-          call find_cell_and_function(j, fpuc, i_shift, j_shift, k_shift, func_j)
-          
-          ! Calculate relative shift for j
-          m = modulo(i_shift - i_cell, nx)
-          n = modulo(j_shift - j_cell, ny)  
-          p = modulo(k_shift - k_cell, nz)
-          
-          ! Find equivalent j in reference frame
-          equiv_j = m * ny * nz * fpuc + n * nz * fpuc + p * fpuc + func_j
-          
-          do k = 1, nf
-            ! Find which unit cell and function k corresponds to  
-            call find_cell_and_function(k, fpuc, i_shift, j_shift, k_shift, func_k)
-            
-            ! Calculate relative shift for k
-            m = modulo(i_shift - i_cell, nx)
-            n = modulo(j_shift - j_cell, ny)  
-            p = modulo(k_shift - k_cell, nz)
-            
-            ! Find equivalent k in reference frame
-            equiv_k = m * ny * nz * fpuc + n * nz * fpuc + p * fpuc + func_k
-            
-            do l = 1, nf
-
-              ! Find which unit cell and function l corresponds to  
-
-              call find_cell_and_function(l, fpuc, i_shift, j_shift, k_shift, func_l)
-              
-              ! Calculate relative shift for l
-              m = modulo(i_shift - i_cell, nx)
-              n = modulo(j_shift - j_cell, ny)  
-              p = modulo(k_shift - k_cell, nz)
-              
-              ! Find equivalent l in reference frame
-
-              equiv_l = m * ny * nz * fpuc + n * nz * fpuc + p * fpuc + func_l
-              
-              ! Use the symmetry: (i,j,k,l) = (func_i, equiv_j, equiv_k, equiv_l)
-
-              if (equiv_j <= nf .and. &
-                  equiv_k <= nf .and. &
-                  equiv_l <= nf) then
-                  eri(i,j,k,l) = eri(func_i, equiv_j, equiv_k, equiv_l)
-              endif
-
-            end do
-          end do
-        end do
-      end do
-
-      call cpu_time(end)
-
-      time = int(end - start)
-      days = (time/86400)
-      hours=mod(time,86400)/3600
-      minutes=mod(mod(time,86400),3600)/60
-      seconds=mod(mod(mod(time,86400),3600),60)
-
-      write(*,'(A65,5X,I0,a,I0,a,I0,a,I0,4x,a)') 'CPU time for The Third loop of The Translational and 8 fold symmetry = ',days,":",hours,":",minutes,":",seconds, "days:hour:min:sec"
-
-      !-----------------------------------------------------------------!
-
-end subroutine symmetry_of_integrals_ERI
-
-subroutine find_cell_and_function(index, fpuc, i_cell, j_cell, k_cell, func_index)
-
-      use unitcell_module
-      implicit none
-
-      integer, intent(in) :: index, fpuc
-      integer, intent(out) :: i_cell, j_cell, k_cell, func_index
-  
-      integer :: temp
-  
-      ! Function index within unit cell (1 to fpuc)
-      func_index = mod(index - 1, fpuc) + 1
-  
-      ! Remove function part and get cell index
-      temp = (index - 1) / fpuc
-  
-      ! Decompose cell index into i,j,k coordinates
-      k_cell = mod(temp, nz)
-      temp = temp / nz
-      j_cell = mod(temp, ny) 
-      i_cell = temp / ny
-  
-end subroutine find_cell_and_function
-
-      !-----------------------------------------------------------------!
-      !-----------------------------------------------------------------!
-
-
-subroutine symmetry_of_integrals_ERI_mod(nf, fpuc, eri_tmp, eri)
 
       use unitcell_module
       use omp_lib
@@ -466,7 +278,6 @@ subroutine symmetry_of_integrals_ERI_mod(nf, fpuc, eri_tmp, eri)
       integer                      :: idx, ii, m, n, p
       double precision             :: eri_tmp(fpuc, nf, nf, nf)
       double precision,intent(out) ::     eri(nf, nf, nf, nf)
-      double precision             :: val 
 
       ! Precomputation arrays
       integer                      :: icell(nf), jcell(nf), kcell(nf), func_idx(nf)
@@ -490,16 +301,8 @@ subroutine symmetry_of_integrals_ERI_mod(nf, fpuc, eri_tmp, eri)
         icell(idx) = ii / ny
       end do
     
-      ! Copy computed integrals (first index up to fpuc)
-      do i = 1, fpuc
-        do j = 1, nf
-          do k = 1, nf
-            do l = 1, nf
-              if (dabs(eri_tmp(i,j,k,l)) > 1.d-12) eri(i,j,k,l) = eri_tmp(i,j,k,l)
-            end do
-          end do
-        end do
-      end do
+      
+      eri(1:nfuc,:,:,:) = eri_tmp(:,:,:,:)
 
       ! Precompute equivalence mapping table
       do i = 1, nf
@@ -510,29 +313,6 @@ subroutine symmetry_of_integrals_ERI_mod(nf, fpuc, eri_tmp, eri)
           equiv(i,j) = m * ny * nz * fpuc + n * nz * fpuc + p * fpuc + func_idx(j)
         end do
       end do
-
-      ! 8-fold symmetry expansion (keep as is)
-      !$OMP PARALLEL DO PRIVATE(i,j,k,l,val) SCHEDULE(static)
-      do i = 1, nf
-        do j = i, nf
-          do k = 1, nf
-            do l = k, nf
-              val = eri(i,j,k,l)
-              if (val /= 0.d0) then
-                eri(i,j,l,k) = val
-                eri(j,i,k,l) = val
-                eri(j,i,l,k) = val
-                eri(k,l,i,j) = val
-                eri(k,l,j,i) = val
-                eri(l,k,i,j) = val
-                eri(l,k,j,i) = val
-              end if
-            end do
-          end do
-        end do
-      end do
-      !$OMP END PARALLEL DO
-
 
       !$OMP PARALLEL DO PRIVATE(i,func_i,eqv,l,el,k,ek,j) SCHEDULE(static)
       do i = fpuc + 1, nf
@@ -555,7 +335,7 @@ subroutine symmetry_of_integrals_ERI_mod(nf, fpuc, eri_tmp, eri)
       !$OMP END PARALLEL DO
       !-----------------------------------------------------------------!
 
-end subroutine symmetry_of_integrals_ERI_mod
+end subroutine symmetry_of_integrals_ERI
 
 subroutine save_two_electron_integrals(fpuc, nf, int)
     

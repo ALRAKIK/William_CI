@@ -104,7 +104,7 @@ program CI
       c_MCDE      = any(keyword == 'MCDE'     )     ! 20
       c_nquad_128 = any(keyword == 'nquad_128')
       c_physicist = any(keyword == 'physicist')
-
+                              
       ! --------------------------------------------------------------- !
       !            Read number of alpha and beta electrons              !
       ! --------------------------------------------------------------- !
@@ -490,7 +490,7 @@ program CI
 
 
       !-----------------------------------------------------------------!
-      !      physicist notation of the two electron integrals           !
+      !                              MCDE                               !
       !-----------------------------------------------------------------!
 
       if (c_MCDE) then
@@ -498,12 +498,13 @@ program CI
         allocate(ERI_MO(nBas,nBas,nBas,nBas))
 
         call cpu_time(start)
-          call AO_to_MO_ERI(nBas,coeff,ERI,ERI_MO)
+          call AO_to_MO_ERI_chemist(nBas,coeff,ERI,ERI_MO)
         call cpu_time(end)
 
         call print_MO_file(nBas,ERI_MO)
         
         time = end - start
+
       end if 
 
       
@@ -511,7 +512,7 @@ program CI
       ! AO to MO transformation
       !-----------------------------------------------------------------!
 
-      if (c_MO .or. c_MP2) then 
+      if (c_MP2) then 
 
       if (c_SAO) then 
 
@@ -530,7 +531,7 @@ program CI
       allocate(ERI_MO(nBas,nBas,nBas,nBas))
 
       call cpu_time(start)
-        call AO_to_MO_ERI(nBas,coeff,ERI,ERI_MO)
+        call AO_to_MO_ERI_chemist(nBas,coeff,ERI,ERI_MO)
       call cpu_time(end)
 
       call print_MO_file(nBas,ERI_MO)

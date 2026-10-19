@@ -5,21 +5,21 @@ subroutine MP2(nBas,nO,e,ERI,ENuc,EHF)
 
       ! Input variables
 
-      integer,intent(in)            :: nBas
-      integer,intent(in)            :: nO
-      double precision,intent(in)   :: ENuc
-      double precision,intent(in)   :: EHF
-      double precision,intent(in)   :: e(nBas)
+      integer,intent(in)            ::                     nBas
+      integer,intent(in)            ::                       nO
+      double precision,intent(in)   ::                     ENuc
+      double precision,intent(in)   ::                      EHF
+      double precision,intent(in)   ::                  e(nBas)
       double precision,intent(in)   :: ERI(nBas,nBas,nBas,nBas)
 
       ! Local variables
 
-      integer                       :: i,j
-      integer                       :: a,b
-      double precision              :: Dijab
-      double precision              :: E2d
-      double precision              :: E2x
-      double precision              :: EcMP2
+      integer                       ::                      i,j
+      integer                       ::                      a,b
+      double precision              ::                    Dijab
+      double precision              ::                      E2d
+      double precision              ::                      E2x
+      double precision              ::                    EcMP2
 
       ! Output variables
 
@@ -72,4 +72,4 @@ subroutine MP2(nBas,nO,e,ERI,ENuc,EHF)
       write(outfile,'(A32)')           '--------------------------'
       write(outfile,*)
 
-end subroutine MP2 
+end subroutine MP2

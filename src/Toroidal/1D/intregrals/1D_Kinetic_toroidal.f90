@@ -1,23 +1,20 @@
-subroutine kinetic_matrix_toroidal(number_of_atoms,number_of_functions,atoms,AO,kinetic)
+subroutine kinetic_matrix_toroidal(nBas,AO,kinetic)
 
       use files 
       use torus_init
       use atom_basis
       use classification_ERI
       use keywords
+      use unitcell_module
 
       implicit none 
 
       !-----------------------------------------------------------------!
 
       integer                      :: i , j
-      integer                      :: index_atom1 , index_sym , index_unitcell 
-      integer                      :: number_of_atoms
-      integer                      :: number_of_functions
+      integer                      :: nBas
 
-      type(atom)                   :: atoms(number_of_atoms)
-
-      type(ERI_function)           :: AO (number_of_functions)
+      type(ERI_function)           :: AO (nBas)
       type(ERI_function)           :: AO1 , AO2
 
 
@@ -27,30 +24,15 @@ subroutine kinetic_matrix_toroidal(number_of_atoms,number_of_functions,atoms,AO,
 
       ! output ! 
 
-      double precision,intent(out) :: kinetic(number_of_functions,number_of_functions)
+      double precision,intent(out) :: kinetic(nBas,nBas)
 
       !-----------------------------------------------------------------!
 
       kinetic(:,:) = 0.d0
 
-      index_atom1 = atoms(1)%num_s_function + 3*atoms(1)%num_p_function
-
-      index_sym   = 0 
-    
-      do i = 1 , number_of_atoms/2 + 1 
-        index_sym = index_sym + atoms(i)%num_s_function + 3*atoms(i)%num_p_function
-      end do 
-
-      index_sym = index_sym + 1 
-
-      index_unitcell = 0 
-
-      do i = 1 , number_of_atom_in_unitcell
-        index_unitcell = index_unitcell  + atoms(i)%num_s_function + 3*atoms(i)%num_p_function
-      end do 
       
-      do i = 1 , index_unitcell
-        do j = 1 , number_of_functions
+      do i = 1 , nfuc
+        do j = 1 , nBas
 
           AO1 = AO(i)
           AO2 = AO(j)
@@ -71,24 +53,15 @@ subroutine kinetic_matrix_toroidal(number_of_atoms,number_of_functions,atoms,AO,
       !                    symmetry of the integrals                    !
       !-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-!
 
-
-      do i = 1 , index_unitcell
-        do j = 1 , number_of_functions
-          if (abs(kinetic(i,j)) < 1e-15) kinetic(i,j) = 0.d0 
+      do i = 1 , nfuc
+        do j = 1 , nBas
+          if (abs(kinetic(i,j)) < 1e-14) kinetic(i,j) = 0.d0 
         end do 
       end do 
 
-      do i = index_unitcell + 1   , number_of_functions
-        do j = index_unitcell + 1 , number_of_functions
-          kinetic(i,j) = kinetic(i-index_unitcell,j-index_unitcell)
-        end do 
-      end do 
+      call fill_with_symmetry(nBas, kinetic)
 
-      do i = 1 , number_of_functions - 1 
-        do j = i , number_of_functions
-          kinetic(j,i) = kinetic(i,j)
-        end do 
-      end do
+
 
       if (c_K) then 
         write(outfile,'(a)') ""
@@ -96,8 +69,8 @@ subroutine kinetic_matrix_toroidal(number_of_atoms,number_of_functions,atoms,AO,
         write(outfile,'(a)') "The kinetic matrix"
         write(outfile,'(a)') "------------------"
         write(outfile,'(a)') ""
-        do i = 1 , number_of_functions - 1 
-          do j = i , number_of_functions
+        do i = 1 , nBas - 1 
+          do j = i , nBas
             write(outfile,'(i3,i3, 6x,1000(f16.12,2x))') i , j, kinetic(i,j)
           end do
         end do 

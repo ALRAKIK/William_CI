@@ -1,45 +1,45 @@
 module MCDE_module
 
-   implicit none
-   private
-   save
+      implicit none
+      private
+      save
    
-   public :: MCDE
+      public :: MCDE
 
-   ! ==================================================================================================================
-   ! -This (3,1)-MCDE module contains all the routines for the creation of the (3,1)-MCDE effective Hamiltonian
-   !  Physics notation is assumed for the Electron Repulsion Integrals (ERI)
-   !
-   !    || __   ||                 ====================================================================================
-   !    ||=\_`\=||                                                       Notation
-   !    || (__/ ||                 ====================================================================================
-   !    ||  | | :-"""-.       
-   !    ||==| \/-=-.   \           ERI (ERI_Z)        : Electron Repulsion Integrals (ERI in spin-basis)
-   !    ||  |(_|o o/   |_          nBas (nBasZ)       : Amount of (spin) molecular orbitals
-   !    ||   \/ "  \   ,_)         nOcc               : Amount of occupied orbitals
-   !    ||====\ V  /__/            heffbas            : Dimensions effective Hamiltonian
-   !    ||     ;--'  `-.           g0space, nSpace    : 2e1h and 2h1e configuration space and total size
-   !    ||    /      .  \          fi, fj, fl         : Occupation numbers
-   !    ||===;        \  \         heffMatrix         : Effective Hamiltonian
-   !    ||   |         | |         heffbas            : Dimensions effective Hamiltonian
-   !    || .-\ '     _/_/          energies           : Hartree-Fock energies in molecular orbital basis
-   !    |:'  _;.    (_  \          energiesZ          : Hartree-Fock energies in spin-orbital basis
-   !    /  .'  `;\   \\_/          dim1, dim2         : Dimensions of 2p1h and 2h1p rows respectively
-   !   |_ /     |||  |\\
-   !  /  _)=====|||  | ||          ====================================================================================
-   ! /  /|      ||/  / //                                                Routines
-   ! \_/||      ( `-/ ||           ====================================================================================
-   !    ||======/  /  \\ .-.       g3_spin_potential  : Converts ERI to ERI_Z (integrals to spin basis)
-   !    ||      \_/    \'-'/       get_g3space        : Obtains the allowed 3-particle states (2e1h/2h1e) in an array
-   !    ||      ||      `"`        heff               : Constructs the (3,1)-MCDE effective Hamiltonian
-   !    ||======|| Horacio         MCDE               : Combines the above routines into 1 routine to compute the 
-   !    ||      ||                                      (3,1)-MCDE effective Hamiltonian
-   !    ||      ||                 
-   ! ==================================================================================================================
+      ! ==================================================================================================================
+      ! -This (3,1)-MCDE module contains all the routines for the creation of the (3,1)-MCDE effective Hamiltonian
+      !  Physics notation is assumed for the Electron Repulsion Integrals (ERI)
+      !
+      !    || __   ||                 ====================================================================================
+      !    ||=\_`\=||                                                       Notation
+      !    || (__/ ||                 ====================================================================================
+      !    ||  | | :-"""-.       
+      !    ||==| \/-=-.   \           ERI (ERI_Z)        : Electron Repulsion Integrals (ERI in spin-basis)
+      !    ||  |(_|o o/   |_          nBas (nBasZ)       : Amount of (spin) molecular orbitals
+      !    ||   \/ "  \   ,_)         nOcc               : Amount of occupied orbitals
+      !    ||====\ V  /__/            heffbas            : Dimensions effective Hamiltonian
+      !    ||     ;--'  `-.           g0space, nSpace    : 2e1h and 2h1e configuration space and total size
+      !    ||    /      .  \          fi, fj, fl         : Occupation numbers
+      !    ||===;        \  \         heffMatrix         : Effective Hamiltonian
+      !    ||   |         | |         heffbas            : Dimensions effective Hamiltonian
+      !    || .-\ '     _/_/          energies           : Hartree-Fock energies in molecular orbital basis
+      !    |:'  _;.    (_  \          energiesZ          : Hartree-Fock energies in spin-orbital basis
+      !    /  .'  `;\   \\_/          dim1, dim2         : Dimensions of 2p1h and 2h1p rows respectively
+      !   |_ /     |||  |\\
+      !  /  _)=====|||  | ||          ====================================================================================
+      ! /  /|      ||/  / //                                                Routines
+      ! \_/||      ( `-/ ||           ====================================================================================
+      !    ||======/  /  \\ .-.       g3_spin_potential  : Converts ERI to ERI_Z (integrals to spin basis)
+      !    ||      \_/    \'-'/       get_g3space        : Obtains the allowed 3-particle states (2e1h/2h1e) in an array
+      !    ||      ||      `"`        heff               : Constructs the (3,1)-MCDE effective Hamiltonian
+      !    ||======|| Horacio         MCDE               : Combines the above routines into 1 routine to compute the 
+      !    ||      ||                                      (3,1)-MCDE effective Hamiltonian
+      !    ||      ||                 
+      ! ==================================================================================================================
 
-   contains
+      contains
 
-   subroutine g3_spin_potential(nBas, ERI, ERI_Z)
+      subroutine g3_spin_potential(nBas, ERI, ERI_Z)
 
       ! Input variables
       integer, intent(in)                      :: nBas
@@ -108,7 +108,7 @@ module MCDE_module
                               ! Update the output array with the Coulomb matrix element
                               ERI_Z(mu2 + 1, la2 + 1, si2 + 1, nu2 + 1) = spintotalmatch *& 
                                                                         (ERI(mu, la, nu, si) * spinmatch1-&
-                                                                          ERI(mu, la, si, nu) * spinmatch2)
+                                                                         ERI(mu, la, si, nu) * spinmatch2)
 
                            end do
                         end do
@@ -125,9 +125,9 @@ module MCDE_module
       write(*,*) '---------------------------------------------------'
       write(*,*)
 
-   end subroutine g3_spin_potential
+      end subroutine g3_spin_potential
 
-   subroutine get_g3space(nBas, nOcc, nSpace, g03space)
+      subroutine get_g3space(nBas, nOcc, nSpace, g03space)
    
       ! Input variables
       integer, intent(in)           :: nBas, nOcc,  nSpace
@@ -192,9 +192,10 @@ module MCDE_module
       write(*,*) '    |  Auxiliary Subspace Creation Finished  |'
       write(*,*) '---------------------------------------------------'
       write(*,*)
-   end subroutine get_g3space
 
-   subroutine heff(nBas, nOcc, nSpace, heffbas, g03space, energies, ERI_Z, heffMatrix)
+      end subroutine get_g3space
+
+      subroutine heff(nBas, nOcc, nSpace, heffbas, g03space, energies, ERI_Z, heffMatrix)
       
       ! Input variables
       integer, intent(in)                    :: nBas, nOcc, nSpace, heffbas
@@ -206,8 +207,8 @@ module MCDE_module
       double precision, intent(inout)        :: heffMatrix(:,:)
 
       ! Local variables
-      integer                                :: idx, i, j, p, q, a, b, c, x, y, z, k, nOccZ, nBasZ, dim1, dim2
-      double precision                       :: fa,fb,fc, fp, fq, dlk, dmj, dio, doj, dmi, body_tmp
+      integer                                :: idx, i, p, q, a, b, c, x, y, z,nOccZ, nBasZ, dim1, dim2
+      double precision                       :: fa,fb,fc, dlk, dmj, dio, doj, dmi, body_tmp
       double precision, allocatable          :: energiesZ(:), prefac(:)
 
       write(*,*)
@@ -313,9 +314,9 @@ module MCDE_module
       write(*,*) '---------------------------------------------------'
       write(*,*)
 
-   end subroutine heff
+      end subroutine heff
 
-   subroutine MCDE(nBas, nOcc, energies, ERI)
+      subroutine MCDE(nBas, nOcc, energies, ERI)
 
       use files
 
@@ -376,6 +377,6 @@ module MCDE_module
       write(*,*) '---------------------------------------------------'
       write(*,*)
 
-   end subroutine MCDE
+      end subroutine MCDE
 
 endmodule MCDE_module

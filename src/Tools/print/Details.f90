@@ -72,18 +72,6 @@ subroutine details_integrals(nBas,S,T,V,ERI)
         end do 
       close(1)
 
-      open(1,file=trim(tmp_file_name)//"/ERI_phy.dat")
-
-        do i = 1, nBas
-          do j = 1 , nBas
-            do k = 1 , nBas
-              do l = 1 , nBas
-                if (abs(ERI(i,j,k,l)) > 1.d-15) write(1,*) i , j , k , l , ERI(i,k,j,l)
-              end do 
-            end do 
-          end do 
-        end do 
-
 end subroutine
 
 
@@ -161,17 +149,5 @@ subroutine details_integrals_SAO(nBas,S,T,V,ERI)
           end do 
         end do 
       close(1)
-
-      open(1,file=trim(tmp_file_name)//"/ERI_phy.dat")
-
-        do i = 1, nfuc
-          do j = 1 , nBas
-            do k = 1 , nBas
-              do l = 1 , nBas
-                if (abs(ERI(i,j,k,l)) > 1.d-15) write(1,*) i , j , k , l , ERI(i,k,j,l)
-              end do 
-            end do 
-          end do 
-        end do 
 
 end subroutine

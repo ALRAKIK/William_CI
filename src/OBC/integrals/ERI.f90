@@ -4,6 +4,7 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
       use omp_lib
       use atom_basis
       use classification_ERI
+      use keywords
 
       implicit none 
 
@@ -46,7 +47,6 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
 
       call omp_set_dynamic(.false.)
       call omp_set_num_threads(omp_get_max_threads())
-
       
       allocate(ERI(number_of_functions))
       
@@ -194,21 +194,35 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
 
             if (i <= k .or. (i == k .and. j <= l)) then
 
-                        ! ---- Schwarz screen: ONE multiply + ONE compare ----
-                        if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) then
-                          two_electron(i,j,k,l) = 0.d0   ! screened integrals are zero
-                          cycle
-                        end if
+                ! ---- Schwarz screen: ONE multiply + ONE compare ----
 
-                        call ERI_integral_4_function(ERI(i),ERI(j),ERI(k),ERI(l),value)
-                        two_electron(i,j,k,l) = value
-                        two_electron(j,i,k,l) = value
-                        two_electron(i,j,l,k) = value     
-                        two_electron(j,i,l,k) = value
-                        two_electron(k,l,i,j) = value     
-                        two_electron(l,k,i,j) = value
-                        two_electron(k,l,j,i) = value
-                        two_electron(l,k,j,i) = value
+                if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) cycle
+
+                call ERI_integral_4_function(ERI(i),ERI(j),ERI(k),ERI(l),value)
+
+                if (c_physicist) then 
+
+                  two_electron(i,k,j,l) = value
+                  two_electron(j,k,i,l) = value
+                  two_electron(i,l,j,k) = value
+                  two_electron(j,l,i,k) = value
+                  two_electron(k,i,l,j) = value
+                  two_electron(l,i,k,j) = value
+                  two_electron(k,j,l,i) = value
+                  two_electron(l,j,k,i) = value
+
+                else 
+
+                  two_electron(i,j,k,l) = value
+                  two_electron(j,i,k,l) = value
+                  two_electron(i,j,l,k) = value
+                  two_electron(j,i,l,k) = value
+                  two_electron(k,l,i,j) = value
+                  two_electron(l,k,i,j) = value
+                  two_electron(k,l,j,i) = value
+                  two_electron(l,k,j,i) = value
+
+                end if 
 
               !$omp critical
               integrals_done = integrals_done + 1.d0

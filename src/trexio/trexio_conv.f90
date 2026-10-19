@@ -322,20 +322,6 @@ subroutine trexio_conv_integrals(nBas,S,T,V,Hc,ERI)
         call exit(-1)
       end if
 
-      ! change from the chemist notation to the physicist 
-
-      ! do i = 1, nBas
-      !   do j = 1, nBas
-      !     do k = j+1, nBas
-      !       do l = 1, nBas
-      !         tmp = ERI(i,j,k,l)
-      !         ERI(i,j,k,l) = ERI(i,k,j,l)
-      !         ERI(i,k,j,l) = tmp
-      !       end do
-      !     end do
-      !   end do
-      ! end do
-
       icount = 0_8
       offset = 0_8
       do l = 1 , nBas

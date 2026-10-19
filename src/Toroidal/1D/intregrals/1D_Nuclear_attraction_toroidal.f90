@@ -1,4 +1,4 @@
-subroutine nuclear_attraction_matrix_toroidal_1D(number_of_atoms,number_of_functions,geometry,atoms,AO,NA)
+subroutine nuclear_attraction_matrix_toroidal_1D(number_of_atoms,nBas,geometry,atoms,AO,NA)
 
       use files
       use atom_basis
@@ -6,20 +6,19 @@ subroutine nuclear_attraction_matrix_toroidal_1D(number_of_atoms,number_of_funct
       use classification_ERI
       use omp_lib
       use keywords
+      use unitcell_module
 
       implicit none 
 
       !-----------------------------------------------------------------!
 
       integer                       :: i , j
-      integer                       :: index_atom1 , index_sym
-      integer                       :: index_unitcell
       integer                       :: number_of_atoms
-      integer                       :: number_of_functions
+      integer                       :: nBas
 
       type(atom)                    :: atoms(number_of_atoms)
 
-      type(ERI_function)            :: AO (number_of_functions)
+      type(ERI_function)            :: AO (nBas)
       type(ERI_function)            :: AO1 , AO2
 
       
@@ -32,7 +31,7 @@ subroutine nuclear_attraction_matrix_toroidal_1D(number_of_atoms,number_of_funct
 
       ! output !
 
-      double precision,intent(out)  :: NA(number_of_functions,number_of_functions)
+      double precision,intent(out)  :: NA(nBas,nBas)
 
       !-----------------------------------------------------------------!
       ! Parallelization variables
@@ -44,23 +43,6 @@ subroutine nuclear_attraction_matrix_toroidal_1D(number_of_atoms,number_of_funct
       !-----------------------------------------------------------------!
 
       NA(:,:) = 0.d0
-
-      index_atom1 = atoms(1)%num_s_function + 3*atoms(1)%num_p_function
-      
-      index_unitcell = 0
-
-      do i = 1 , number_of_atom_in_unitcell
-        index_unitcell = index_unitcell  + atoms(i)%num_s_function + 3*atoms(i)%num_p_function
-      end do
-
-      index_sym   = 0
-
-      do i = 1 , number_of_atoms/2 + 1
-        index_sym = index_sym + atoms(i)%num_s_function + 3*atoms(i)%num_p_function
-      end do
-
-      ! --------------------------------------------------------------- !
-
       !-----------------------------------------------------------------!
       ! Setup OpenMP
       !-----------------------------------------------------------------!
@@ -91,12 +73,12 @@ subroutine nuclear_attraction_matrix_toroidal_1D(number_of_atoms,number_of_funct
       !-----------------------------------------------------------------!
       ! Precompute all i-j pairs
       !-----------------------------------------------------------------!
-      total_ij_pairs = index_unitcell * number_of_functions
+      total_ij_pairs = nfuc * nBas
       allocate(i_index(total_ij_pairs), j_index(total_ij_pairs))
 
       ij_index = 0
-      do i = 1, index_unitcell
-       do j = 1, number_of_functions
+      do i = 1, nfuc
+       do j = 1, nBas
          ij_index = ij_index + 1
          i_index(ij_index) = i
          j_index(ij_index) = j
@@ -139,23 +121,13 @@ subroutine nuclear_attraction_matrix_toroidal_1D(number_of_atoms,number_of_funct
       !-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-!
 
 
-      do i = 1 , index_unitcell
-       do j = 1 , number_of_functions
-         if (abs(NA(i,j)) < 1e-15) NA(i,j) = 0.d0 
+      do i = 1 , nfuc
+       do j = 1 , nBas
+         if (abs(NA(i,j)) < 1e-14) NA(i,j) = 0.d0 
        end do 
       end do 
 
-      do i = index_unitcell + 1   , number_of_functions
-       do j = index_unitcell + 1 , number_of_functions
-         NA(i,j) = NA(i-index_unitcell,j-index_unitcell)
-       end do 
-      end do 
- 
-      do i = 1 , number_of_functions - 1 
-       do j = i , number_of_functions
-         NA(j,i) = NA(i,j)
-       end do 
-      end do
+      call fill_with_symmetry(nBas, NA)
 
       if (c_NA) then 
         write(outfile,'(a)') ""
@@ -163,8 +135,8 @@ subroutine nuclear_attraction_matrix_toroidal_1D(number_of_atoms,number_of_funct
         write(outfile,'(a)') "The nuclear attraction matrix"
         write(outfile,'(a)') "------------------"
         write(outfile,'(a)') ""
-        do i = 1 , number_of_functions - 1 
-          do j = i , number_of_functions
+        do i = 1 , nBas - 1 
+          do j = i , nBas
             write(outfile,'(i3,i3, 6x,1000(f16.12,2x))') i , j, NA(i,j)
           end do
         end do 

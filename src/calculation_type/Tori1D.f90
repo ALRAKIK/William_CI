@@ -41,9 +41,9 @@ subroutine Tori1D(n_atoms,number_of_functions,atoms,AO,geometry,OV,K,NA,ERI)
 
       call cpu_time(start)
 
-      call overlap_matrix_toroidal(n_atoms,number_of_functions,atoms,AO,OV)
+      call overlap_matrix_toroidal(number_of_functions,AO,OV)
       call check_the_overlap(number_of_functions,OV)
-      call kinetic_matrix_toroidal(n_atoms,number_of_functions,atoms,AO,K)
+      call kinetic_matrix_toroidal(number_of_functions,AO,K)
       call nuclear_attraction_matrix_toroidal_1D(n_atoms,number_of_functions,geometry,atoms,AO,NA)
       if (c_One) then 
         ERI = 0.d0

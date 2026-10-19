@@ -372,33 +372,34 @@ end subroutine print_band_structure
 
 subroutine chemist_to_physics_notation(nBas, ERI)
 
-  implicit none
+      implicit none
 
-  integer, intent(in)             :: nBas
-  double precision, intent(inout) :: ERI(nBas, nBas, nBas, nBas)
+      integer, intent(in)             :: nBas
+      double precision, intent(inout) :: ERI(nBas, nBas, nBas, nBas)
 
-  ! Local variables
-  integer             :: i, j, k, l
-  double precision, allocatable :: tmp(:,:,:,:)
+      ! Local variables
+      integer                         :: i, j, k, l
+      double precision, allocatable   :: tmp(:,:,:,:)
 
-  ! Allocate temporary array
-  allocate(tmp(nBas, nBas, nBas, nBas))
+      ! Allocate temporary array
+      allocate(tmp(nBas, nBas, nBas, nBas))
 
-  ! Copy original integrals
-  tmp = ERI
+      ! Copy original integrals
+      tmp = ERI
 
-  ! Convert:  <i j | k l> = (i k | j l)
-  ! i.e. swap the second and third indices
-  do i = 1, nBas
-    do j = 1, nBas
-      do k = 1, nBas
-        do l = 1, nBas
-          ERI(i, j, k, l) = tmp(i, k, j, l)
+      ! Convert:  <i j | k l> = (i k | j l)
+      ! i.e. swap the second and third indices
+
+      do i = 1, nBas
+        do j = 1, nBas
+          do k = 1, nBas
+            do l = 1, nBas
+              ERI(i, j, k, l) = tmp(i, k, j, l)
+            end do
+          end do
         end do
       end do
-    end do
-  end do
 
-  deallocate(tmp)
+      deallocate(tmp)
 
 end subroutine chemist_to_physics_notation

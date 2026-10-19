@@ -21,16 +21,33 @@ subroutine exchange_potential(nBas,P,ERI,K)
       
       K(:,:) = 0d0
       
+      if (c_physicist) then 
+
+      do nu=1,nBas
+        do si=1,nBas
+          do la=1,nBas
+            do mu=1,nBas
+              K(mu,nu) = K(mu,nu) - 0.5d0 * P(la,si)*ERI(mu,si,la,nu)  ! physicist notation
+            end do
+          end do
+        end do
+      end do
+
+      else 
+
       do nu=1,nBas
         do si=1,nBas
           do la=1,nBas
             do mu=1,nBas
               K(mu,nu) = K(mu,nu) - 0.5d0 * P(la,si)*ERI(mu,la,si,nu)   !   chemist notation
-              !K(mu,nu) = K(mu,nu) - 0.5d0 * P(la,si)*ERI(mu,si,la,nu)  ! physicist notation
             end do
           end do
         end do
       end do
+
+      end if 
+
+      
 
 
 
