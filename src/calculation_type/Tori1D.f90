@@ -1,33 +1,35 @@
-subroutine Tori1D(n_atoms,number_of_functions,atoms,AO,geometry,OV,K,NA,ERI)
+subroutine Tori1D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
 
       use files
       use torus_init
       use atom_basis
       use classification_ERI
       use keywords
+      use unitcell_module
 
       implicit none
 
       ! - input - !
        
-      integer           ,intent(in)  :: n_atoms , number_of_functions
+      integer           ,intent(in)  :: n_atoms , nBas
       type(atom)        ,intent(in)  :: atoms(n_atoms)
       double precision  ,intent(in)  :: geometry(n_atoms,3)
-      type(ERI_function),intent(in)  :: AO (number_of_functions)
+      type(ERI_function),intent(in)  :: AO (nBas)
 
       ! - local - !
 
       ! ----------------------    Time     ---------------------------- !
-      integer                        :: days, hours, minutes, seconds , time 
+      integer                        :: days, hours, minutes, seconds 
+      integer                        :: time 
       double precision               :: start,end
       !-----------------------------------------------------------------!
 
       ! - output - ! 
 
-      double precision,intent(out)   ::  OV(number_of_functions,number_of_functions)
-      double precision,intent(out)   ::   K(number_of_functions,number_of_functions)
-      double precision,intent(out)   ::  NA(number_of_functions,number_of_functions)
-      double precision,intent(out)   :: ERI(number_of_functions,number_of_functions,number_of_functions,number_of_functions)
+      double precision,intent(out)   ::                OV(nBas,nBas)
+      double precision,intent(out)   ::                 K(nBas,nBas)
+      double precision,intent(out)   ::                NA(nBas,nBas)
+      double precision,intent(out)   :: ERI(ERI_size,nBas,nBas,nBas)
 
       ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - !
 
@@ -41,14 +43,14 @@ subroutine Tori1D(n_atoms,number_of_functions,atoms,AO,geometry,OV,K,NA,ERI)
 
       call cpu_time(start)
 
-      call overlap_matrix_toroidal(number_of_functions,AO,OV)
-      call check_the_overlap(number_of_functions,OV)
-      call kinetic_matrix_toroidal(number_of_functions,AO,K)
-      call nuclear_attraction_matrix_toroidal_1D(n_atoms,number_of_functions,geometry,atoms,AO,NA)
+      call overlap_matrix_toroidal_1D(nBas,AO,OV)
+      call check_the_overlap(nBas,OV)
+      call kinetic_matrix_toroidal_1D(nBas,AO,K)
+      call nuclear_attraction_matrix_toroidal_1D(n_atoms,nBas,geometry,atoms,AO,NA)
       if (c_One) then 
         ERI = 0.d0
       else 
-        call ERI_integral_toroidal_1D(n_atoms,geometry,number_of_functions,atoms,ERI) 
+        call ERI_integral_toroidal_1D(n_atoms,geometry,nBas,atoms,ERI) 
       end if
         
       call cpu_time(end)

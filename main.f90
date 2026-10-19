@@ -59,7 +59,6 @@ program CI
       integer                         ::                   io_stat
       character(len=100)              ::                      line
       integer                         ::          n_alpha , n_beta
-      integer                         ::                  ERI_size
 
 
       integer                         :: start_count, end_count, count_rate
@@ -375,14 +374,6 @@ program CI
         nquad_point = 64
       end if
 
-      if (c_SAO) then 
-        write(outfile,'(A)') 'The integrals will be calculated'
-        if (trim(calculation_type) == "Tori1D") call Tori1D_SAO(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)
-        !if (trim(calculation_type) == "Tori2D") call Tori2D_SAO(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)
-        if (trim(calculation_type) == "Tori3D") call Tori3D_SAO(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)
-        go to 100
-      end if 
-
       if (c_read) then
 
         write(outfile,'(A)') 'The integrals will be read from file'
@@ -409,8 +400,6 @@ program CI
         end select         
 
       end if
-
-100   continue
 
       ! --------------------------------------------------------------- !
       !            Read the one and the two electron integrals     

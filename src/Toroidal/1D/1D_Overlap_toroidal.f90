@@ -1,4 +1,4 @@
-subroutine overlap_matrix_toroidal(nBas,AO,overlap)
+subroutine overlap_matrix_toroidal_1D(nBas,AO,overlap)
 
       use files
       use atom_basis
@@ -75,7 +75,7 @@ subroutine overlap_matrix_toroidal(nBas,AO,overlap)
         end do 
       end if 
 
-end subroutine overlap_matrix_toroidal
+end subroutine overlap_matrix_toroidal_1D
 
       !-----------------------------------------------------------------!
 

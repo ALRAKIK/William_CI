@@ -1,4 +1,4 @@
-subroutine kinetic_matrix_toroidal(nBas,AO,kinetic)
+subroutine kinetic_matrix_toroidal_1D(nBas,AO,kinetic)
 
       use files 
       use torus_init
@@ -61,8 +61,6 @@ subroutine kinetic_matrix_toroidal(nBas,AO,kinetic)
 
       call fill_with_symmetry(nBas, kinetic)
 
-
-
       if (c_K) then 
         write(outfile,'(a)') ""
         write(outfile,'(a)') "------------------"
@@ -76,9 +74,7 @@ subroutine kinetic_matrix_toroidal(nBas,AO,kinetic)
         end do 
       end if 
 
-
-
-end subroutine kinetic_matrix_toroidal
+end subroutine kinetic_matrix_toroidal_1D
 
 
 subroutine kinetic_integral_toroidal_1D(pattern_id,r1,r2,AO1,AO2,K_t)
