@@ -12,6 +12,7 @@ program CI
       use precomputed_bessel
       use unitcell_module
       use MCDE_module
+      use k_blocks
 
 
       implicit none
@@ -49,6 +50,9 @@ program CI
       double precision  ,allocatable  ::                coeff(:,:)
 
       complex(dpc)      ,allocatable  ::            coeff_SAO(:,:)
+      complex(dpc)      ,allocatable  ::    ERI_SAO(:,:,:,:,:,:,:)
+      complex(dpc)      ,allocatable  ::    ERI_kMO(:,:,:,:,:,:,:)
+      type(K_block)     ,allocatable  ::                    blk(:)
 
       double precision                ::               E_nuc , EHF
       double precision                ::            start,end,time
@@ -63,6 +67,8 @@ program CI
 
       integer                         :: start_count, end_count, count_rate
       double precision                :: elapsed
+
+      logical                         :: transformation
 
       !-----------------------------------------------------------------!
       !                        END variables                            !
@@ -344,6 +350,7 @@ program CI
 
       if (c_SAO) then 
         allocate(ERI (nfuc,nBas,nBas,nBas))
+        allocate(blk(N_cell))
         ERI_size = nfuc
       else 
         allocate(ERI  (nBas,nBas,nBas,nBas))
@@ -463,9 +470,15 @@ program CI
       !                                                                  !
       ! ---------------------------------------------------------------- ! 
        
-      call cpu_time(start)
-        call Hartree_Fock(nBas,nO,ERI_size,S,T,V,Hc,ERI,X,E_nuc,EHF,e,coeff,coeff_SAO,n_alpha,n_beta)
-      call cpu_time(end)
+      if (c_SAO) then 
+        call cpu_time(start)
+          call Hartree_Fock_SAO(nBas,nO,S,T,V,Hc,ERI,X,E_nuc,EHF,e,coeff,coeff_SAO,n_alpha,n_beta,blk)
+        call cpu_time(end)
+      else 
+        call cpu_time(start)
+          call Hartree_Fock(nBas,nO,S,T,V,Hc,ERI,X,E_nuc,EHF,e,coeff,n_alpha,n_beta)
+        call cpu_time(end)
+      end if 
       
       time = end - start
 
@@ -477,106 +490,118 @@ program CI
         call system("tar -czf " // trim(output_file_name) // ".tar.gz "  // trim(tmp_file_name) )
       end if 
 
+      ! --------------------------------------------------------------- !
+      !       ____________________________________________________      !
+      !      |____________________________________________________|     !
+      !      | __     __   ____   ___ ||  ____    ____     _  __  |     !
+      !      ||  |__ |--|_| || |_|   |||_|**|*|__|+|+||___| ||  | |     !
+      !      ||==|^^||--| |=||=| |=*=||| |~~|~|  |=|=|| | |~||==| |     !
+      !      ||  |##||  | | || | |JRO|||-|  | |==|+|+||-|-|~||__| |     !
+      !      ||__|__||__|_|_||_|_|___|||_|__|_|__|_|_||_|_|_||__|_|     !
+      !      ||_______________________||__________________________|     !
+      !      | _____________________  ||      __   __  _  __    _ |     !
+      !      ||=|=|=|=|=|=|=|=|=|=|=| __..\/ |  |_|  ||#||==|  / /|     !
+      !      || | | | | | | | | | | |/\ \  \\|++|=|  || ||==| / / |     !
+      !      ||_|_|_|_|_|_|_|_|_|_|_/_/\_.___\__|_|__||_||__|/_/__|     !
+      !      |____________________ /\~()/()~//\ __________________|     !
+      !      | __   __    _  _     \_  (_ .  _/ _    ___     _____|     !
+      !      ||~~|_|..|__| || |_ _   \ //\\ /  |=|__|~|~|___| | | |     !
+      !      ||--|+|^^|==|1||2| | |__/\ __ /\__| |==|x|x|+|+|=|=|=|     !
+      !      ||__|_|__|__|_||_|_| /  \ \  / /  \_|__|_|_|_|_|_|_|_|     !
+      !      |_________________ _/    \/\/\/    \_ _______________|     !
+      !      | _____   _   __  |/      \../      \|  __   __   ___|     !
+      !      ||_____|_| |_|##|_||   |   \/ __|   ||_|==|_|++|_|-|||     !
+      !      ||______||=|#|--| |\   \   o    /   /| |  |~|  | | |||     !
+      !      ||______||_|_|__|_|_\   \  o   /   /_|_|__|_|__|_|_|||     !
+      !      |_________ __________\___\____/___/___________ ______|     !
+      !      |__    _  /    ________     ______           /| _ _ _|     !
+      !      |\ \  |=|/   //    /| //   /  /  / |        / ||%|%|%|     !
+      !      | \/\ |*/  .//____//.//   /__/__/ (_)      /  ||=|=|=|     !
+      !    __|  \/\|/   /(____|/ //                    /  /||~|~|~|__   !
+      !      |___\_/   /________//   ________         /  / ||_|_|_|     !
+      !      |___ /   (|________/   |\_______\       /  /| |______|     !
+      !          /                  \|________)     /  / | |            !
+      ! --------------------------------------------------------------- !
+      !                            Post-HF                              !
+      ! --------------------------------------------------------------- !
 
       !-----------------------------------------------------------------!
-      !                              MCDE                               !
+      !                  transformation AO --> MO                       !
       !-----------------------------------------------------------------!
 
-      if (c_MCDE) then
-        call  chemist_to_physics_notation(nBas,ERI)
+      transformation = (c_MCDE .or. c_MP2) .and. (.not. c_SAO)
+
+      if (transformation) then 
+
         allocate(ERI_MO(nBas,nBas,nBas,nBas))
 
         call cpu_time(start)
-          call AO_to_MO_ERI_chemist(nBas,coeff,ERI,ERI_MO)
+          call AO_to_MO_ERI(nBas,coeff,ERI,ERI_MO)
         call cpu_time(end)
 
-        call print_MO_file(nBas,ERI_MO)
-        
+        !call print_MO_file(nBas,ERI_MO)
+
         time = end - start
-
-      end if 
-
-      
-      !-----------------------------------------------------------------!
-      ! AO to MO transformation
-      !-----------------------------------------------------------------!
-
-      if (c_MP2) then 
-
-      if (c_SAO) then 
-
-      !allocate(ERI_MO_SAO(nBas,nBas,nBas,nBas))
-
-      !call cpu_time(start)
-      !  call AO_to_MO_ERI_SAO(nBas,coeff_SAO,ERI,ERI_MO_SAO)
-      !call cpu_time(end)
-
-      !call print_MO_file_SAO(nBas,ERI_MO_SAO)
-    
-      !time = end - start
-
-      else 
-
-      allocate(ERI_MO(nBas,nBas,nBas,nBas))
-
-      call cpu_time(start)
-        call AO_to_MO_ERI_chemist(nBas,coeff,ERI,ERI_MO)
-      call cpu_time(end)
-
-      call print_MO_file(nBas,ERI_MO)
-    
-      time = end - start
-
-      end if 
-      
-      end if 
-
-      !-----------------------------------------------------------------!
-      ! FCI Energy calculation
-      !-----------------------------------------------------------------!
-      if (c_MP2) then 
-
-        if (c_SAO) then 
-
-        !call cpu_time(start)
-        !  call MP2_SAO(nBas,nO,e,ERI_MO_SAO,E_nuc,EHF)
-        !call cpu_time(end)
-
-        !write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for AO to MO transformation = ',time,' seconds'
-        !write(outfile,*)
-
-        !time = end - start
-        !write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for MP2 calculation = ',time,' seconds'
-        !write(outfile,*)
-
-
-        else 
-
-        call cpu_time(start)
-          call MP2(nBas,nO,e,ERI_MO,E_nuc,EHF)
-        call cpu_time(end)
 
         write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for AO to MO transformation = ',time,' seconds'
         write(outfile,*)
 
-        time = end - start
-        write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for MP2 calculation = ',time,' seconds'
-        write(outfile,*)
+      end if
+
+      !-----------------------------------------------------------------!
+      !                     MP2 Energy calculation                      !
+      !-----------------------------------------------------------------!
+
+      if (c_MP2) then 
+
+        if (c_SAO) then 
+
+          ! memory allocation ! 
+          
+          allocate(ERI_SAO(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell))
+          allocate(ERI_KMO(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell))
+
+          call cpu_time(start)
+            call transform_ERI_AO_to_SAO(nBas, ERI, ERI_SAO)
+            call transform_ERI_SAO_to_kMO(nBas,coeff_SAO,ERI_SAO,ERI_kMO)
+          call cpu_time(end)
+
+          time = end - start
+
+          write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for AO to MO transformation = ',time,' seconds'
+          write(outfile,*)
+
+          deallocate(ERI,ERI_SAO)
+
+          call cpu_time(start)
+            call kMP2_calc(N_cell, blk, ERI_kMO, E_nuc, EHF)
+          call cpu_time(end)
+
+          time = end - start
+          write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for K-MP2 calculation = ',time,' seconds'
+          write(outfile,*)
+
+        else 
+
+          call cpu_time(start)
+            call MP2(nBas,nO,e,ERI_MO,E_nuc,EHF)
+          call cpu_time(end)
+
+          time = end - start
+          write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for MP2 calculation = ',time,' seconds'
+          write(outfile,*)
 
         end if 
 
-        
+      end if 
 
-      end if
-
-      ! --------------------------------------------------------------- !
-      ! --------------------------------------------------------------- !
+      !-----------------------------------------------------------------!
+      !                       MCDE  calculation                         !
+      !-----------------------------------------------------------------!
 
       if (c_MCDE) then
         call  MCDE(nBas, nO, e, ERI_MO)
       end if 
-
-
     
       !-----------------------------------------------------------------!
       ! FCI Energy calculation
@@ -586,7 +611,6 @@ program CI
         
       ! --------------------------------------------------------------- !
       ! --------------------------------------------------------------- !
-
 
       call system_clock(count=end_count)
 
@@ -598,7 +622,6 @@ program CI
       mod(int(elapsed), 3600) / 60, &
       mod(int(elapsed), 60)
       
-
       close(outfile)
 
       call system("rm torus_parameters.inp")

@@ -1,70 +1,97 @@
-subroutine MP2_SAO(nBas,nO,e,ERI,ENuc,EHF)
+subroutine kMP2_calc(N_cell, blk, ERI_kMO, ENuc, EHF)
 
-      use files 
-      use constants_module
-
+      use files
+      use constants_module, only: dp, dpc
+      use unitcell_module, only: nfuc, nx, ny, nz
+      use k_blocks
       implicit none
 
-      ! Input variables
-
-      integer,intent(in)            :: nBas
-      integer,intent(in)            :: nO
-      double precision,intent(in)   :: ENuc
-      double precision,intent(in)   :: EHF
-      double precision,intent(in)   :: e(nBas)
-      complex(dpc),intent(in)       :: ERI(nBas,nBas,nBas,nBas)
+      ! Inputs
+      integer         , intent(in)   :: N_cell
+      type(K_block)   , intent(in)   :: blk(N_cell)
+      complex(dpc)    , intent(in)   :: ERI_kMO(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      real(dp)        , intent(in)   :: ENuc, EHF
 
       ! Local variables
+      integer                        :: ki, ka, kj, kb
+      integer                        :: i, a, j, b
+      integer                        :: kbx, kby, kbz, idx, ix, iy, iz
+      integer, allocatable           :: coord(:,:)
+      
+      real(dp)                       :: Dijab
+      real(dp)                       :: E2d, E2x, EcMP2
+      complex(dpc)                   :: g_direct, g_exch
 
-      integer                       :: i,j
-      integer                       :: a,b
-      double precision              :: Dijab
-      double precision              :: E2d
-      double precision              :: E2x
-      double precision              :: EcMP2
+      ! Build coordinate lookup for momentum conservation
 
-      ! Output variables
+      allocate(coord(3, N_cell))
+      do iz = 0, nz-1
+        do iy = 0, ny-1
+          do ix = 0, nx-1
+            idx = iz*nx*ny + iy*nx + ix + 1
+            coord(:,idx) = [ix, iy, iz]
+          end do
+        end do
+      end do
 
-      call header_under("MP2 correlation energy",-1)
+      E2d = 0.0_dp
+      E2x = 0.0_dp
 
-      !--------------------------------!
-      ! Compute MP2 correlation energy !
-      !--------------------------------!
+      ! Loop over independent momentum vectors
+      do ki = 1, N_cell
+        do kj = 1, N_cell
+          do ka = 1, N_cell
 
-      call sort_array(e,nBas)
+            ! Momentum conservation: kb = ki - ka + kj  (mod lattice)
+            kbx = modulo(coord(1,ki) - coord(1,ka) + coord(1,kj), nx)
+            kby = modulo(coord(2,ki) - coord(2,ka) + coord(2,kj), ny)
+            kbz = modulo(coord(3,ki) - coord(3,ka) + coord(3,kj), nz)
+            kb  = kbz*nx*ny + kby*nx + kbx + 1
 
-      E2d   = 0d0
-      E2x   = 0d0
+            ! Loop over orbitals within each block
+            do i = 1, blk(ki)%dim
+              if (blk(ki)%occupation(i) /= 2) cycle  ! Occupied only
 
-      do i=1,nO
-        do j=1,nO
-          do a=nO+1,nBas
-            do b=nO+1,nBas
-            
-              Dijab = e(a) + e(b) - e(i) - e(j)
-            
-              ! Second-order ring diagram
-            
-              E2d   = E2d   - dble(ERI(i,a,j,b))*dble(ERI(i,a,j,b))/Dijab
-            
-              ! Second-order exchange diagram
-            
-              E2x   = E2x   - dble(ERI(i,a,j,b))*dble(ERI(i,b,j,a))/Dijab
-            
-            enddo
-          enddo
-        enddo
-      enddo
+              do j = 1, blk(kj)%dim
+                if (blk(kj)%occupation(j) /= 2) cycle  ! Occupied only
 
-      EcMP2   = 2d0*E2d   - E2x
+                do a = 1, blk(ka)%dim
+                  if (blk(ka)%occupation(a) /= 0) cycle  ! Virtual only
 
-      !------------!
-      ! MP2 energy !
-      !------------!
+                  do b = 1, blk(kb)%dim
+                    if (blk(kb)%occupation(b) /= 0) cycle  ! Virtual only
 
+                    ! Denominator: e_a(ka) + e_b(kb) - e_i(ki) - e_j(kj)
+                    Dijab = blk(ka)%energy(a) + blk(kb)%energy(b) &
+                          - blk(ki)%energy(i) - blk(kj)%energy(j)
+
+                    ! Direct: (i ki, a ka | j kj, b kb)
+                    g_direct = ERI_kMO(i, a, j, b, ki, ka, kj)
+
+                    ! Exchange: (i ki, b kb | j kj, a ka)
+                    g_exch   = ERI_kMO(i, b, j, a, ki, kb, kj)
+
+                    ! Direct sum: |g_direct|^2 / Dijab
+                    E2d = E2d - real(g_direct * conjg(g_direct), dp) / Dijab
+
+                    ! Exchange sum: Re(g_direct * conjg(g_exch)) / Dijab
+                    E2x = E2x - real(g_direct * conjg(g_exch), dp) / Dijab
+
+                  end do
+                end do
+
+              end do
+            end do
+
+          end do
+        end do
+      end do
+
+      EcMP2  = 2.0_dp * E2d - E2x
+    
       write(outfile,*)
       write(outfile,'(A32)')           '--------------------------'
-      write(outfile,'(A32)')           ' MP2 calculation          '
+      write(outfile,'(A32)')           ' K-MP2 calculation        '
       write(outfile,'(A32)')           '--------------------------'
       write(outfile,'(A32,1X,F24.16)') ' MP2 correlation energy = ',EcMP2
       write(outfile,'(A32,1X,F24.16)') ' Direct part            = ',2d0*E2d
@@ -76,4 +103,6 @@ subroutine MP2_SAO(nBas,nO,e,ERI,ENuc,EHF)
       write(outfile,'(A32)')           '--------------------------'
       write(outfile,*)
 
-end subroutine MP2_SAO
+      deallocate(coord)
+
+end subroutine kMP2_calc

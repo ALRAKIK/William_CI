@@ -21,7 +21,7 @@ subroutine exchange_potential(nBas,P,ERI,K)
       
       K(:,:) = 0d0
       
-      if (c_physicist) then 
+      if (c_physicist .or. c_MCDE) then 
 
       do nu=1,nBas
         do si=1,nBas

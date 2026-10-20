@@ -200,7 +200,7 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
 
                 call ERI_integral_4_function(ERI(i),ERI(j),ERI(k),ERI(l),value)
 
-                if (c_physicist) then 
+                if (c_physicist .or. c_MCDE) then 
 
                   two_electron(i,k,j,l) = value
                   two_electron(j,k,i,l) = value

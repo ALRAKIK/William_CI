@@ -350,5 +350,12 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
 	      ! Memory deallocation
 	
         deallocate(P,error,J,K,F,Fp,err_diis,F_diis)
+
+        write(*,'(a)') ""
+        write(*,'(a)') "╔───────────────────────────────────────────────╗"
+        write(*,'(a)') "│             Hartree-Fock completed            │"
+        write(*,'(a)') "╚───────────────────────────────────────────────╝"
+        flush(6)
+        write(*,'(a)') ""
   
 end subroutine RHF

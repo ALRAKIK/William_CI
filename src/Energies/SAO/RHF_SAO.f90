@@ -1,4 +1,4 @@
-subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
+subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
 
       ! Perform a restricted Hartree-Fock calculation
 
@@ -44,7 +44,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
       integer                       ::             max_diis = 5
       integer                       ::                   n_diis
       integer                       ::                   i  , o
-      integer                       ::                  mu , nu 
+      integer                       ::                  mu , nu
       double precision              ::                      sum 
       double precision              ::              sum_o(nbas)
       double precision              ::                    rcond
@@ -68,11 +68,12 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
       complex(dpc),allocatable      ::              P_SAO(:,:)
       complex(dpc),allocatable      ::           P_SAO_AO(:,:)
 
+
       integer,allocatable           ::                  idx(:) 
       integer                       ::            tmp, occ_col
       double precision,allocatable  ::             e_sorted(:)
 
-      type(K_block), allocatable    ::                  blk(:)
+      type(K_block)                 ::             blk(N_cell)
 
       
       !-----------------------------------------------------------------!
@@ -409,7 +410,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
       call print_band_structure(nBas, nfuc, N_cell, e, 'band_structure.dat')
 
       call build_k_blocks(nBas,nO, N_cell, coeff_SAO, e, blk)
-
+      
       !------------------------------------------------------------------------
       ! End of SCF loop
       !------------------------------------------------------------------------
@@ -434,9 +435,13 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO)
 
         call print_RHF_SAO(nBas,nO,e,coeff_SAO,ENuc,ET,EV,EJ,EK,EHF,blk)
 
-
-
         deallocate(P,error,J,K,F,Fp,err_diis,F_diis,S_SAO,X_SAO,P_SAO,P_SAO_AO,F_SAO,Fp_SAO,idx,e_sorted)
 
+        write(*,'(a)') ""
+        write(*,'(a)') "╔───────────────────────────────────────────────╗"
+        write(*,'(a)') "│             Hartree-Fock completed            │"
+        write(*,'(a)') "╚───────────────────────────────────────────────╝"
+        flush(6)
+        write(*,'(a)') ""
         
 end subroutine RHF_SAO

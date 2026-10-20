@@ -20,6 +20,7 @@ contains
       subroutine build_k_blocks(nBas,nO, nBlocks, Cfull, efull, blk)
 
       use constants_module
+      use unitcell_module
       
       implicit none 
 
@@ -28,7 +29,7 @@ contains
       integer, intent(in)                     :: nBlocks
       complex(kind=8) , intent(in)            :: Cfull(nBas,nBas)
       double precision, intent(in)            :: efull(nBas)
-      type(K_block), allocatable, intent(out) :: blk(:)
+      type(K_block),    intent(out)           :: blk(N_cell)
       
       integer                                 :: b, s, e, d
 
@@ -41,8 +42,6 @@ contains
         e_sorted = efull
 
         call sort_array(e_sorted, nBas)
-
-        allocate(blk(nBlocks))
       
         do b = 1, nBlocks
           

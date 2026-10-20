@@ -1,0 +1,141 @@
+subroutine AO_to_MO_ERI(nBas,c,ERI_AO,ERI_MO)
+
+      ! Expression of bi-electronic integrals in the MO basis set
+
+      use files 
+      use keywords
+
+      implicit none
+
+      ! Input variables
+      
+      integer,intent(in)            :: nBas
+      double precision,intent(in)   :: c(nBas,nBas)
+      double precision,intent(in)   :: ERI_AO(nBas,nBas,nBas,nBas)
+      
+      ! Local variables
+      
+      integer                       :: mu,nu,la,si
+      integer                       :: p,q,r,s
+      double precision,allocatable  :: scr(:,:,:,:)
+
+      ! Output variables
+
+      double precision,intent(out)  :: ERI_MO(nBas,nBas,nBas,nBas)
+
+
+      double precision              :: J_sum, K_sum, E2e_MO
+      integer                       :: i, j
+
+      ! Memory allocation
+
+      allocate(scr(nBas,nBas,nBas,nBas))
+
+  
+      !--------------------------------------
+      ! AO to MO transformation starts here !
+      !--------------------------------------
+
+      ! Transform 4th index
+
+      scr(:,:,:,:) = 0d0
+
+      do mu=1,nBas
+         do nu=1,nBas
+           do la=1,nBas
+             do si=1,nBas
+            
+               do s=1,nBas
+              
+                 scr(mu,nu,la,s) = scr(mu,nu,la,s) + c(si,s)*ERI_AO(mu,nu,la,si)
+              
+               enddo    
+             
+             enddo
+          enddo
+        enddo
+      enddo
+
+      ! Transform 3rd index
+
+      ERI_MO(:,:,:,:) = 0d0
+
+      do mu=1,nBas
+        do nu=1,nBas
+          do la=1,nBas
+          
+            do r=1,nBas
+              do s=1,nBas
+              
+                ERI_MO(mu,nu,r,s) = ERI_MO(mu,nu,r,s) + c(la,r)*scr(mu,nu,la,s)
+              
+              enddo
+            enddo    
+          
+          enddo
+        enddo
+      enddo
+
+      ! Transform 2nd index
+
+      scr(:,:,:,:) = 0d0
+
+      do mu=1,nBas
+        do nu=1,nBas
+        
+          do q=1,nBas
+            do r=1,nBas
+              do s=1,nBas
+              
+                scr(mu,q,r,s) = scr(mu,q,r,s) + c(nu,q)*ERI_MO(mu,nu,r,s)
+              
+              enddo
+            enddo
+          enddo    
+        
+        enddo
+      enddo
+
+      ! Transform 1st (and last) index
+
+      ERI_MO(:,:,:,:) = 0d0
+
+      do mu=1,nBas
+      
+        do p=1,nBas
+          do q=1,nBas
+            do r=1,nBas
+              do s=1,nBas
+              
+                ERI_MO(p,q,r,s) = ERI_MO(p,q,r,s) + c(mu,p)*scr(mu,q,r,s)
+              
+              enddo
+            enddo
+          enddo
+        enddo
+      
+      enddo
+
+
+      !J_sum = 0.0d0
+      !K_sum = 0.0d0
+!
+      !do i = 1, 1
+      !  do j = 1, 1
+      !    J_sum = J_sum + ERI_MO(i, i, j, j)   ! Sum of (ii|jj)
+      !    K_sum = K_sum + ERI_MO(i, j, i, j)   ! Sum of (ij|ij)
+      !  end do
+      !end do
+!
+      !E2e_MO = 2.0d0 * J_sum - K_sum
+!
+      !write(outfile,*) "============================================="
+      !write(outfile,*) "DEBUG 1: GOLDEN RULE"
+      !write(outfile,*) "---------------------------------------------"
+      !write(outfile,*) "J_sum (sum ii|jj)          : ", 2.d0 * J_sum
+      !write(outfile,*) "K_sum (sum ij|ij)          : ", -K_sum
+      !write(outfile,*) "E2e from MO integrals      : ", E2e_MO
+      !write(outfile,*) "============================================="
+
+
+end subroutine AO_to_MO_ERI
