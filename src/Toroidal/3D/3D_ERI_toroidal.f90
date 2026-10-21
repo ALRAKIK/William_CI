@@ -189,7 +189,12 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
         
       ! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> !
 
-      two_electron = 0.d0 
+      if (c_SAO) then 
+        two_electron_integrals = 0.d0
+      else 
+        two_electron = 0.d0 
+      end if 
+      
 
       ! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> !
 
@@ -197,7 +202,7 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
 
 
       !$omp parallel do private(ij_index,i,j,k,l,val) &
-      !$omp shared(two_electron, ERI, i_index, j_index,Q_schwarz) &
+      !$omp shared(ERI, i_index, j_index,Q_schwarz) &
       !$omp schedule(dynamic,optimal_chunk_size)
 
       do ij_index = 1, total_ij_pairs
