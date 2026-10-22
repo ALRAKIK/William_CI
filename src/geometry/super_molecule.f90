@@ -334,10 +334,16 @@ subroutine read_keywords(keyword)
         if (trim(line) == 'DIIS'     )   keyword(19) = 'DIIS'
 
         if (trim(line) == 'MCDE'     )   keyword(20) = 'MCDE'
+        
+        if (trim(line) == 'Lanczos'  )   keyword(21) = 'Lanczos'
 
-        if (trim(line) == 'nquad_128' )  keyword(21) = 'nquad_128'
+        if (trim(line) == 'Spin'     )   keyword(22) = 'Spin'
 
-        if (trim(line) == 'physicist' )  keyword(22) = 'physicist'
+        if (trim(line) == 'screen'   )   keyword(23) = 'screen'
+
+        if (trim(line) == 'nquad_128' )  keyword(24) = 'nquad_128'
+
+        if (trim(line) == 'physicist' )  keyword(25) = 'physicist'
 
       end do
 

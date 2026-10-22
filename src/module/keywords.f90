@@ -13,6 +13,10 @@ module keywords
       public  :: c_MCDE
       public  :: c_nquad_128
       public  :: c_physicist
+      public  :: c_Spin_adapt
+      public  :: c_Lanczos
+      public  :: c_screen
+
 
       logical :: c_One , c_OV , c_K , c_NA , c_ERI
       logical :: c_read, c_Integral, c_trexio
@@ -25,6 +29,9 @@ module keywords
       logical :: c_MCDE
       logical :: c_nquad_128
       logical :: c_physicist
+      logical :: c_Spin_adapt
+      logical :: c_Lanczos
+      logical :: c_screen
 
 
 end module keywords

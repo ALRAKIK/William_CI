@@ -427,6 +427,7 @@ subroutine matout(m,n,A)
       ! Print the MxN array A
   
       use files
+      use sorts
       implicit none
 
       integer,parameter             :: ncol = 5
@@ -435,7 +436,8 @@ subroutine matout(m,n,A)
       double precision,intent(in)   :: A(m,n)
       double precision              :: B(ncol)
       integer                       :: ilower,iupper,num,i,j
-    
+
+
       do ilower=1,n,ncol
         iupper = min(ilower + ncol - 1,n)
         num = iupper - ilower + 1
@@ -444,10 +446,11 @@ subroutine matout(m,n,A)
           do j=ilower,iupper
             B(j-ilower+1) = A(i,j)
           enddo
+          ! call bubble_sort(B)
           do j=1,num
             if(abs(B(j)) < small) B(j) = 0d0
           enddo
-          write(outfile,'(6x,I4,10F15.8)') i,(B(j),j=1,num)
+          write(outfile,'(I7,10F15.8)') i,(B(j),j=1,num)
         enddo
       enddo
   

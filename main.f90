@@ -69,6 +69,7 @@ program CI
       double precision                :: elapsed
 
       logical                         :: transformation
+      integer                         ::                  ERI_size
 
       !-----------------------------------------------------------------!
       !                        END variables                            !
@@ -87,29 +88,33 @@ program CI
       !                        Read key words                           !
       ! --------------------------------------------------------------- !
 
-      c_integral  = any(keyword == 'Integrals')
-      c_read      = any(keyword == 'Read'     )
-      c_trexio    = any(keyword == 'Trexio'   )
-      c_Angstrom  = any(keyword == 'Angstrom' )
-      c_plot      = any(keyword == 'Plot'     )     ! 5
-      c_details   = any(keyword == 'Details'  )
-      c_MO        = any(keyword == 'MO'       )
-      c_UHF       = any(keyword == 'UHF'      )
-      c_Huckel    = any(keyword == 'Huckel'   )
-      c_MP2       = any(keyword == 'MP2'      )     ! 10
-      c_OV        = any(keyword == 'OV'       )
-      c_K         = any(keyword == 'K'        )
-      c_NA        = any(keyword == 'NA'       )
-      c_ERI       = any(keyword == 'ERI'      )
-      c_One       = any(keyword == 'One'      )     ! 15
-      c_Orbitals  = any(keyword == 'Orbitals' )
-      c_SAO       = any(keyword == 'SAO'      )
-      c_save      = any(keyword == 'Save'     )
-      c_DIIS      = any(keyword == 'DIIS'     )     
-      c_MCDE      = any(keyword == 'MCDE'     )     ! 20
+      c_integral    = any(keyword == 'Integrals')
+      c_read        = any(keyword == 'Read'     )
+      c_trexio      = any(keyword == 'Trexio'   )
+      c_Angstrom    = any(keyword == 'Angstrom' )
+      c_plot        = any(keyword == 'Plot'     )     ! 5
+      c_details     = any(keyword == 'Details'  )
+      c_MO          = any(keyword == 'MO'       )
+      c_UHF         = any(keyword == 'UHF'      )
+      c_Huckel      = any(keyword == 'Huckel'   )
+      c_MP2         = any(keyword == 'MP2'      )     ! 10
+      c_OV          = any(keyword == 'OV'       )
+      c_K           = any(keyword == 'K'        )
+      c_NA          = any(keyword == 'NA'       )
+      c_ERI         = any(keyword == 'ERI'      )
+      c_One         = any(keyword == 'One'      )     ! 15
+      c_Orbitals    = any(keyword == 'Orbitals' )
+      c_SAO         = any(keyword == 'SAO'      )
+      c_save        = any(keyword == 'Save'     )
+      c_DIIS        = any(keyword == 'DIIS'     )     
+      c_MCDE        = any(keyword == 'MCDE'     )     ! 20
+      c_Lanczos     = any(keyword == 'Lanczos'  )
+      c_Spin_adapt  = any(keyword == 'Spin'     )
+      c_screen      = any(keyword == 'screen'   )
       c_nquad_128 = any(keyword == 'nquad_128')
       c_physicist = any(keyword == 'physicist')
-                              
+
+
       ! --------------------------------------------------------------- !
       !            Read number of alpha and beta electrons              !
       ! --------------------------------------------------------------- !
@@ -373,6 +378,7 @@ program CI
       !              ---------------------------------                 !
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+
       if (c_nquad_128) then 
         write(*,'(A)') 'The integrals will be calculated using 128 point quadrature'
         nquad_point = 128 
@@ -380,6 +386,12 @@ program CI
         write(*,'(A)') 'The integrals will be calculated using 64 point quadrature'
         nquad_point = 64
       end if
+
+      if (c_SAO) then 
+        write(outfile,'(A)') 'The integrals will be calculated'
+        call Tori1D_SAO(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)
+        go to 100
+      end if 
 
       if (c_read) then
 
@@ -407,6 +419,8 @@ program CI
         end select         
 
       end if
+
+100   continue
 
       ! --------------------------------------------------------------- !
       !            Read the one and the two electron integrals     
@@ -470,15 +484,9 @@ program CI
       !                                                                  !
       ! ---------------------------------------------------------------- ! 
        
-      if (c_SAO) then 
-        call cpu_time(start)
-          call Hartree_Fock_SAO(nBas,nO,S,T,V,Hc,ERI,X,E_nuc,EHF,e,coeff,coeff_SAO,n_alpha,n_beta,blk)
-        call cpu_time(end)
-      else 
-        call cpu_time(start)
-          call Hartree_Fock(nBas,nO,S,T,V,Hc,ERI,X,E_nuc,EHF,e,coeff,n_alpha,n_beta)
-        call cpu_time(end)
-      end if 
+      call cpu_time(start)
+        call Hartree_Fock(nBas,nO,ERI_size,S,T,V,Hc,ERI,X,E_nuc,EHF,e,coeff,coeff_SAO,n_alpha,n_beta)
+      call cpu_time(end)
       
       time = end - start
 
@@ -526,7 +534,7 @@ program CI
       ! --------------------------------------------------------------- !
 
       !-----------------------------------------------------------------!
-      !                  transformation AO --> MO                       !
+      !      physicist notation of the two electron integrals           !
       !-----------------------------------------------------------------!
 
       transformation = (c_MCDE .or. c_MP2) .and. (.not. c_SAO)
@@ -600,8 +608,10 @@ program CI
       !-----------------------------------------------------------------!
 
       if (c_MCDE) then
-        call  MCDE(nBas, nO, e, ERI_MO)
+        call  MCDE(nBas, nO, e, ERI_MO, c_Lanczos, c_Spin_adapt, c_screen)
       end if 
+
+
     
       !-----------------------------------------------------------------!
       ! FCI Energy calculation
