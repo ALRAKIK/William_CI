@@ -52,6 +52,7 @@ contains
           blk(b)%dim    = d
         
           allocate(blk(b)%Coeff(d,d), blk(b)%energy(d),blk(b)%occupation(d))
+          blk(b)%occupation = 0
 
           blk(b)%Coeff  = Cfull(s:e, s:e)
           blk(b)%energy = efull(s:e)
@@ -61,8 +62,6 @@ contains
           end do 
 
         end do
-
-
 
       end subroutine build_k_blocks
 

@@ -31,8 +31,6 @@ subroutine transform_ERI_AO_to_SAO(nBas, ERI_AO, ERI_SAO)
 
       complex(dpc), intent(out) :: ERI_SAO(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
 
-      
-
       ! Check consistency of the cell grid and AO ordering.
       if (min(nx,ny,nz) < 1) then
         error stop 'transform_ERI_AO_to_SAO: invalid cell grid'
@@ -146,7 +144,8 @@ subroutine transform_ERI_SAO_to_kMO(nBas, coeff_SAO, ERI_SAO, ERI_kMO)
       integer :: ix, iy, iz, idx
       integer :: k4x, k4y, k4z
       integer :: off1, off2, off3, off4
-      integer :: a, b, c, d, p, q, r, s
+      integer :: a, b, c, d
+      integer :: p, q, r, s
       integer :: row, col
 
       integer, allocatable :: coord(:,:)
@@ -216,6 +215,7 @@ subroutine transform_ERI_SAO_to_kMO(nBas, coeff_SAO, ERI_SAO, ERI_kMO)
             k4z = modulo(coord(3,k1)-coord(3,k2)+coord(3,k3),nz)
 
             k4 = k4z*nx*ny + k4y*nx + k4x + 1
+
             off4 = (k4-1)*nfuc
 
             ! Fourth index: d -> s, no conjugation.
@@ -295,3 +295,31 @@ subroutine transform_ERI_SAO_to_kMO(nBas, coeff_SAO, ERI_SAO, ERI_kMO)
       deallocate(coord,scr1,scr2,scr3)
 
 end subroutine transform_ERI_SAO_to_kMO
+
+
+
+integer function fourth_k(k1,k2,k3) result(k4)
+    
+      use unitcell_module
+      implicit none 
+
+      integer, intent(in) :: k1,k2,k3
+      integer             :: x1,y1,z1
+      integer             :: x2,y2,z2
+      integer             :: x3,y3,z3
+
+      x1 = modulo(k1-1,nx)
+      y2 = modulo((k1-1)/nx,ny)
+      z3 = (k1-1)/(nx*ny)
+
+      x2 = modulo(k2-1,nx)
+      y2 = modulo((k2-1)/nx,ny)
+      z2 = (k2-1)/(nx*ny)
+
+      x3 = modulo(k3-1,nx)
+      y3 = modulo((k3-1)/nx,ny)
+      z3 = (k3-1)/(nx*ny)
+
+      k4 = modulo(x1+x2-x3,nx) + nx*modulo(y1+y2-y3,ny) + nx*ny*modulo(z1+z2-z3,nz) + 1
+
+end function fourth_k

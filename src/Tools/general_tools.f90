@@ -211,7 +211,6 @@ subroutine check_the_overlap_SAO(N,over)
       ! local !
 
       integer                       :: i
-      double precision              :: Evec(N,N)
       double precision              :: Eval(N)
       double precision,parameter    :: thresh = 1d-6
       double precision,parameter    :: machine_eps = 2.22E-16

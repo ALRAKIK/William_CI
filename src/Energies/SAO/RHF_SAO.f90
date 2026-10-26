@@ -37,7 +37,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
       double precision,allocatable  ::                   P(:,:)
       double precision,allocatable  ::                   J(:,:)
       double precision,allocatable  ::                   K(:,:)
-      double precision,allocatable  ::           F(:,:),Fp(:,:)
+      double precision,allocatable  ::                   F(:,:)
       double precision,allocatable  ::               error(:,:)
       double precision,external     ::             trace_matrix
 
@@ -66,7 +66,6 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
       complex(dpc),allocatable      ::              F_SAO(:,:)
       complex(dpc),allocatable      ::             Fp_SAO(:,:)
       complex(dpc),allocatable      ::              P_SAO(:,:)
-      complex(dpc),allocatable      ::           P_SAO_AO(:,:)
 
 
       integer,allocatable           ::                  idx(:) 
@@ -74,6 +73,8 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
       double precision,allocatable  ::             e_sorted(:)
 
       type(K_block)                 ::             blk(N_cell)
+
+      
 
       
       !-----------------------------------------------------------------!
@@ -92,13 +93,13 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
   
       allocate(P(nBas,nBas) ,error(nBas,nBas))
       allocate(J(nBas,nBas) ,    K(nBas,nBas))
-      allocate(F(nBas,nBas) ,   Fp(nBas,nBas))
+      allocate(F(nBas,nBas))
 
       allocate(err_diis(nBas*nBas,max_diis))
       allocate(  F_diis(nBas*nBas,max_diis))
 
       allocate(S_SAO(nBas,nBas) ,      X_SAO(nBas,nBas))
-      allocate(P_SAO(nBas,nBas) ,   P_SAO_AO(nBas,nBas))
+      allocate(P_SAO(nBas,nBas))
       allocate(F_SAO(nBas,nBas) ,     Fp_SAO(nBas,nBas))
 
       allocate(idx(nBas) ,   e_sorted(nBas))
@@ -135,11 +136,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
       sum_o(:) = 0.d0 
 
       do o = 1 , nbas
-        do mu = 1 , nbas 
-          do nu = 1 , nbas 
-            sum_o(o) = sum_o(o) + P(mu,nu)*S(mu,o)*S(nu,o)
-          end do 
-        end do 
+          sum_o(o) = dot_product(S(:,o), matmul(P, S(:,o)))
       end do 
 
       call header_under("P_{mu nu} S_{mu s} S_{nu s}",-1)
@@ -154,7 +151,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
       call transform_AO_to_SAO(nBas,S,S_SAO)
 
       call get_X_from_overlap_complex(nBas,S_SAO,X_SAO)
-
+      
       ! --------------------------------------------------------------- !
 
       ! Initialization
@@ -206,51 +203,21 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
       F(:,:) = Hc(:,:) + J(:,:) + K(:,:)
 
       call transform_AO_to_SAO(nBas,F,F_SAO)
+      call transform_SAO_to_AO(nBas,F_SAO,F)
 
-      !   Compute the error vector and extract the convergence criterion
+      ! Compute the error vector and extract the convergence criterion  !
 
       error = matmul(F,matmul(P,S)) - matmul(matmul(S,P),F)
-
       if(nSCF > 1) Conv = maxval(abs(error))
       if (Conv < thresh) exit 
 
       ! ****************** !
 
-      if (c_details) then 
+      if (c_details) call details_print_HF(nBas,nSCF,J,K,F,1)
 
-      write(HFfile,'(a)') ""
-      write(HFfile,'(3a)') "!" ,repeat('-',44), "!"
-      write(HFfile,'(a,I3)') "                 Iter  = ", nSCF
-      write(HFfile,'(3a)') "!" ,repeat('-',44), "!"
-      write(HFfile,'(a)') ""
-
-    
-      call header_HF("Hartree potential J = P(la,si)*ERI(mu,nu,la,si)",-1)
-      write(HFfile,'(17x,*(i3,15x))') (i,i=1,nfuc)
-      do i = 1 , size(j,1)
-        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (j(o,i),o=1,nfuc)
-      end do 
-      write(HFfile,'(a)') ""
-
-      call header_HF("Exchange potential K = -0.5 P(la,si)*ERI(mu,la,si,nu)",-1)
-      write(HFfile,'(17x,*(i3,15x))') (i,i=1,nfuc)
-      do i = 1 , size(k,1)
-        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (k(o,i),o=1,nfuc)
-      end do 
-      write(HFfile,'(a)') ""
-
-      call header_HF("Fock matrix F = Hc + J + K", -1)
-      write(HFfile,'(17x,*(i3,15x))') (i,i=1,nfuc)
-      do i = 1 , size(F,1)
-        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (F(o,i),o=1,nfuc)
-      end do 
-      write(HFfile,'(a)') ""
-
-      end if 
-
-      !------------------------------------------------------------------------
+      !---------------------------------------------------------------- !
       !   Compute HF energy
-      !------------------------------------------------------------------------
+      !---------------------------------------------------------------- !
   
       !   Compute the kinetic energy
       ET = trace_matrix(nBas,matmul(P,T))
@@ -335,17 +302,12 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
         end do
       end do
 
-      call transform_SAO_to_AO(nBas,P_SAO,P_SAO_AO)
-
-      P(:,:) = dble(P_SAO_AO(:,:))
-
+      call transform_SAO_to_AO(nBas,P_SAO,P)
 
       !   Compute HOMO-LUMO gap
 
       if (nBas > nO) then
-        e_sorted = e
-        call sort_array(e_sorted, nBas)
-        Gap = e_sorted(nO+1) - e_sorted(nO)
+        Gap = e(idx(nO+1)) - e(idx(nO))
       else
         Gap = 0d0
       endif
@@ -425,7 +387,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
 
         call print_RHF_SAO(nBas,nO,e,coeff_SAO,ENuc,ET,EV,EJ,EK,EHF,blk)
 
-        deallocate(P,error,J,K,F,Fp,err_diis,F_diis,S_SAO,X_SAO,P_SAO,P_SAO_AO,F_SAO,Fp_SAO,idx,e_sorted)
+        deallocate(P,error,J,K,F,err_diis,F_diis,S_SAO,X_SAO,P_SAO,F_SAO,Fp_SAO,idx,e_sorted)
   
         stop
   
@@ -435,7 +397,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
 
         call print_RHF_SAO(nBas,nO,e,coeff_SAO,ENuc,ET,EV,EJ,EK,EHF,blk)
 
-        deallocate(P,error,J,K,F,Fp,err_diis,F_diis,S_SAO,X_SAO,P_SAO,P_SAO_AO,F_SAO,Fp_SAO,idx,e_sorted)
+        deallocate(P,error,J,K,F,err_diis,F_diis,S_SAO,X_SAO,P_SAO,F_SAO,Fp_SAO,idx,e_sorted)
 
         write(*,'(a)') ""
         write(*,'(a)') "╔───────────────────────────────────────────────╗"

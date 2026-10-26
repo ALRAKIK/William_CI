@@ -72,7 +72,7 @@ subroutine details_integrals(nBas,S,T,V,ERI)
         end do 
       close(1)
 
-end subroutine
+end subroutine details_integrals
 
 
 subroutine details_integrals_SAO(nBas,S,T,V,ERI)
@@ -150,4 +150,59 @@ subroutine details_integrals_SAO(nBas,S,T,V,ERI)
         end do 
       close(1)
 
-end subroutine
+end subroutine details_integrals_SAO
+
+
+subroutine details_print_HF(nBas,nSCF,Hartree,Exchange,Fock,type)
+
+      use files
+      use unitcell_module
+      implicit none
+
+      integer,intent(in)           :: nBas
+      integer,intent(in)           :: nscf 
+      integer,intent(in)           :: type
+      double precision, intent(in) :: Hartree (nBas,nBas)
+      double precision, intent(in) :: Exchange(nBas,nBas)
+      double precision, intent(in) :: Fock    (nBas,nBas)
+
+      ! local !
+
+      integer :: i , j 
+      integer :: n_size
+
+      if (type == 0) then 
+        n_size = nBas
+      else 
+        n_size = nfuc
+      end if 
+
+
+      write(HFfile,'(a)') ""
+      write(HFfile,'(3a)') "!" ,repeat('-',44), "!"
+      write(HFfile,'(a,I3)') "                 Iter  = ", nSCF
+      write(HFfile,'(3a)') "!" ,repeat('-',44), "!"
+      write(HFfile,'(a)') ""
+
+      call header_HF("Hartree potential J = P(la,si)*ERI(mu,nu,la,si)",-1)
+      write(HFfile,'(17x,*(i3,15x))') (i,i=1,n_size)
+      do i = 1 , size(Hartree,1)
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (Hartree(j,i),j=1,n_size)
+      end do 
+      write(HFfile,'(a)') ""
+
+      call header_HF("Exchange potential K = -0.5 P(la,si)*ERI(mu,la,si,nu)",-1)
+      write(HFfile,'(17x,*(i3,15x))') (i,i=1,n_size)
+      do i = 1 , size(Exchange,1)
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (Exchange(j,i),j=1,n_size)
+      end do 
+      write(HFfile,'(a)') ""
+
+      call header_HF("Fock matrix F = Hc + J + K", -1)
+      write(HFfile,'(17x,*(i3,15x))') (i,i=1,n_size)
+      do i = 1 , size(Fock,1)
+        write(HFfile,'(i3,6x,*(f16.10,2x))') i ,  (Fock(j,i),j=1,n_size)
+      end do 
+      write(HFfile,'(a)') ""
+
+end subroutine details_print_HF

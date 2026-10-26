@@ -13,13 +13,49 @@ subroutine transform_AO_to_SAO(nBas, AO_matrix, SAO_matrix)
       complex(dpc), intent(out) :: SAO_matrix(nBas, nBas)
 
       ! local
-      integer                   :: kx, ky, kz, Rx, Ry, Rz
-      integer                   :: a, b, mu_sao, nu_sao, j
+      integer                   :: kx, ky, kz 
+      integer                   :: Rx, Ry, Rz
+      integer                   :: a, b, j
+      integer                   :: mu_sao, nu_sao
       integer                   :: k_index, cell_index
       real(dp)                  :: theta
       complex(dpc)              :: val
 
+      integer     , allocatable :: coord(:,:)
+      complex(dpc), allocatable :: phase(:,:)
+      integer                   :: ix, iy, iz, idx
+      integer                   :: k1 , r2
+
       SAO_matrix = (0.0_dp, 0.0_dp)
+
+
+      allocate(coord(3,N_cell))
+      allocate(phase(N_cell,N_cell))
+
+      ! Zero-based coordinates, x fastest.
+      ! The same indexing is used for cells and k points.
+
+      do iz = 0, nz-1
+        do iy = 0, ny-1
+          do ix = 0, nx-1
+            idx = iz*nx*ny + iy*nx + ix + 1
+            coord(:,idx) = [ix,iy,iz]
+          end do
+        end do
+      end do
+
+      ! phase(k,R) = exp(+i k.R)
+
+      do k1 = 1, N_cell
+        do r2 = 1, N_cell
+          theta = 2.0_dp*pi * ( &
+            real(coord(1,k1),dp)*real(coord(1,r2),dp)/real(nx,dp) &
+          + real(coord(2,k1),dp)*real(coord(2,r2),dp)/real(ny,dp) &
+          + real(coord(3,k1),dp)*real(coord(3,r2),dp)/real(nz,dp))
+          theta = theta - 2.0_dp*pi * anint(theta/(2.0_dp*pi))
+          phase(k1,r2) = exp(cmplx(0.0_dp,theta,kind=dpc))
+        end do
+      end do
 
       ! loop over all k-points (reciprocal cells)
 
@@ -35,6 +71,7 @@ subroutine transform_AO_to_SAO(nBas, AO_matrix, SAO_matrix)
 
                 do b = 1, nfuc
                   nu_sao = (k_index-1)*nfuc + b
+
                   val    = (0.0_dp, 0.0_dp)
 
                   ! sum over all real-space cells
@@ -48,12 +85,7 @@ subroutine transform_AO_to_SAO(nBas, AO_matrix, SAO_matrix)
                         ! column index in AO_matrix for basis function b in cell (Rx,Ry,Rz)
                         j = b + (cell_index-1)*nfuc
 
-                        ! phase factor exp(i k·R)
-                        theta = 2.0_dp * pi * ( dble(kx-1)*dble(Rx-1)/dble(nx) &
-                                              + dble(ky-1)*dble(Ry-1)/dble(ny) &
-                                              + dble(kz-1)*dble(Rz-1)/dble(nz) )
-
-                        val = val + exp(dcmplx(0.0_dp, theta)) * AO_matrix(a, j)
+                        val = val + phase(k_index,cell_index) * AO_matrix(a, j)
 
                       end do
                     end do
@@ -68,7 +100,7 @@ subroutine transform_AO_to_SAO(nBas, AO_matrix, SAO_matrix)
         end do
       end do
 
-      call clean_and_symmetrize(nBas, SAO_matrix)
+      !call clean_and_symmetrize(nBas, SAO_matrix)
 
 end subroutine transform_AO_to_SAO
 
@@ -80,23 +112,63 @@ subroutine transform_SAO_to_AO(nBas, M_SAO, M_AO)
       implicit none
 
       ! input
-      integer, intent(in)       :: nBas
-      complex(dpc), intent(in)  :: M_SAO(nBas, nBas)
+      integer, intent(in)            :: nBas
+      complex(dpc), intent(in)       :: M_SAO(nBas, nBas)
 
       ! output
-      complex(dpc), intent(out) :: M_AO(nBas, nBas)
+      double precision, intent(out)  :: M_AO(nBas, nBas)
 
       ! local
-      integer                   :: kx, ky, kz
-      integer                   :: Rx, Ry, Rz, Rpx, Rpy, Rpz
-      integer                   :: a, b, mu, nu, mu_sao, nu_sao
-      integer                   :: k_index, cell_index, cellp_index
-      real(dp)                  :: theta, thetap
-      complex(dpc)              :: phase, phasep, val
-      integer                   :: Nc
+      integer                        :: kx, ky, kz
+      integer                        :: Rx, Ry, Rz, Rpx, Rpy, Rpz
+      integer                        :: a, b, mu, nu, mu_sao, nu_sao
+      integer                        :: k_index, cell_index, cellp_index
+      real(dp)                       :: theta
+      complex(dpc)                   :: val
+      integer                        :: Nc
+      complex(dpc)                   :: M_AO_temp(nBas, nBas)
 
-      Nc = nx * ny * nz
-      M_AO = (0.0_dp, 0.0_dp)
+      integer     , allocatable      :: coord(:,:)
+      complex(dpc), allocatable      :: phase(:,:)
+      integer                        :: ix, iy, iz, idx
+      integer                        :: k1 , r2
+      integer                        :: dRx, dRy, dRz, dR_index
+
+
+
+      Nc        = nx * ny * nz
+      M_AO_temp = (0.0_dp, 0.0_dp)
+      M_AO      = 0.0_dp
+
+      allocate(coord(3,N_cell))
+      allocate(phase(N_cell,N_cell))
+
+
+      ! Zero-based coordinates, x fastest.
+      ! The same indexing is used for cells and k points.
+
+      do iz = 0, nz-1
+        do iy = 0, ny-1
+          do ix = 0, nx-1
+            idx = iz*nx*ny + iy*nx + ix + 1
+            coord(:,idx) = [ix,iy,iz]
+          end do
+        end do
+      end do
+
+      ! phase(k,R) = exp(+i k.R)
+
+      do k1 = 1, N_cell
+        do r2 = 1, N_cell
+          theta = 2.0_dp*pi * ( &
+            real(coord(1,k1),dp)*real(coord(1,r2),dp)/real(nx,dp) &
+          + real(coord(2,k1),dp)*real(coord(2,r2),dp)/real(ny,dp) &
+          + real(coord(3,k1),dp)*real(coord(3,r2),dp)/real(nz,dp))
+          theta = theta - 2.0_dp*pi * anint(theta/(2.0_dp*pi))
+          phase(k1,r2) = exp(cmplx(0.0_dp,theta,kind=dpc))
+        end do
+      end do
+
 
       ! loop over all k-points (reciprocal cells)
       do kz = 1, nz
@@ -113,7 +185,7 @@ subroutine transform_SAO_to_AO(nBas, M_SAO, M_AO)
                 nu_sao = (k_index-1)*nfuc + b   ! block-diagonal: same k_index
                 val = M_SAO(mu_sao, nu_sao)
 
-                if (abs(val) < 1.0e-14_dp) cycle   ! skip zero blocks
+                if (abs(val) < 1.0e-15_dp) cycle   ! skip zero blocks
 
                 ! sum over real-space cells R (for orbital a) and R' (for orbital b)
                 do Rz = 1, nz
@@ -123,28 +195,23 @@ subroutine transform_SAO_to_AO(nBas, M_SAO, M_AO)
                       cell_index = (Rz-1)*nx*ny + (Ry-1)*nx + Rx
                       mu = a + (cell_index-1)*nfuc
 
-                      theta = 2.0_dp * pi * ( dble(kx-1)*dble(Rx-1)/dble(nx) &
-                                            + dble(ky-1)*dble(Ry-1)/dble(ny) &
-                                            + dble(kz-1)*dble(Rz-1)/dble(nz) )
-                      phase = exp(dcmplx(0.0_dp, theta))
+                      do Rpz = 1, nz
+                        do Rpy = 1, ny
+                          do Rpx = 1, nx
 
-                        do Rpz = 1, nz
-                          do Rpy = 1, ny
-                            do Rpx = 1, nx
+                            cellp_index = (Rpz-1)*nx*ny + (Rpy-1)*nx + Rpx
+                            nu = b + (cellp_index-1)*nfuc
 
-                              cellp_index = (Rpz-1)*nx*ny + (Rpy-1)*nx + Rpx
-                              nu = b + (cellp_index-1)*nfuc
+                            dRx = mod(Rx - Rpx + nx, nx)
+                            dRy = mod(Ry - Rpy + ny, ny)
+                            dRz = mod(Rz - Rpz + nz, nz)
+                            dR_index = dRz*nx*ny + dRy*nx + dRx + 1
 
-                              thetap = 2.0_dp * pi * ( dble(kx-1)*dble(Rpx-1)/dble(nx) &
-                                                     + dble(ky-1)*dble(Rpy-1)/dble(ny) &
-                                                     + dble(kz-1)*dble(Rpz-1)/dble(nz) )
-                              phasep = exp(dcmplx(0.0_dp, thetap))
+                            M_AO_temp(mu,nu) = M_AO_temp(mu,nu) + phase(k_index, dR_index) * val
 
-                              M_AO(mu, nu) = M_AO(mu, nu) + phase * val * conjg(phasep)
-
-                            end do
                           end do
                         end do
+                      end do
 
                     end do
                   end do
@@ -157,9 +224,11 @@ subroutine transform_SAO_to_AO(nBas, M_SAO, M_AO)
         end do
       end do
 
-      M_AO = M_AO / dble(Nc)   ! inverse Fourier transform normalisation
+      M_AO_temp = M_AO_temp / dble(Nc)   ! inverse Fourier transform normalisation
 
-      call clean_and_symmetrize(nBas, M_AO)
+      ! call clean_and_symmetrize(nBas, M_AO_temp)
+
+      M_AO(:,:) = dble(M_AO_temp(:,:))
 
 end subroutine transform_SAO_to_AO
 
@@ -172,7 +241,7 @@ subroutine clean_and_symmetrize(N, A)
       integer, intent(in)         :: N
       complex(dpc), intent(inout) :: A(N,N)
       integer                     :: i, j
-      real(dp), parameter         :: tol = 1.0d-14
+      real(dp), parameter         :: tol = 1.0d-15
 
       do i = 1, N
         do j = 1, i-1
