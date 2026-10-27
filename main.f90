@@ -70,6 +70,23 @@ program CI
 
       logical                         :: transformation
 
+      complex(dpc), allocatable :: t1(:,:,:), t2(:,:,:,:,:,:,:)
+      real(dp)                  :: emp2,eimag,mp2_defect
+      complex(dpc), allocatable :: Foo(:,:,:), Fvv(:,:,:), Fov(:,:,:)
+      complex(dpc), allocatable :: Woooo(:,:,:,:,:,:,:)
+      complex(dpc), allocatable :: Wvvvv(:,:,:,:,:,:,:)
+      complex(dpc), allocatable :: Wvoov(:,:,:,:,:,:,:)
+      complex(dpc), allocatable :: Wvovo(:,:,:,:,:,:,:)
+      complex(dpc), allocatable :: Loo(:,:,:), Lvv(:,:,:)
+      complex(dpc), allocatable :: R1(:,:,:), R2(:,:,:,:,:,:,:)
+      integer                   :: ka,kb,ke,kf,a,b,o,f
+      integer                   :: fourth_k
+      real(dp)                  :: wvvvv_defect
+      real(dp)                  :: eccsd, eccsd_imag
+      logical                   :: cc_converged
+
+
+
       !-----------------------------------------------------------------!
       !                        END variables                            !
       !-----------------------------------------------------------------!
@@ -580,6 +597,84 @@ program CI
           time = end - start
           write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for K-MP2 calculation = ',time,' seconds'
           write(outfile,*)
+
+          ! kccsd(T) !
+          allocate(t1(nfuc,nfuc,N_cell))
+          allocate(t2(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell))
+
+          call initialize_ccsd_baseline(blk,ERI_kMO,t1,t2,emp2,eimag,mp2_defect)
+          
+          call test_ccsd_f_zero(blk, ERI_kMO)
+
+          allocate(Foo(nfuc,nfuc,N_cell))
+          allocate(Fvv(nfuc,nfuc,N_cell))
+          allocate(Fov(nfuc,nfuc,N_cell))
+
+          call build_ccsd_f(blk, ERI_kMO, t1, t2, Foo, Fvv, Fov)
+
+          write(*,'(A,ES14.6)') 'Fov at MP2 guess: ', maxval(abs(Fov))
+
+          call test_ccsd_w_zero(blk, ERI_kMO)
+
+          allocate(Woooo(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell))
+          allocate(Wvvvv(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell))
+          allocate(Wvoov(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell))
+          allocate(Wvovo(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell))
+
+          call build_ccsd_w(blk, ERI_kMO, t1, t2, Woooo, Wvvvv, Wvoov,Wvovo)
+
+          wvvvv_defect=0.0_dp
+          do ka=1,N_cell
+            do kb=1,N_cell
+              do ke=1,N_cell
+                kf=fourth_k(ka,kb,ke)
+                do a=1,nfuc; do b=1,nfuc; do o=1,nfuc; do f=1,nfuc
+                  if (blk(ka)%occupation(a)/=0.or.blk(kb)%occupation(b)/=0) cycle
+                  if (blk(ke)%occupation(o)/=0.or.blk(kf)%occupation(f)/=0) cycle
+                  wvvvv_defect=max(wvvvv_defect, &
+                    abs(Wvvvv(a,b,o,f,ka,kb,ke)-ERI_kMO(a,o,b,f,ka,ke,kb)))
+                end do; end do; end do; end do
+              end do
+            end do
+          end do
+
+          write(*,'(A,ES14.6)') 'MP2 T1 norm: ',sqrt(sum(abs(t1)**2))
+          write(*,'(A,ES14.6)') 'MP2 Wvvvv bare defect: ',wvvvv_defect
+
+          
+          call test_ccsd_w_dense(blk, ERI_kMO, t1, t2)
+          allocate(Loo(nfuc,nfuc,N_cell), Lvv(nfuc,nfuc,N_cell))
+          call build_ccsd_l(blk, ERI_kMO, t1, Foo, Fvv, Loo, Lvv)
+          call test_ccsd_l(blk, ERI_kMO, Foo, Fvv)
+
+          call test_ccsd_residual_zero(blk, ERI_kMO)
+
+          allocate(R1(nfuc,nfuc,N_cell))
+          allocate(R2(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell))
+
+          call build_ccsd_residuals(blk, ERI_kMO, t1, t2, &
+               Foo, Fvv, Fov, Loo, Lvv, &
+               Woooo, Wvvvv, Wvoov, Wvovo, R1, R2)
+
+          write(*,'(A,ES14.6)') 'CCSD R1 at MP2 guess: ',maxval(abs(R1))
+          write(*,'(A,ES14.6)') 'CCSD R2 at MP2 guess: ',maxval(abs(R2))
+
+
+          call export_ccsd_residual_tests(blk, ERI_kMO, t1, t2, build_ccsd_f)
+
+          call solve_kccsd(blk, ERI_kMO, t1, t2, build_ccsd_f, &
+                eccsd, eccsd_imag, cc_converged, 100, 0.7_dp, 1.0e-10_dp, 1.0e-9_dp, 6)
+
+      write(*,'(A,L1)')      'CCSD converged: ',cc_converged
+      write(*,'(A,F22.14)')  'CCSD correlation energy: ',eccsd
+      write(*,'(A,ES14.6)')  'CCSD imaginary energy: ',eccsd_imag
+
+      if (cc_converged) then
+        call export_ccsd_residual_tests(blk, ERI_kMO, t1, t2, build_ccsd_f)
+      end if
+
+          
+          
 
         else 
 
