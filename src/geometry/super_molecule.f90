@@ -339,6 +339,8 @@ subroutine read_keywords(keyword)
 
         if (trim(line) == 'physicist' )  keyword(22) = 'physicist'
 
+        if (trim(line) == 'ccsdt'     )  keyword(23) = 'ccsdt'
+
       end do
 
 end subroutine

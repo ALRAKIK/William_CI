@@ -1,4 +1,4 @@
-subroutine kMP2_calc(N_cell, blk, ERI_kMO, ENuc, EHF)
+subroutine kMP2_calc(N_cell, blk, ERI_kMO, ENuc, EHF,EcMP2)
 
       use files
       use constants_module, only: dp, dpc
@@ -19,10 +19,21 @@ subroutine kMP2_calc(N_cell, blk, ERI_kMO, ENuc, EHF)
       integer, allocatable           :: coord(:,:)
       
       real(dp)                       :: Dijab
-      real(dp)                       :: E2d, E2x, EcMP2
+      real(dp)                       :: E2d, E2x
       complex(dpc)                   :: g_direct, g_exch
 
+      real(dp)       , intent(out)   :: EcMP2
+
       ! Build coordinate lookup for momentum conservation
+
+
+      write(*,'(a)') ""
+      write(*,'(a)') "╔───────────────────────────────────────────────╗"
+      write(*,'(a)') "│                  MP2 Started                  │"
+      write(*,'(a)') "╚───────────────────────────────────────────────╝"
+      flush(6)
+      write(*,'(a)') ""
+      
 
       allocate(coord(3, N_cell))
       do iz = 0, nz-1
@@ -88,6 +99,14 @@ subroutine kMP2_calc(N_cell, blk, ERI_kMO, ENuc, EHF)
       end do
 
       EcMP2  = 2.0_dp * E2d - E2x
+
+
+      write(*,*)
+      write(*,'(A)')          '*-----------------------------------*'
+      write(*,'(A,f16.12,A)') '*-*   E-MP2 = ', EcMP2, '    *-*'
+      write(*,'(A)')          '*-----------------------------------*'
+      write(*,*)
+      Flush(6)
     
       write(outfile,*)
       write(outfile,'(A32)')           '--------------------------'
