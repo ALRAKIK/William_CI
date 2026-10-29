@@ -38,6 +38,10 @@ module precomputed_bessel
       ! Set your constant Lx , Ly , Lz
       ! =============================================================== !
 
+      inv_ax2 = 0.d0
+      inv_ay2 = 0.d0 
+      inv_az2 = 0.d0
+
       if (Lx .ne. 0.d0 ) then 
         inv_ax  = 1.d0/ax 
         inv_ax2 = inv_ax * inv_ax

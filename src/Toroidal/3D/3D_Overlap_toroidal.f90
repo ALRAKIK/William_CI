@@ -149,7 +149,10 @@ subroutine overlap_integral_toroidal_3D(pattern_id,r1,r2,AO1,AO2,S)
 
       !-----------------------------------------------------------------!
 
-      s       = 0.d0 
+      s  = 0.d0 
+      sx = 0.d0
+      sy = 0.d0 
+      sz = 0.d0 
 
       do i = 1 , size(AO1%exponent)
         alpha = AO1%exponent(i)
@@ -193,6 +196,7 @@ subroutine overlap_integral_toroidal_3D(pattern_id,r1,r2,AO1,AO2,S)
 
           spa_z    = dsin(az*(zp-z1)) ; cpa_z    = dcos(az*(zp-z1))
           spb_z    = dsin(az*(zp-z2)) ; cpb_z    = dcos(az*(zp-z2))
+
 
       select case(pattern_id)
 

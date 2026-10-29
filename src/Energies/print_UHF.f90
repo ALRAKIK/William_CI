@@ -14,6 +14,10 @@ subroutine print_UHF(nBas,n_alpha,n_beta,e_alpha,e_beta,C_alpha,C_beta,ENuc,ET,E
       double precision                   :: Gap , Gap_alpha , Gap_beta
       double precision,parameter         :: autoev = 27.21138602d0
 
+
+      Gap_alpha = 0.d0 
+      Gap_beta  = 0.d0
+
       ! HOMO and LUMO
       if (n_alpha > 0 ) then 
         if(nBas > n_alpha) then

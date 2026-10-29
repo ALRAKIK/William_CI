@@ -7,9 +7,9 @@ subroutine UHF(nBas,c_details,n_alpha,n_beta,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
 
       ! Input variables
 
-      integer,intent(in)            :: nBas
+      integer         ,intent(in)   :: nBas
   
-      integer,intent(in)            :: n_alpha , n_beta
+      integer         ,intent(in)   :: n_alpha , n_beta
       double precision,intent(in)   :: S(nBas,nBas)
       double precision,intent(in)   :: T(nBas,nBas)
       double precision,intent(in)   :: V(nBas,nBas)
@@ -64,16 +64,14 @@ subroutine UHF(nBas,c_details,n_alpha,n_beta,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
       double precision,intent(out)  :: e(nBas)
       double precision,intent(out)  :: c(nBas,nBas)
 
-      ! ----------------------    Time     ---------------------------- !
-      integer                       :: days, hours, minutes, seconds , seconds1 , seconds2 , time 
-      double precision              :: start,end
-      double precision              :: start_time, end_time
       !-----------------------------------------------------------------!
 
       !--------------------------  UHF      ----------------------------!
 
-      double precision              :: e_alpha(nBas)      , e_beta(nBas)
-      double precision              :: c_alpha(nBas,nBas) , c_beta(nBas,nBas)
+      double precision              :: e_alpha(nBas)
+      double precision              :: e_beta(nBas)
+      double precision              :: c_alpha(nBas,nBas)
+      double precision              :: c_beta(nBas,nBas)
       character(len=10)             :: type_calc
       double precision              :: ET1, EV1, ET2, EV2
 
@@ -176,6 +174,9 @@ subroutine UHF(nBas,c_details,n_alpha,n_beta,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
       EHF_old       = 0d0 
       EHF           = 0d0 
   
+      Gap_alpha     = 0.d0
+      Gap_beta      = 0.d0
+
       !------------------------------------------------------------------------
       ! Main SCF loop
       !------------------------------------------------------------------------
@@ -198,12 +199,7 @@ subroutine UHF(nBas,c_details,n_alpha,n_beta,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
   
       !   Compute the Hartree potential J
 
-      call cpu_time(start)
-        call hartree_potential(nBas,P_alpha+P_beta,ERI,J)
-      call cpu_time(end)
-
-      time     = int(end - start)
-      seconds1 = mod(mod(mod(time,86400),3600),60)
+      call hartree_potential(nBas,P_alpha+P_beta,ERI,J)
 
       ! ****************** !
   
@@ -317,13 +313,8 @@ subroutine UHF(nBas,c_details,n_alpha,n_beta,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
       cp_alpha(:,:) = Fp_alpha(:,:)
       cp_beta (:,:) =  Fp_beta(:,:)
 
-      call cpu_time(start)
-        call diagonalize_matrix(nBas,cp_alpha,e_alpha)
-        call diagonalize_matrix(nBas,cp_beta ,e_beta)
-      call cpu_time(end)
-
-      time    = int(end - start)
-      seconds2= mod(mod(mod(time,86400),3600),60)
+      call diagonalize_matrix(nBas,cp_alpha,e_alpha)
+      call diagonalize_matrix(nBas,cp_beta ,e_beta)
 
       !   Back-transform the MO coefficients c in the original non-orthogonal basis
 
@@ -339,8 +330,6 @@ subroutine UHF(nBas,c_details,n_alpha,n_beta,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
    
       write(outfile,"(1x,a1,i2,1x,a1,f16.8,1x,a1,f10.6,1x,a1,f10.6,1x,a1,f16.8,4x,a1,f16.8,4x,a1,f16.8,4x,a1)")      & 
       "|",nSCF,"|",EHF+ENuc,"|",Conv,"|",Gap,"|",ET,"|",EV,"|",Ej+EK,"|"
-      write(outfile,*) repeat('-', 110)
-        write(outfile,'(1x,a1,a7,5X,a6,2X,I0,4x,a,4X,a6,2X,I0,4x,a)') '|','Time = ','Diag ',seconds2, "sec", 'trans ',seconds1, "sec"
       write(outfile,*) repeat('-', 110)
       
       enddo

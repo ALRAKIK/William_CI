@@ -4,43 +4,36 @@ subroutine build_ccsd_w(blk,g,ktab,t1,t2,Woooo,Wvvvv,Wvoov,Wvovo)
       use unitcell_module , only: nfuc, N_cell
       use k_blocks        , only: K_block
 
-      implicit none 
+      implicit none
 
-      ! input ! 
-
+      ! input !
       type(K_block), intent(in) :: blk(N_cell)
       complex(dpc) , intent(in) :: g(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
       complex(dpc) , intent(in) :: t1(nfuc,nfuc,N_cell)
       complex(dpc) , intent(in) :: t2(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
       integer      , intent(in) :: ktab(N_cell,N_cell,N_cell)
-      ! local !
-
-      integer      :: occ(nfuc*N_cell), vir(nfuc*N_cell), no,nv,x
-      integer      :: p,q,r,s,kp,kq,kr,ks,bp,m,e,l,d
-      integer      :: fourth_k
-      
-      complex(dpc) :: w, tau
-
-      integer      :: kOcc(nfuc,N_cell), nOcc(N_cell)
-      integer      :: kVir(nfuc,N_cell), nVir(N_cell)
-      
-      integer      :: k , ii , jj , mm , nn , ke , kd , kl , ee , dd ,ll 
-
 
       ! output !
 
-      
       complex(dpc), intent(out) :: Woooo(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
       complex(dpc), intent(out) :: Wvvvv(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
       complex(dpc), intent(out) :: Wvoov(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
       complex(dpc), intent(out) :: Wvovo(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
-      
 
-      ! fourth_k MUST return k1+k2-k3, as in your build_ccsd_f.
-      ! All W arrays use their literal orbital order and three first momenta:
+      ! local !
+
+      integer      :: kOcc(nfuc,N_cell), nOcc(N_cell), kVir(nfuc,N_cell), nVir(N_cell)
+      integer      :: k, p
+      integer      :: kp,kq,kr,ks,ke,kd,kl
+      integer      :: ii,jj,mm,nn,ee,dd,ll
+      integer      :: bp,bq,br,bs,be,bd,bl
+      complex(dpc) :: w, gld, tps
+      complex(dpc), parameter :: zero=(0.0_dp,0.0_dp)
+
+      ! Layouts (unchanged):
       ! Woooo(m,n,i,j,km,kn,ki), Wvvvv(a,b,e,f,ka,kb,ke),
-      ! Wvoov(a,m,i,e,ka,km,ki), Wvovo(a,m,e,i,ka,km,ke).
-      ! In EVERY case ks=fourth_k(kp,kq,kr).
+      ! Wvoov(a,m,i,e,ka,km,ki), Wvovo(a,m,e,i,ka,km,ke), ks=ktab(kp,kq,kr)
+      ! g(b1,b2,b3,b4,k1,k2,k3), t1(bi,ba,k), t2(bi,bj,ba,bb,ki,kj,ka)
 
       nOcc=0; nVir=0
       do k=1,N_cell
@@ -53,180 +46,125 @@ subroutine build_ccsd_w(blk,g,ktab,t1,t2,Woooo,Wvvvv,Wvoov,Wvovo)
         end do
       end do
 
-      no=0; nv=0
-
-      do kp=1,N_cell
-        do bp=1,nfuc
-          x=(kp-1)*nfuc+bp
-          if (blk(kp)%occupation(bp)==2) then
-            no=no+1; occ(no)=x
-          else if (blk(kp)%occupation(bp)==0) then
-            nv=nv+1; vir(nv)=x
-          end if
-        end do
-      end do
-
-      Woooo=cmplx(0.0_dp,0.0_dp,kind=dpc)
-      Wvvvv=cmplx(0.0_dp,0.0_dp,kind=dpc)
-      Wvoov=cmplx(0.0_dp,0.0_dp,kind=dpc)
-      Wvovo=cmplx(0.0_dp,0.0_dp,kind=dpc)
+      !$omp parallel default(shared) &
+      !$omp private(kp,kq,kr,ks,ke,kd,kl,ii,jj,mm,nn,ee,dd,ll, &
+      !$omp         bp,bq,br,bs,be,bd,bl,w,gld,tps)
 
       ! ---- Woooo: all occupied ----
+      !$omp do collapse(3) schedule(dynamic)
       do kp=1,N_cell; do kq=1,N_cell; do kr=1,N_cell
         ks=ktab(kp,kq,kr)
-        do ii=1,nOcc(kp); do jj=1,nOcc(kq); do mm=1,nOcc(kr); do nn=1,nOcc(ks)
-          p=(kp-1)*nfuc+kOcc(ii,kp); q=(kq-1)*nfuc+kOcc(jj,kq)
-          r=(kr-1)*nfuc+kOcc(mm,kr); s=(ks-1)*nfuc+kOcc(nn,ks)
-          w=eri(p,r,q,s)
-          do ee=1,nVir(ks)
-            e=(ks-1)*nfuc+kVir(ee,ks)
-            w=w+eri(q,e,p,r)*single(s,e)
+        Woooo(:,:,:,:,kp,kq,kr)=zero
+        do ii=1,nOcc(kp); bp=kOcc(ii,kp)
+        do jj=1,nOcc(kq); bq=kOcc(jj,kq)
+        do mm=1,nOcc(kr); br=kOcc(mm,kr)
+        do nn=1,nOcc(ks); bs=kOcc(nn,ks)
+          w=g(bp,br,bq,bs,kp,kr,kq)
+          do ee=1,nVir(ks); be=kVir(ee,ks)
+            w=w+g(bq,be,bp,br,kq,ks,kp)*t1(bs,be,ks)
           end do
-          do ee=1,nVir(kr)
-            e=(kr-1)*nfuc+kVir(ee,kr)
-            w=w+eri(p,e,q,s)*single(r,e)
+          do ee=1,nVir(kr); be=kVir(ee,kr)
+            w=w+g(bp,be,bq,bs,kp,kr,kq)*t1(br,be,kr)
           end do
           do ke=1,N_cell
             kd=ktab(kr,ks,ke)
-            do ee=1,nVir(ke)
-              e=(ke-1)*nfuc+kVir(ee,ke)
-              do dd=1,nVir(kd)
-                d=(kd-1)*nfuc+kVir(dd,kd)
-                tau=double(r,s,e,d)+single(r,e)*single(s,d)
-                w=w+eri(p,e,q,d)*tau
+            do ee=1,nVir(ke); be=kVir(ee,ke)
+              do dd=1,nVir(kd); bd=kVir(dd,kd)
+                tps=t2(br,bs,be,bd,kr,ks,ke)
+                if (ke==kr) tps=tps+t1(br,be,kr)*t1(bs,bd,ks)
+                w=w+g(bp,be,bq,bd,kp,ke,kq)*tps
               end do
             end do
           end do
-          Woooo(band(p),band(q),band(r),band(s),kp,kq,kr)=w
+          Woooo(bp,bq,br,bs,kp,kq,kr)=w
         end do; end do; end do; end do
       end do; end do; end do
+      !$omp end do nowait
 
       ! ---- Wvvvv: all virtual ----
+      !$omp do collapse(3) schedule(dynamic)
       do kp=1,N_cell; do kq=1,N_cell; do kr=1,N_cell
         ks=ktab(kp,kq,kr)
-        do ii=1,nVir(kp); do jj=1,nVir(kq); do mm=1,nVir(kr); do nn=1,nVir(ks)
-          p=(kp-1)*nfuc+kVir(ii,kp); q=(kq-1)*nfuc+kVir(jj,kq)
-          r=(kr-1)*nfuc+kVir(mm,kr); s=(ks-1)*nfuc+kVir(nn,ks)
-          w=eri(p,r,q,s)
-          do ee=1,nOcc(kq)
-            m=(kq-1)*nfuc+kOcc(ee,kq)
-            w=w-eri(m,s,p,r)*single(m,q)
+        Wvvvv(:,:,:,:,kp,kq,kr)=zero
+        do ii=1,nVir(kp); bp=kVir(ii,kp)
+        do jj=1,nVir(kq); bq=kVir(jj,kq)
+        do mm=1,nVir(kr); br=kVir(mm,kr)
+        do nn=1,nVir(ks); bs=kVir(nn,ks)
+          w=g(bp,br,bq,bs,kp,kr,kq)
+          do ll=1,nOcc(kq); bl=kOcc(ll,kq)
+            w=w-g(bl,bs,bp,br,kq,ks,kp)*t1(bl,bq,kq)
           end do
-          do ee=1,nOcc(kp)
-            m=(kp-1)*nfuc+kOcc(ee,kp)
-            w=w-eri(m,r,q,s)*single(m,p)
+          do ll=1,nOcc(kp); bl=kOcc(ll,kp)
+            w=w-g(bl,br,bq,bs,kp,kr,kq)*t1(bl,bp,kp)
           end do
-          Wvvvv(band(p),band(q),band(r),band(s),kp,kq,kr)=w
+          Wvvvv(bp,bq,br,bs,kp,kq,kr)=w
         end do; end do; end do; end do
       end do; end do; end do
+      !$omp end do nowait
 
       ! ---- Wvoov: p,s virtual ; q,r occupied ----
+      !$omp do collapse(3) schedule(dynamic)
       do kp=1,N_cell; do kq=1,N_cell; do kr=1,N_cell
         ks=ktab(kp,kq,kr)
-        do ii=1,nVir(kp); do jj=1,nOcc(kq); do mm=1,nOcc(kr); do nn=1,nVir(ks)
-          p=(kp-1)*nfuc+kVir(ii,kp); q=(kq-1)*nfuc+kOcc(jj,kq)
-          r=(kr-1)*nfuc+kOcc(mm,kr); s=(ks-1)*nfuc+kVir(nn,ks)
-          w=eri(q,s,p,r)
-          do dd=1,nVir(kr)
-            d=(kr-1)*nfuc+kVir(dd,kr)
-            w=w+eri(q,s,p,d)*single(r,d)
+        Wvoov(:,:,:,:,kp,kq,kr)=zero
+        do ii=1,nVir(kp); bp=kVir(ii,kp)
+        do jj=1,nOcc(kq); bq=kOcc(jj,kq)
+        do mm=1,nOcc(kr); br=kOcc(mm,kr)
+        do nn=1,nVir(ks); bs=kVir(nn,ks)
+          w=g(bq,bs,bp,br,kq,ks,kp)
+          do dd=1,nVir(kr); bd=kVir(dd,kr)
+            w=w+g(bq,bs,bp,bd,kq,ks,kp)*t1(br,bd,kr)
           end do
-          do ll=1,nOcc(kp)
-            l=(kp-1)*nfuc+kOcc(ll,kp)
-            w=w-eri(q,s,l,r)*single(l,p)
+          do ll=1,nOcc(kp); bl=kOcc(ll,kp)
+            w=w-g(bq,bs,bl,br,kq,ks,kp)*t1(bl,bp,kp)
           end do
           do kl=1,N_cell
             kd=ktab(kr,kl,kp)
-            do ll=1,nOcc(kl)
-              l=(kl-1)*nfuc+kOcc(ll,kl)
-              do dd=1,nVir(kd)
-                d=(kd-1)*nfuc+kVir(dd,kd)
-                w=w-0.5_dp*eri(l,d,q,s)*double(r,l,d,p) &
-                   -0.5_dp*eri(l,s,q,d)*double(r,l,p,d) &
-                   -eri(l,d,q,s)*single(r,d)*single(l,p) &
-                   +eri(l,d,q,s)*double(r,l,p,d)
+            do ll=1,nOcc(kl); bl=kOcc(ll,kl)
+              do dd=1,nVir(kd); bd=kVir(dd,kd)
+                gld=g(bl,bd,bq,bs,kl,kd,kq)
+                w=w-0.5_dp*gld*t2(br,bl,bd,bp,kr,kl,kd)                    &
+                   -0.5_dp*g(bl,bs,bq,bd,kl,ks,kq)*t2(br,bl,bp,bd,kr,kl,kp) &
+                   +gld*t2(br,bl,bp,bd,kr,kl,kp)
+                if (kl==kp) w=w-gld*t1(br,bd,kr)*t1(bl,bp,kp)
               end do
             end do
           end do
-          Wvoov(band(p),band(q),band(r),band(s),kp,kq,kr)=w
+          Wvoov(bp,bq,br,bs,kp,kq,kr)=w
         end do; end do; end do; end do
       end do; end do; end do
+      !$omp end do nowait
 
       ! ---- Wvovo: p,r virtual ; q,s occupied ----
+      !$omp do collapse(3) schedule(dynamic)
       do kp=1,N_cell; do kq=1,N_cell; do kr=1,N_cell
         ks=ktab(kp,kq,kr)
-        do ii=1,nVir(kp); do jj=1,nOcc(kq); do mm=1,nVir(kr); do nn=1,nOcc(ks)
-          p=(kp-1)*nfuc+kVir(ii,kp); q=(kq-1)*nfuc+kOcc(jj,kq)
-          r=(kr-1)*nfuc+kVir(mm,kr); s=(ks-1)*nfuc+kOcc(nn,ks)
-          w=eri(q,s,p,r)
-          do dd=1,nVir(ks)
-            d=(ks-1)*nfuc+kVir(dd,ks)
-            w=w+eri(q,d,p,r)*single(s,d)
+        Wvovo(:,:,:,:,kp,kq,kr)=zero
+        do ii=1,nVir(kp); bp=kVir(ii,kp)
+        do jj=1,nOcc(kq); bq=kOcc(jj,kq)
+        do mm=1,nVir(kr); br=kVir(mm,kr)
+        do nn=1,nOcc(ks); bs=kOcc(nn,ks)
+          w=g(bq,bs,bp,br,kq,ks,kp)
+          do dd=1,nVir(ks); bd=kVir(dd,ks)
+            w=w+g(bq,bd,bp,br,kq,ks,kp)*t1(bs,bd,ks)
           end do
-          do ll=1,nOcc(kp)
-            l=(kp-1)*nfuc+kOcc(ll,kp)
-            w=w-eri(l,r,q,s)*single(l,p)
+          do ll=1,nOcc(kp); bl=kOcc(ll,kp)
+            w=w-g(bl,br,bq,bs,kp,kr,kq)*t1(bl,bp,kp)
           end do
           do kl=1,N_cell
             kd=ktab(ks,kl,kp)
-            do ll=1,nOcc(kl)
-              l=(kl-1)*nfuc+kOcc(ll,kl)
-              do dd=1,nVir(kd)
-                d=(kd-1)*nfuc+kVir(dd,kd)
-                w=w-0.5_dp*eri(l,r,q,d)*double(s,l,d,p) &
-                   -eri(l,r,q,d)*single(s,d)*single(l,p)
+            do ll=1,nOcc(kl); bl=kOcc(ll,kl)
+              do dd=1,nVir(kd); bd=kVir(dd,kd)
+                gld=g(bl,br,bq,bd,kl,kr,kq)
+                w=w-0.5_dp*gld*t2(bs,bl,bd,bp,ks,kl,kd)
+                if (kl==kp) w=w-gld*t1(bs,bd,ks)*t1(bl,bp,kp)
               end do
             end do
           end do
-          Wvovo(band(p),band(q),band(r),band(s),kp,kq,kr)=w
+          Wvovo(bp,bq,br,bs,kp,kq,kr)=w
         end do; end do; end do; end do
       end do; end do; end do
+      !$omp end do
 
-      contains
-
-      integer function mom(a)
-        integer, intent(in) :: a
-        mom=(a-1)/nfuc+1
-      end function mom
-
-      integer function band(a)
-        integer, intent(in) :: a
-        band=modulo(a-1,nfuc)+1
-      end function band
-
-      logical function isocc(a)
-        integer, intent(in) :: a
-        isocc=blk(mom(a))%occupation(band(a))==2
-      end function isocc
-
-      logical function isvir(a)
-        integer, intent(in) :: a
-        isvir=blk(mom(a))%occupation(band(a))==0
-      end function isvir
-
-      function eri(a,b,c,k) result(v)
-        integer, intent(in) :: a,b,c,k
-        complex(dpc) :: v
-        v=cmplx(0.0_dp,0.0_dp,kind=dpc)
-        ! Chemist momentum: kd=ka-kb+kc.
-        if (mom(k)/=fourth_k(mom(a),mom(c),mom(b))) return
-        v=g(band(a),band(b),band(c),band(k),mom(a),mom(b),mom(c))
-      end function eri
-
-      function single(i,a) result(v)
-        integer, intent(in) :: i,a
-        complex(dpc) :: v
-        v=cmplx(0.0_dp,0.0_dp,kind=dpc)
-        if (mom(i)/=mom(a)) return
-        v=t1(band(i),band(a),mom(i))
-      end function single
-
-      function double(i,j,a,b) result(v)
-        integer, intent(in) :: i,j,a,b
-        complex(dpc) :: v
-        v=cmplx(0.0_dp,0.0_dp,kind=dpc)
-        if (mom(b)/=fourth_k(mom(i),mom(j),mom(a))) return
-        v=t2(band(i),band(j),band(a),band(b),mom(i),mom(j),mom(a))
-      end function double
-
+      !$omp end parallel
 end subroutine build_ccsd_w

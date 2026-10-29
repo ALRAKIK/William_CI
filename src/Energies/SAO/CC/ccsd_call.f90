@@ -4,6 +4,7 @@ subroutine k_ccsd_T(blk,ERI_kMO,EHF,Enuc,EMP2)
       use constants_module, only: dp, dpc
       use unitcell_module , only: nfuc, N_cell
       use k_blocks        , only: K_block
+      use omp_lib
 
       implicit none 
 
@@ -33,8 +34,17 @@ subroutine k_ccsd_T(blk,ERI_kMO,EHF,Enuc,EMP2)
 
       ! output ! 
 
-      real(dp)                  :: E_corr , E_corrt 
-      real(dp)                  :: tA , tB , tC , tD
+      real(dp)                  :: E_corr , E_corrt
+      real(dp)                  :: time1_ccsd  , time2_ccsd
+      real(dp)                  :: time1_ccsdt , time2_ccsdt 
+
+      ! $ ! $ ! $ ! $ ! $ ! $ ! $ $ ! $ ! $ ! $ ! $ ! $ ! $ $ ! $ ! $ ! $
+      ! $ ! $ ! $ ! $ ! $ ! $ ! $ $ ! $ ! $ ! $ ! $ ! $ ! $ $ ! $ ! $ ! $
+      ! $ ! $ ! $ ! $ ! $ ! $ ! $ $ ! $ ! $ ! $ ! $ ! $ ! $ $ ! $ ! $ ! $    
+
+      time1_ccsd  = 0.d0  ; time2_ccsd  = 0.d0 
+      time1_ccsdt = 0.d0  ; time2_ccsdt = 0.d0  
+
 
 
       write(*,'(a)') ""
@@ -59,27 +69,20 @@ subroutine k_ccsd_T(blk,ERI_kMO,EHF,Enuc,EMP2)
 
       t1 = cmplx(0.0_dp,0.0_dp,kind=dpc)
 
-      call cpu_time(tA)
-
       call get_t_term(blk,ERI_kMO,ktab,t2)
 
-      call cpu_time(tB)
-
-
-      call solve_kccsd(blk, ERI_kMO,ktab,t1, t2, cc_converged, max_iter, damping, energy_tol, residual_tol, ndiis,E_corr)
-
-      call cpu_time(tC)
+      
+      time1_ccsd = omp_get_wtime()
+        call solve_kccsd(blk, ERI_kMO,ktab,t1, t2, cc_converged, max_iter, damping, energy_tol, residual_tol, ndiis,E_corr)
+      time2_ccsd = omp_get_wtime()
 
 
       if (cc_converged) then
-         call build_ccsd_t(blk, ERI_kMO, t1, t2,E_corrt)
+        time1_ccsdt = omp_get_wtime()
+          call build_ccsd_t(blk, ERI_kMO,ktab, t1, t2,E_corrt)
+        time2_ccsdt = omp_get_wtime()
       end if
-
-      call cpu_time(tD)
-
-
-      write(*,'(A,F8.3,A,F8.3,A,F8.3)') ' t_term=',tB-tA,' solve=',tC-tB,' triples=',tD-tC
-
+      
 
       write(outfile,*)
       write(outfile,'(4x,A32)')        '------------------------------'
@@ -93,6 +96,13 @@ subroutine k_ccsd_T(blk,ERI_kMO,EHF,Enuc,EMP2)
       write(outfile,'(4x,A32,1X,F24.16)') ' CCSD(T) electronic energy = ',E_corrt
       write(outfile,'(4x,A32,1X,F24.16)') ' HF + CCSD(T)       energy = ',ENuc + EHF + E_corr + E_corrt
       write(outfile,'(4x,A32)')           '------------------------------'
+      write(outfile,*)
+
+
+      write(outfile,'(A65,1X,F9.3,A8)') 'Wall time for K-CCSD calculation = ',time2_ccsd-time1_ccsd,' seconds'
+      write(outfile,*)
+
+      write(outfile,'(A65,1X,F9.3,A8)') 'Wall time for T part calculation = ',time2_ccsdt-time1_ccsdt,' seconds'
       write(outfile,*)
 
 

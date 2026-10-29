@@ -142,6 +142,9 @@ subroutine overlap_integral_toroidal_1D(pattern_id,r1,r2,AO1,AO2,S)
       !-----------------------------------------------------------------!
  
       s       = 0.d0
+      sx      = 0.d0
+      sy      = 0.d0
+      sz      = 0.d0
 
       do i = 1 , size(AO1%exponent)
         alpha = AO1%exponent(i)
