@@ -279,8 +279,11 @@ module MCDE_module
       end do
 
       !Off-diagonal components for the 3-body (C in ADC notation)
-      do p = 1, nSpace
-         do q = 1, nSpace
+      !$omp parallel do collapse(2) default(none) schedule(static) &
+      !$omp& shared(nSpace, nBasZ, g03space, prefac, ERI_Z, heffMatrix) &
+      !$omp& private(p, q, a, b, c, x, y, z, dlk, dmj, dio, doj, dmi, body_tmp)
+      do q = 1, nSpace
+         do p = 1, nSpace
 
             a = g03space(1, p) !i
             b = g03space(2, p) !j 
@@ -303,6 +306,7 @@ module MCDE_module
             heffMatrix(nBasZ+p, nBasZ+q) = heffMatrix(nBasZ+p, nBasZ+q) + body_tmp
          enddo
       enddo
+      !$omp end parallel do
 
       ! NOTE: One can enter their own diagonalization routine here to obtain the eigenvalues and eigenvectors directly.
 

@@ -1,4 +1,4 @@
-subroutine solve_kccsd(blk,g,t1,t2,converged, max_iter,damping,energy_tol,residual_tol,ndiis,ecorr)
+subroutine solve_kccsd(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_tol,residual_tol,ndiis,ecorr)
 
       use files
       use constants_module, only: dp, dpc
@@ -13,6 +13,7 @@ subroutine solve_kccsd(blk,g,t1,t2,converged, max_iter,damping,energy_tol,residu
       complex(dpc) , intent(in)      :: g(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
       integer      , intent(in)      :: max_iter,ndiis
       real(dp)     , intent(in)      :: damping,energy_tol,residual_tol
+      integer      , intent(in)      :: ktab(N_cell,N_cell,N_cell)
 
       ! output ! 
 
@@ -48,8 +49,6 @@ subroutine solve_kccsd(blk,g,t1,t2,converged, max_iter,damping,energy_tol,residu
       real(dp)                       :: previous,de,norm1,norm2,max1,max2
       logical                        :: ok
 
-      integer, external              :: fourth_k
-
       interface
         subroutine diis_coefficients(errors,c,done)
           use constants_module, only: dp,dpc
@@ -78,7 +77,7 @@ subroutine solve_kccsd(blk,g,t1,t2,converged, max_iter,damping,energy_tol,residu
       do ki=1,N_cell
         do kj=1,N_cell
           do ka=1,N_cell
-            kb=fourth_k(ki,kj,ka)
+            kb=ktab(ki,kj,ka)
             do i=1,nfuc
                 do j=1,nfuc
                   do a=1,nfuc
@@ -116,7 +115,7 @@ subroutine solve_kccsd(blk,g,t1,t2,converged, max_iter,damping,energy_tol,residu
       do ki=1,N_cell
         do kj=1,N_cell
           do ka=1,N_cell
-            kb=fourth_k(ki,kj,ka)
+            kb=ktab(ki,kj,ka)
             do i=1,nfuc
               do j=1,nfuc
                 do a=1,nfuc
@@ -175,17 +174,12 @@ subroutine solve_kccsd(blk,g,t1,t2,converged, max_iter,damping,energy_tol,residu
       ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - !
       ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - !
 
-
-
-
-
-
       do iter=0,max_iter
 
-        call build_ccsd_f(blk,g,t1,t2,fo,fv,fx)
+        call build_ccsd_f(blk,g,ktab,t1,t2,fo,fv,fx)
         call build_ccsd_l(blk,g,t1,fo,fv,lo,lv)
-        call build_ccsd_w(blk,g,t1,t2,wo,wv,wx,wy)
-        call build_ccsd_residuals(blk,g,t1,t2,fo,fv,fx,lo,lv,wo,wv,wx,wy,r1,r2)
+        call build_ccsd_w(blk,g,ktab,t1,t2,wo,wv,wx,wy)
+        call build_ccsd_residuals(blk,g,ktab,t1,t2,fo,fv,fx,lo,lv,wo,wv,wx,wy,r1,r2)
         call pack(r1,r2,err)
 
         max1=maxval(abs(err(:n1)))
@@ -198,14 +192,16 @@ subroutine solve_kccsd(blk,g,t1,t2,converged, max_iter,damping,energy_tol,residu
 
         do q=1,n2
           i=jx(1,q); j=jx(2,q); a=jx(3,q); b=jx(4,q)
-          ki=jx(5,q); kj=jx(6,q); ka=jx(7,q); kb=fourth_k(ki,kj,ka)
+          ki=jx(5,q); kj=jx(6,q); ka=jx(7,q); kb=ktab(ki,kj,ka)
           tau=t2(i,j,a,b,ki,kj,ka)
           if (ki==ka.and.kj==kb) tau=tau+t1(i,a,ki)*t1(j,b,kj)
           energy=energy+(2.0_dp*g(i,a,j,b,ki,ka,kj)-g(i,b,j,a,ki,kb,kj))*tau
         end do
 
         ecorr=real(energy,dp); eimag=aimag(energy)
+
         de=0.0_dp
+
 
         if (iter>0) de=ecorr-previous
 

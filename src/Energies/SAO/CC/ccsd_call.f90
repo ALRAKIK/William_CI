@@ -20,6 +20,11 @@ subroutine k_ccsd_T(blk,ERI_kMO,EHF,Enuc,EMP2)
       real(dp),parameter        :: energy_tol    = 1.0e-10_dp
       real(dp),parameter        :: residual_tol  = 1.0e-9_dp
       integer ,parameter        :: ndiis         = 6
+
+      integer                   :: k1 , k2 , k3
+      integer                   :: fourth_k
+      integer,allocatable       :: ktab(:,:,:)
+
       
       complex(dpc),allocatable  :: t1(:,:,:)
       complex(dpc),allocatable  :: t2(:,:,:,:,:,:,:)
@@ -29,6 +34,7 @@ subroutine k_ccsd_T(blk,ERI_kMO,EHF,Enuc,EMP2)
       ! output ! 
 
       real(dp)                  :: E_corr , E_corrt 
+      real(dp)                  :: tA , tB , tC , tD
 
 
       write(*,'(a)') ""
@@ -41,16 +47,39 @@ subroutine k_ccsd_T(blk,ERI_kMO,EHF,Enuc,EMP2)
 
       allocate(t1(nfuc,nfuc,N_cell))
       allocate(t2(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell))
+      allocate(ktab(N_cell,N_cell,N_cell))
+
+      do k1=1,N_cell
+        do k2=1,N_cell
+          do k3=1,N_cell
+            ktab(k1,k2,k3)=fourth_k(k1,k2,k3)   ! fill once, no more modulo calls in loops
+          end do
+        end do
+      end do
 
       t1 = cmplx(0.0_dp,0.0_dp,kind=dpc)
 
-      call get_t_term(blk,ERI_kMO,t2)
+      call cpu_time(tA)
 
-      call solve_kccsd(blk, ERI_kMO, t1, t2, cc_converged, max_iter, damping, energy_tol, residual_tol, ndiis,E_corr)
+      call get_t_term(blk,ERI_kMO,ktab,t2)
+
+      call cpu_time(tB)
+
+
+      call solve_kccsd(blk, ERI_kMO,ktab,t1, t2, cc_converged, max_iter, damping, energy_tol, residual_tol, ndiis,E_corr)
+
+      call cpu_time(tC)
+
 
       if (cc_converged) then
          call build_ccsd_t(blk, ERI_kMO, t1, t2,E_corrt)
       end if
+
+      call cpu_time(tD)
+
+
+      write(*,'(A,F8.3,A,F8.3,A,F8.3)') ' t_term=',tB-tA,' solve=',tC-tB,' triples=',tD-tC
+
 
       write(outfile,*)
       write(outfile,'(4x,A32)')        '------------------------------'
@@ -73,7 +102,5 @@ subroutine k_ccsd_T(blk,ERI_kMO,EHF,Enuc,EMP2)
       write(*,'(a)') "╚───────────────────────────────────────────────╝"
       flush(6)
       write(*,'(a)') ""
-
-
 
 end subroutine

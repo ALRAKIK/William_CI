@@ -3,7 +3,7 @@
 ! Bare chemist-order ERIs. Do not antisymmetrize the driving term.
 ! All energies below are total supercell correlation energies.
 
-subroutine get_t_term(blk,g,t2)
+subroutine get_t_term(blk,g,ktab,t2)
 
       use constants_module, only: dp, dpc
       use unitcell_module , only: nfuc, N_cell
@@ -15,13 +15,13 @@ subroutine get_t_term(blk,g,t2)
 
       type(K_block), intent(in)  :: blk(N_cell)
       complex(dpc) , intent(in)  :: g(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      integer      , intent(in)  :: ktab(N_cell,N_cell,N_cell)
 
       ! local ! 
 
       integer                    :: ki,kj,ka,kb
       integer                    :: i,j,a,b
       integer                    :: k,nocc
-      integer                    :: fourth_k
       real(dp)                   :: gap
       complex(dpc)               :: gd
 
@@ -39,7 +39,7 @@ subroutine get_t_term(blk,g,t2)
       do ka=1,N_cell
         do kj=1,N_cell
           do ki=1,N_cell
-            kb = fourth_k(ki,kj,ka)
+            kb = ktab(ki,kj,ka)
             do b=1,nfuc
               if (blk(kb)%occupation(b) /= 0) cycle
               do a=1,nfuc

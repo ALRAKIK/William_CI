@@ -1,4 +1,4 @@
-subroutine build_ccsd_w(blk,g,t1,t2,Woooo,Wvvvv,Wvoov,Wvovo)
+subroutine build_ccsd_w(blk,g,ktab,t1,t2,Woooo,Wvvvv,Wvoov,Wvovo)
 
       use constants_module, only: dp, dpc
       use unitcell_module , only: nfuc, N_cell
@@ -12,14 +12,20 @@ subroutine build_ccsd_w(blk,g,t1,t2,Woooo,Wvvvv,Wvoov,Wvovo)
       complex(dpc) , intent(in) :: g(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
       complex(dpc) , intent(in) :: t1(nfuc,nfuc,N_cell)
       complex(dpc) , intent(in) :: t2(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
-
+      integer      , intent(in) :: ktab(N_cell,N_cell,N_cell)
       ! local !
 
-      integer      :: occ(nfuc*N_cell), vir(nfuc*N_cell), no,nv,x,y
-      integer      :: p,q,r,s,kp,kq,kr,ks,bp,bq,br,bs,m,e,l,d
+      integer      :: occ(nfuc*N_cell), vir(nfuc*N_cell), no,nv,x
+      integer      :: p,q,r,s,kp,kq,kr,ks,bp,m,e,l,d
       integer      :: fourth_k
       
       complex(dpc) :: w, tau
+
+      integer      :: kOcc(nfuc,N_cell), nOcc(N_cell)
+      integer      :: kVir(nfuc,N_cell), nVir(N_cell)
+      
+      integer      :: k , ii , jj , mm , nn , ke , kd , kl , ee , dd ,ll 
+
 
       ! output !
 
@@ -35,6 +41,17 @@ subroutine build_ccsd_w(blk,g,t1,t2,Woooo,Wvvvv,Wvoov,Wvovo)
       ! Woooo(m,n,i,j,km,kn,ki), Wvvvv(a,b,e,f,ka,kb,ke),
       ! Wvoov(a,m,i,e,ka,km,ki), Wvovo(a,m,e,i,ka,km,ke).
       ! In EVERY case ks=fourth_k(kp,kq,kr).
+
+      nOcc=0; nVir=0
+      do k=1,N_cell
+        do p=1,nfuc
+          if (blk(k)%occupation(p)==2) then
+            nOcc(k)=nOcc(k)+1; kOcc(nOcc(k),k)=p
+          else if (blk(k)%occupation(p)==0) then
+            nVir(k)=nVir(k)+1; kVir(nVir(k),k)=p
+          end if
+        end do
+      end do
 
       no=0; nv=0
 
@@ -54,88 +71,116 @@ subroutine build_ccsd_w(blk,g,t1,t2,Woooo,Wvvvv,Wvoov,Wvovo)
       Wvoov=cmplx(0.0_dp,0.0_dp,kind=dpc)
       Wvovo=cmplx(0.0_dp,0.0_dp,kind=dpc)
 
-      do kp=1,N_cell
-        do kq=1,N_cell
-          do kr=1,N_cell
-            ks=fourth_k(kp,kq,kr)
-            do bp=1,nfuc
-              p=(kp-1)*nfuc+bp
-              do bq=1,nfuc
-                q=(kq-1)*nfuc+bq
-                do br=1,nfuc
-                  r=(kr-1)*nfuc+br
-                  do bs=1,nfuc
-                    s=(ks-1)*nfuc+bs
-                    if (isocc(p).and.isocc(q).and.isocc(r).and.isocc(s)) then
-                      ! W(p,q,r,s): bare (pr|qs).
-                      w=eri(p,r,q,s)
-                      do x=1,nv
-                        e=vir(x)
-                        w=w+eri(q,e,p,r)*single(s,e) &
-                           +eri(p,e,q,s)*single(r,e)
-                        do y=1,nv
-                          d=vir(y)
-                          tau=double(r,s,e,d)+single(r,e)*single(s,d)
-                          w=w+eri(p,e,q,d)*tau
-                        end do
-                      end do
-                      Woooo(bp,bq,br,bs,kp,kq,kr)=w
-                    end if
-                    if (isvir(p).and.isvir(q).and.isvir(r).and.isvir(s)) then
-                      ! PySCF cc_Wvvvv: no T2 or T1*T1 dressing here.
-                      w=eri(p,r,q,s)
-                      do x=1,no
-                        m=occ(x)
-                        w=w-eri(m,s,p,r)*single(m,q) &
-                           -eri(m,r,q,s)*single(m,p)
-                      end do
-                      Wvvvv(bp,bq,br,bs,kp,kq,kr)=w
-                    end if
-                    if (isvir(p).and.isocc(q).and.isocc(r).and.isvir(s)) then
-                      ! Wvoov(a,m,i,e): bare (me|ai).
-                      w=eri(q,s,p,r)
-                      do x=1,nv
-                        d=vir(x)
-                        w=w+eri(q,s,p,d)*single(r,d)
-                      end do
-                      do y=1,no
-                        l=occ(y)
-                        w=w-eri(q,s,l,r)*single(l,p)
-                        do x=1,nv
-                          d=vir(x)
-                          w=w-0.5_dp*eri(l,d,q,s)*double(r,l,d,p) &
-                             -0.5_dp*eri(l,s,q,d)*double(r,l,p,d) &
-                             -eri(l,d,q,s)*single(r,d)*single(l,p) &
-                             +eri(l,d,q,s)*double(r,l,p,d)
-                        end do
-                      end do
-                      Wvoov(bp,bq,br,bs,kp,kq,kr)=w
-                    end if
-                    if (isvir(p).and.isocc(q).and.isvir(r).and.isocc(s)) then
-                      ! Wvovo(a,m,e,i): bare (mi|ae).
-                      w=eri(q,s,p,r)
-                      do x=1,nv
-                        d=vir(x)
-                        w=w+eri(q,d,p,r)*single(s,d)
-                      end do
-                      do y=1,no
-                        l=occ(y)
-                        w=w-eri(l,r,q,s)*single(l,p)
-                        do x=1,nv
-                          d=vir(x)
-                          w=w-0.5_dp*eri(l,r,q,d)*double(s,l,d,p) &
-                             -eri(l,r,q,d)*single(s,d)*single(l,p)
-                        end do
-                      end do
-                      Wvovo(bp,bq,br,bs,kp,kq,kr)=w
-                    end if
-                  end do
-                end do
+      ! ---- Woooo: all occupied ----
+      do kp=1,N_cell; do kq=1,N_cell; do kr=1,N_cell
+        ks=ktab(kp,kq,kr)
+        do ii=1,nOcc(kp); do jj=1,nOcc(kq); do mm=1,nOcc(kr); do nn=1,nOcc(ks)
+          p=(kp-1)*nfuc+kOcc(ii,kp); q=(kq-1)*nfuc+kOcc(jj,kq)
+          r=(kr-1)*nfuc+kOcc(mm,kr); s=(ks-1)*nfuc+kOcc(nn,ks)
+          w=eri(p,r,q,s)
+          do ee=1,nVir(ks)
+            e=(ks-1)*nfuc+kVir(ee,ks)
+            w=w+eri(q,e,p,r)*single(s,e)
+          end do
+          do ee=1,nVir(kr)
+            e=(kr-1)*nfuc+kVir(ee,kr)
+            w=w+eri(p,e,q,s)*single(r,e)
+          end do
+          do ke=1,N_cell
+            kd=ktab(kr,ks,ke)
+            do ee=1,nVir(ke)
+              e=(ke-1)*nfuc+kVir(ee,ke)
+              do dd=1,nVir(kd)
+                d=(kd-1)*nfuc+kVir(dd,kd)
+                tau=double(r,s,e,d)+single(r,e)*single(s,d)
+                w=w+eri(p,e,q,d)*tau
               end do
             end do
           end do
-        end do
-      end do
+          Woooo(band(p),band(q),band(r),band(s),kp,kq,kr)=w
+        end do; end do; end do; end do
+      end do; end do; end do
+
+      ! ---- Wvvvv: all virtual ----
+      do kp=1,N_cell; do kq=1,N_cell; do kr=1,N_cell
+        ks=ktab(kp,kq,kr)
+        do ii=1,nVir(kp); do jj=1,nVir(kq); do mm=1,nVir(kr); do nn=1,nVir(ks)
+          p=(kp-1)*nfuc+kVir(ii,kp); q=(kq-1)*nfuc+kVir(jj,kq)
+          r=(kr-1)*nfuc+kVir(mm,kr); s=(ks-1)*nfuc+kVir(nn,ks)
+          w=eri(p,r,q,s)
+          do ee=1,nOcc(kq)
+            m=(kq-1)*nfuc+kOcc(ee,kq)
+            w=w-eri(m,s,p,r)*single(m,q)
+          end do
+          do ee=1,nOcc(kp)
+            m=(kp-1)*nfuc+kOcc(ee,kp)
+            w=w-eri(m,r,q,s)*single(m,p)
+          end do
+          Wvvvv(band(p),band(q),band(r),band(s),kp,kq,kr)=w
+        end do; end do; end do; end do
+      end do; end do; end do
+
+      ! ---- Wvoov: p,s virtual ; q,r occupied ----
+      do kp=1,N_cell; do kq=1,N_cell; do kr=1,N_cell
+        ks=ktab(kp,kq,kr)
+        do ii=1,nVir(kp); do jj=1,nOcc(kq); do mm=1,nOcc(kr); do nn=1,nVir(ks)
+          p=(kp-1)*nfuc+kVir(ii,kp); q=(kq-1)*nfuc+kOcc(jj,kq)
+          r=(kr-1)*nfuc+kOcc(mm,kr); s=(ks-1)*nfuc+kVir(nn,ks)
+          w=eri(q,s,p,r)
+          do dd=1,nVir(kr)
+            d=(kr-1)*nfuc+kVir(dd,kr)
+            w=w+eri(q,s,p,d)*single(r,d)
+          end do
+          do ll=1,nOcc(kp)
+            l=(kp-1)*nfuc+kOcc(ll,kp)
+            w=w-eri(q,s,l,r)*single(l,p)
+          end do
+          do kl=1,N_cell
+            kd=ktab(kr,kl,kp)
+            do ll=1,nOcc(kl)
+              l=(kl-1)*nfuc+kOcc(ll,kl)
+              do dd=1,nVir(kd)
+                d=(kd-1)*nfuc+kVir(dd,kd)
+                w=w-0.5_dp*eri(l,d,q,s)*double(r,l,d,p) &
+                   -0.5_dp*eri(l,s,q,d)*double(r,l,p,d) &
+                   -eri(l,d,q,s)*single(r,d)*single(l,p) &
+                   +eri(l,d,q,s)*double(r,l,p,d)
+              end do
+            end do
+          end do
+          Wvoov(band(p),band(q),band(r),band(s),kp,kq,kr)=w
+        end do; end do; end do; end do
+      end do; end do; end do
+
+      ! ---- Wvovo: p,r virtual ; q,s occupied ----
+      do kp=1,N_cell; do kq=1,N_cell; do kr=1,N_cell
+        ks=ktab(kp,kq,kr)
+        do ii=1,nVir(kp); do jj=1,nOcc(kq); do mm=1,nVir(kr); do nn=1,nOcc(ks)
+          p=(kp-1)*nfuc+kVir(ii,kp); q=(kq-1)*nfuc+kOcc(jj,kq)
+          r=(kr-1)*nfuc+kVir(mm,kr); s=(ks-1)*nfuc+kOcc(nn,ks)
+          w=eri(q,s,p,r)
+          do dd=1,nVir(ks)
+            d=(ks-1)*nfuc+kVir(dd,ks)
+            w=w+eri(q,d,p,r)*single(s,d)
+          end do
+          do ll=1,nOcc(kp)
+            l=(kp-1)*nfuc+kOcc(ll,kp)
+            w=w-eri(l,r,q,s)*single(l,p)
+          end do
+          do kl=1,N_cell
+            kd=ktab(ks,kl,kp)
+            do ll=1,nOcc(kl)
+              l=(kl-1)*nfuc+kOcc(ll,kl)
+              do dd=1,nVir(kd)
+                d=(kd-1)*nfuc+kVir(dd,kd)
+                w=w-0.5_dp*eri(l,r,q,d)*double(s,l,d,p) &
+                   -eri(l,r,q,d)*single(s,d)*single(l,p)
+              end do
+            end do
+          end do
+          Wvovo(band(p),band(q),band(r),band(s),kp,kq,kr)=w
+        end do; end do; end do; end do
+      end do; end do; end do
 
       contains
 

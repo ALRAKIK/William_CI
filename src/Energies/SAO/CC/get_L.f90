@@ -16,6 +16,10 @@ subroutine build_ccsd_l(blk,g,t1,Foo,Fvv,Loo,Lvv)
       ! local ! 
 
       integer                   :: k,kl,kd,m,i,l,c,a,e,d
+      integer                   :: kOcc(nfuc,N_cell), nOcc(N_cell)
+      integer                   :: kVir(nfuc,N_cell), nVir(N_cell)
+      integer                   :: ii , mm , ee, aa , ll , cc , mm2 , dd 
+      integer                   :: p 
 
       ! output ! 
 
@@ -29,20 +33,33 @@ subroutine build_ccsd_l(blk,g,t1,Foo,Fvv,Loo,Lvv)
       ! Lvv(a,e)=Fvv(a,e)+sum_md [2(md|ae)-(me|ad)]*t1(m,d)
       ! The bare f_ov here must NOT be replaced by dressed Fov.
 
+      nOcc=0; nVir=0
+      do k=1,N_cell
+        do p=1,nfuc
+          if (blk(k)%occupation(p)==2) then
+            nOcc(k)=nOcc(k)+1; kOcc(nOcc(k),k)=p
+          else if (blk(k)%occupation(p)==0) then
+            nVir(k)=nVir(k)+1; kVir(nVir(k),k)=p
+          end if
+        end do
+      end do
+
+
       Loo=cmplx(0.0_dp,0.0_dp,kind=dpc)
       Lvv=cmplx(0.0_dp,0.0_dp,kind=dpc)
 
+            ! ---- Loo: m,i occupied at k ; l occupied, c virtual at kl ----
       do k=1,N_cell
-        do m=1,nfuc
-          if (blk(k)%occupation(m)/=2) cycle
-          do i=1,nfuc
-            if (blk(k)%occupation(i)/=2) cycle
+        do mm=1,nOcc(k)
+          m=kOcc(mm,k)
+          do ii=1,nOcc(k)
+            i=kOcc(ii,k)
             Loo(m,i,k)=Foo(m,i,k)
             do kl=1,N_cell
-              do l=1,nfuc
-                if (blk(kl)%occupation(l)/=2) cycle
-                do c=1,nfuc
-                  if (blk(kl)%occupation(c)/=0) cycle
+              do ll=1,nOcc(kl)
+                l=kOcc(ll,kl)
+                do cc=1,nVir(kl)
+                  c=kVir(cc,kl)
                   Loo(m,i,k)=Loo(m,i,k)+(2.0_dp*g(l,c,m,i,kl,kl,k) &
                     -g(m,c,l,i,k,kl,kl))*t1(l,c,kl)
                 end do
@@ -50,16 +67,20 @@ subroutine build_ccsd_l(blk,g,t1,Foo,Fvv,Loo,Lvv)
             end do
           end do
         end do
-        do a=1,nfuc
-          if (blk(k)%occupation(a)/=0) cycle
-          do e=1,nfuc
-            if (blk(k)%occupation(e)/=0) cycle
+      end do
+
+      ! ---- Lvv: a,e virtual at k ; m occupied, d virtual at kd ----
+      do k=1,N_cell
+        do aa=1,nVir(k)
+          a=kVir(aa,k)
+          do ee=1,nVir(k)
+            e=kVir(ee,k)
             Lvv(a,e,k)=Fvv(a,e,k)
             do kd=1,N_cell
-              do m=1,nfuc
-                if (blk(kd)%occupation(m)/=2) cycle
-                do d=1,nfuc
-                  if (blk(kd)%occupation(d)/=0) cycle
+              do mm2=1,nOcc(kd)
+                m=kOcc(mm2,kd)
+                do dd=1,nVir(kd)
+                  d=kVir(dd,kd)
                   Lvv(a,e,k)=Lvv(a,e,k)+(2.0_dp*g(m,d,a,e,kd,kd,k) &
                     -g(m,e,a,d,kd,k,k))*t1(m,d,kd)
                 end do
