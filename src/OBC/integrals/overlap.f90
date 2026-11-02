@@ -2,6 +2,7 @@ subroutine overlap_matrix(number_of_atoms,number_of_functions,geometry,atoms,ove
 
       use files
       use atom_basis
+      use keywords
 
       implicit none 
 
@@ -116,6 +117,7 @@ subroutine overlap_matrix(number_of_atoms,number_of_functions,geometry,atoms,ove
         end do 
       end do 
 
+      if (c_details) then 
       open(1,file=trim(tmp_file_name)//"/OV.dat")
         do i = 1 , size(overlap,1)
           do j = i , size(overlap,1)
@@ -123,5 +125,6 @@ subroutine overlap_matrix(number_of_atoms,number_of_functions,geometry,atoms,ove
           end do 
         end do 
       close(1)
+      end if 
 
 end subroutine

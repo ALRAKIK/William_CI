@@ -58,6 +58,87 @@ end subroutine diagonalize_matrix
 ! --------------------------------------------------------------------- !
 ! --------------------------------------------------------------------- !
 
+subroutine diagonalize_matrix_d(N,A,e)
+
+      ! =============================================================== !
+
+      ! Diagonalize a symmetric square matrix using DSYEVD
+      ! (Divide & Conquer — scales much better with threads than DSYEV)
+
+      use files
+      implicit none
+
+      ! =============================================================== !
+
+      ! Input variables
+
+      integer,intent(in)            :: N
+      double precision,intent(inout):: A(N,N)
+      double precision,intent(out)  :: e(N)
+
+      ! =============================================================== !
+
+      ! Local variables
+
+      integer                       :: lwork, liwork, info
+      integer                       :: i
+      double precision,allocatable  :: work(:)
+      integer,allocatable           :: iwork(:)
+
+      ! =============================================================== !
+
+      ! Workspace query
+
+      allocate(work(1))
+      allocate(iwork(1))
+      lwork  = -1
+      liwork = -1
+      call dsyevd('V','U',N,A,N,e,work,lwork,iwork,liwork,info)
+
+      if(info /= 0) then
+        write(outfile,'(a,I0)') 'Problem in workspace query (dsyevd)!!  --> ',info
+        stop
+      endif
+
+      lwork  = int(work(1))
+      liwork = iwork(1)
+      deallocate(work)
+      deallocate(iwork)
+      allocate(work(lwork))
+      allocate(iwork(liwork))
+
+      ! =============================================================== !
+
+      ! Diagonalization
+
+      call dsyevd('V','U',N,A,N,e,work,lwork,iwork,liwork,info)
+
+      if(info /= 0) then
+        write(outfile,'(a,I0)') 'Problem in diagonalize_matrix (dsyevd)!!  --> ',info
+        stop
+      endif
+
+      ! =============================================================== !
+
+      ! Zero out numerical noise (parallelized loop)
+
+      !$OMP PARALLEL DO PRIVATE(i) SCHEDULE(STATIC)
+      do i = 1 , N
+        if (abs(e(i)) < 1d-15) e(i) = 0.d0
+      end do
+      !$OMP END PARALLEL DO
+
+      deallocate(work)
+      deallocate(iwork)
+
+end subroutine diagonalize_matrix_d 
+
+! --------------------------------------------------------------------- !
+! --------------------------------------------------------------------- !
+! --------------------------------------------------------------------- !
+
+
+
 subroutine diagonalize_matrix_complex(N,A,e)
 
       ! =============================================================== !

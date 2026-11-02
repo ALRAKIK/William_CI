@@ -584,7 +584,6 @@ program CI
           write(outfile,*)
 
 
-
           if (c_ccsdt) then
             call cpu_time(start)
               call k_ccsd_T(blk,ERI_kMO,EHF,E_nuc,E_MP2)

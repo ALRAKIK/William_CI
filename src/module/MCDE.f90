@@ -323,6 +323,7 @@ module MCDE_module
       subroutine MCDE(nBas, nOcc, energies, ERI)
 
       use files
+      use OMP_LIB
 
       ! Input variables
       integer,intent(in)                  :: nBas, nOcc
@@ -367,7 +368,7 @@ module MCDE_module
 
       print*, "Diagonalizing the effective Hamiltonian..."
 
-      call diagonalize_matrix(heffbas,heffMatrix,heff_energies)  ! Diagonalize the effective Hamiltonian
+      call diagonalize_matrix_d(heffbas,heffMatrix,heff_energies)  ! Diagonalize the effective Hamiltonian
 
       write(outfile,'(A50)') '---------------------------------------'
       write(outfile,'(A50)') '             MCDE energies             '

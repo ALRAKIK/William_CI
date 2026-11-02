@@ -183,6 +183,16 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
       "|","   V contribution   ","|","   Two contribution ","|"
       write(outfile,*) repeat('-', 110)
       flush(outfile)
+
+      write(*,*)
+      write(*,*) repeat('-', 46)
+      write(*,*) "|",repeat(' ', 15),"RHF calculation",repeat(' ', 15),"|"
+      write(*,*) repeat('-', 46)
+
+      write(*,'(1x,a1,a2,1x,a1,a,a1,a,a1,a,a1,a,a1,a,a1,a,a1)') &
+      "|","#","|","      HF energy  ","|", "    Conv   ","|","   HL Gap  ","|"
+      write(*,*) repeat('-', 46)
+      flush(6)
       
       do while(nSCF < maxSCF)
   
@@ -362,6 +372,11 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
       "|",nSCF,"|",EHF+ENuc,"|",Conv,"|",Gap,"|",ET,"|",EV,"|",EJ+EK,"|"
       write(outfile,*) repeat('-', 110)
       flush(outfile)
+
+      write(*,"(1x,a1,i2,1x,a1,f16.8,1x,a1,f10.6,1x,a1,f10.6,1x,a1,f16.8,4x,a1,f16.8,4x,a1,f16.8,4x,a1)")      & 
+      "|",nSCF,"|",EHF+ENuc,"|",Conv,"|",Gap,"|"
+      write(*,*) repeat('-', 46)
+      flush(6)
       
       enddo
 

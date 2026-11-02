@@ -2,6 +2,7 @@ subroutine nuclear_attraction_matrix(number_of_atoms,number_of_functions,geometr
 
       use files
       use atom_basis
+      use keywords
 
       implicit none 
 
@@ -120,8 +121,7 @@ subroutine nuclear_attraction_matrix(number_of_atoms,number_of_functions,geometr
         end do 
       end do 
 
-
-
+      if (c_details) then
       open(1,file=trim(tmp_file_name)//"/NA.dat")
         do i = 1 , size(NA,1)
           do j = i , size(NA,1)
@@ -129,6 +129,7 @@ subroutine nuclear_attraction_matrix(number_of_atoms,number_of_functions,geometr
           end do 
         end do 
       close(1)
+      end if
 
 
 

@@ -34,9 +34,10 @@ else
     FC = gfortran
     FFLAGS = -Wall -Wno-unused -Wno-unused-dummy-argument -O3 -g -fbacktrace -fcheck=all -fimplicit-none -fopenmp -funroll-loops -ftree-vectorize -ffast-math -frecursive -Wno-conversion
     MODDIR = -J$(ODIR) -I$(ODIR) -I/usr/local/include
-    LIBS = src/lib/libquadpack.a -lblas -llapack \
+    LIBS = src/lib/libquadpack.a \
            -L/usr/local/lib -ltrexio \
-           -lm -fopenmp
+           -lm -fopenmp \
+           -L/opt/homebrew/opt/openblas/lib -lopenblas -lpthread
     EXECUTABLE = $(BDIR)/CI_pop
     $(info Building for LOCAL environment)
 endif

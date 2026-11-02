@@ -200,7 +200,7 @@ subroutine build_ccsd_t(blk,g,ktab,t1,t2,et)
       et=real(energy,dp)
       write(*,*)
       write(*,'(A)')          '*-----------------------------------*'
-      write(*,'(A,f16.12,A)') '*-*   T-ccsd = ', et, '    *-*'
+      write(*,'(A,f16.12,A)') '*-*   T-ccsd = ', et, '   *-*'
       write(*,'(A)')          '*-----------------------------------*'
       write(*,*)
       Flush(6)

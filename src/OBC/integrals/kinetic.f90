@@ -2,6 +2,7 @@ subroutine kinetic_matrix(number_of_atoms,number_of_functions,geometry,atoms,kin
 
       use files
       use atom_basis
+      use keywords
 
       implicit none 
 
@@ -112,6 +113,7 @@ subroutine kinetic_matrix(number_of_atoms,number_of_functions,geometry,atoms,kin
         end do 
       end do 
 
+      if (c_details) then 
       open(1,file=trim(tmp_file_name)//"/KI.dat")
       do i = 1 , size(kinetic,1)
         do j = i , size(kinetic,1)
@@ -119,6 +121,7 @@ subroutine kinetic_matrix(number_of_atoms,number_of_functions,geometry,atoms,kin
         end do 
       end do 
       close(1)
+      end if 
 
 
 end subroutine

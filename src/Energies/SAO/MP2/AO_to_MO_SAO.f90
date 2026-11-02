@@ -163,6 +163,7 @@ subroutine transform_ERI_SAO_to_kMO(nBas, coeff_SAO, ERI_SAO, ERI_kMO)
         error stop 'transform_ERI_SAO_to_kMO: coefficients not k-block ordered'
       end if
 
+
       allocate(coord(3,N_cell))
       do iz = 0, nz-1
         do iy = 0, ny-1
