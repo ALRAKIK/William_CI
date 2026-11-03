@@ -11,6 +11,8 @@
 module bessel_functions
       
       use u_funcs
+      use, intrinsic :: ieee_arithmetic, only: ieee_value, ieee_quiet_nan
+
       implicit none
       private
     
@@ -38,7 +40,7 @@ module bessel_functions
       !   log(I_v(x))
       !---------------------------------------------------------------------------
 
-      function iv_log(v_in, x) result(log_Iv)
+      pure elemental function iv_log(v_in, x) result(log_Iv)
 
         double precision, intent(in) :: v_in, x
         double precision             :: log_Iv
@@ -62,9 +64,10 @@ module bessel_functions
         
         ! Input validation
         if (x < 0.0d0 .or. (v_in < 0.0d0 .and. v_in /= floor(v_in))) then
-            write(*,*) 'Error: Invalid arguments: v =', v_in, ', x =', x
-            log_Iv = 0.0d0
-            log_Iv = log_Iv / 0.0d0  ! Generate NaN
+            !write(*,*) 'Error: Invalid arguments: v =', v_in, ', x =', x
+            !log_Iv = 0.0d0
+            !log_Iv = log_Iv / 0.0d0  ! Generate NaN
+            log_Iv = ieee_value(0.d0, ieee_quiet_nan)
             return
         else if (x == 0.0d0) then
             if (v_in == 0.0d0) then
@@ -292,7 +295,7 @@ module bessel_functions
  
       end function iv_log
     
-      function iv_scaled(v_in, x) result(Iv)
+      pure elemental function iv_scaled(v_in, x) result(Iv)
 
         double precision, intent(in) :: x
         integer, intent(in)          :: v_in
@@ -302,7 +305,7 @@ module bessel_functions
           
       end function iv_scaled
 
-      function iv_log_scaled(v_in, x) result(Iv)
+      pure elemental function iv_log_scaled(v_in, x) result(Iv)
 
         double precision, intent(in) :: x
         integer, intent(in)          :: v_in
@@ -311,19 +314,6 @@ module bessel_functions
           Iv = iv_log(dble(v_in),x)
           
       end function iv_log_scaled
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 end module bessel_functions

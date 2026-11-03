@@ -23,10 +23,6 @@ subroutine AO_to_MO_ERI(nBas,c,ERI_AO,ERI_MO)
 
       double precision,intent(out)  :: ERI_MO(nBas,nBas,nBas,nBas)
 
-
-      double precision              :: J_sum, K_sum, E2e_MO
-      integer                       :: i, j
-
       ! Memory allocation
 
       allocate(scr(nBas,nBas,nBas,nBas))
@@ -115,27 +111,5 @@ subroutine AO_to_MO_ERI(nBas,c,ERI_AO,ERI_MO)
         enddo
       
       enddo
-
-
-      !J_sum = 0.0d0
-      !K_sum = 0.0d0
-!
-      !do i = 1, 1
-      !  do j = 1, 1
-      !    J_sum = J_sum + ERI_MO(i, i, j, j)   ! Sum of (ii|jj)
-      !    K_sum = K_sum + ERI_MO(i, j, i, j)   ! Sum of (ij|ij)
-      !  end do
-      !end do
-!
-      !E2e_MO = 2.0d0 * J_sum - K_sum
-!
-      !write(outfile,*) "============================================="
-      !write(outfile,*) "DEBUG 1: GOLDEN RULE"
-      !write(outfile,*) "---------------------------------------------"
-      !write(outfile,*) "J_sum (sum ii|jj)          : ", 2.d0 * J_sum
-      !write(outfile,*) "K_sum (sum ij|ij)          : ", -K_sum
-      !write(outfile,*) "E2e from MO integrals      : ", E2e_MO
-      !write(outfile,*) "============================================="
-
 
 end subroutine AO_to_MO_ERI

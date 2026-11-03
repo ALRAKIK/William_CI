@@ -32,7 +32,7 @@ subroutine build_super_molecule(keyword,num_atom_per_unitcell)
 
       ! output !
 
-      character(len=10),intent(out)  ::            keyword(30)
+      character(len=10),intent(out)  ::            keyword(100)
       integer                        :: num_atom_per_unitcell
 
       !-----------------------------------------------------------------!
@@ -276,7 +276,7 @@ subroutine read_keywords(keyword)
       character(len=100)             :: line
       integer                        :: io_stat
 
-      character(len=10),intent(out)  :: keyword(30)
+      character(len=10),intent(out)  :: keyword(100)
       logical                        :: reading_cell
 
       do
@@ -340,6 +340,14 @@ subroutine read_keywords(keyword)
         if (trim(line) == 'physicist' )  keyword(22) = 'physicist'
 
         if (trim(line) == 'ccsdt'     )  keyword(23) = 'ccsdt'
+
+        ! MCDE keywords !
+
+        if (trim(line) == 'Lanczos'  )   keyword(50) = 'Lanczos'
+
+        if (trim(line) == 'Spin'     )   keyword(51) = 'Spin'
+
+        if (trim(line) == 'screen'   )   keyword(52) = 'screen'
 
       end do
 

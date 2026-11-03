@@ -42,9 +42,10 @@ subroutine Title()
       write(outfile,'(a)')  ""
       write(outfile,'(2a)') "      ", "Contributors        Arjan Berger"
       write(outfile,'(2a)') "      ", "                    Stefano Evangelisti"
+      write(outfile,'(2a)') "      ", "                    Pierre Sellie  | psellie@irsamc.ups-tlse.fr"
       write(outfile,'(a)')  ""
       write(outfile,'(2a)') "      ",repeat("=",67)
-      write(outfile,'(a)')  "                          Version: 0.4.1 | Quantum Chemistry | 2026"
+      write(outfile,'(a)')  "                          Version: 0.4.2 | Quantum Chemistry | 2026"
       write(outfile,'(2a)') "      ",repeat("=",67)
       write(outfile,'(a)')  ""
 

@@ -25,14 +25,14 @@ BUILD ?= local
 # ======================================== #
 ifeq ($(BUILD),cluster)
     FC = gfortran
-    FFLAGS = -Wall -Wno-unused -Wno-unused-dummy-argument -O3 -lblas -g -fbacktrace -fcheck=all -fimplicit-none -lm -ffree-line-length-none -fopenmp -ftree-vectorize -ffast-math -frecursive
+    FFLAGS = -Wall -Wno-unused -Wno-unused-dummy-argument -O3 -lblas -g -fimplicit-none -lm -ffree-line-length-none -fopenmp -ftree-vectorize -ffast-math -frecursive -march=native
     MODDIR = -J$(ODIR) -I$(ODIR) -I/usr/local/include
     LIBS = -fopenmp src/lib/libquadpack.a src/lib/liblapack.a src/lib/librefblas.a -ltrexio
     EXECUTABLE = $(BDIR)/CI_pop
     $(info Building for CLUSTER environment)
 else
     FC = gfortran
-    FFLAGS = -Wall -Wno-unused -Wno-unused-dummy-argument -O3 -g -fbacktrace -fcheck=all -fimplicit-none -fopenmp -funroll-loops -ftree-vectorize -ffast-math -frecursive -Wno-conversion
+    FFLAGS = -Wall -Wno-unused -Wno-unused-dummy-argument -O3 -g -fimplicit-none -fopenmp -funroll-loops -ftree-vectorize -ffast-math -frecursive -Wno-conversion -march=native
     MODDIR = -J$(ODIR) -I$(ODIR) -I/usr/local/include
     LIBS = src/lib/libquadpack.a \
            -L/usr/local/lib -ltrexio \
@@ -63,7 +63,8 @@ MODULES_IN_ORDER = constants_module \
                    unitcell \
                    functions \
                    K_blocks \
-                   MCDE \
+                   sorts    \
+                   MCDE2e1h  \
 # =================================================== #
 
 # Find all module files
