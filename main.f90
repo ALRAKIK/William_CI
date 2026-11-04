@@ -11,8 +11,6 @@ program CI
       use precomputed_bessel
       use unitcell_module
       use k_blocks
-      use mcde_module
-
 
       implicit none
 
@@ -539,7 +537,7 @@ program CI
         allocate(ERI_MO(nBas,nBas,nBas,nBas))
 
         call cpu_time(start)
-          if (c_physicist .or. c_MCDE) then 
+          if (c_physicist) then 
             call AO_to_MO_ERI_physicist(nBas,coeff,ERI,ERI_MO)
           else 
             call AO_to_MO_ERI_chemist(nBas,coeff,ERI,ERI_MO)
@@ -617,8 +615,7 @@ program CI
       !-----------------------------------------------------------------!
 
       if (c_MCDE) then
-        !call  MCDE_3_1(nBas, nO, e, ERI_MO, c_Lanczos, c_Spin_adapt, c_screen)
-        call  MCDE(nBas, nO, e, ERI_MO, c_Lanczos, c_Spin_adapt, c_screen)
+        call  MCDE_3_1(nBas, nO, e, ERI_MO, c_Lanczos, c_Spin_adapt, c_screen)
       end if 
     
       !-----------------------------------------------------------------!

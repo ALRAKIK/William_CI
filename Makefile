@@ -63,7 +63,6 @@ MODULES_IN_ORDER = constants_module \
                    functions \
                    K_blocks \
                    sorts    \
-                   MCDE2e1h  \
 # =================================================== #
 
 # Find all module files
