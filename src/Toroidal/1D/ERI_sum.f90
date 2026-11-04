@@ -2,11 +2,11 @@ subroutine integrate_ERI_sum(pattern_id,p,q,p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,
      &                           ,ya,yb,yc,yd,yp,yq &
      &                           ,za,zb,zc,zd,zp,zq,result)
       
+      use constants_module
       use iso_c_binding
       use torus_init
       use bessel_functions
       use files
-      use table_lookup_module
       use table_1d_lookup 
       use precomputed_bessel
       use functions

@@ -133,7 +133,6 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
       use precomputed_bessel
       use table_1d_lookup
       use constants_module
-      use table_lookup_module
 
       use, intrinsic :: ieee_arithmetic
 
@@ -195,9 +194,9 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
       double precision                   :: c2yqcd  , s2yqcd
       double precision                   :: c2zqcd  , s2zqcd
 
-      double precision                   :: AAx,  BBx, CCx
-      double precision                   :: AAy,  BBy, CCy
-      double precision                   :: AAz,  BBz, CCz
+      double precision                   :: AAx,  BBx
+      double precision                   :: AAy,  BBy
+      double precision                   :: AAz,  BBz
 
       integer                            :: Nmax_AAx , Nmax_BBx
       integer                            :: Nmax_AAy , Nmax_BBy
@@ -231,9 +230,9 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
       ! =/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/=/= !
 
       upper = 20
-      padx = 2
-      pady = 2
-      padz = 2
+      padx  = 2
+      pady  = 2
+      padz  = 2
 
       inv_ax  = 1.d0/ax 
       inv_ay  = 1.d0/ay 
@@ -254,9 +253,6 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
 
       Nmax_AAx = get_Nmax_from_bessel_1D(AAx)
       Nmax_BBx = get_Nmax_from_bessel_1D(BBx)
- 
-      !call bessel_I_scaled_backward(Nmax_AAx+20, AAx, I_A_x)
-      !call bessel_I_scaled_backward(Nmax_BBx+20, BBx, I_B_x)
 
       call bessel_I_scaled_backward(Nmax_AAx + upper, AAx, I_A_x(0:Nmax_AAx+upper))
       call bessel_I_scaled_backward(Nmax_BBx + upper, BBx, I_B_x(0:Nmax_BBx+upper))
@@ -269,9 +265,6 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
       Nmax_AAy = get_Nmax_from_bessel_1D(AAy)
       Nmax_BBy = get_Nmax_from_bessel_1D(BBy)
  
-      !call bessel_I_scaled_backward(Nmax_AAy+20, AAy, I_A_y)
-      !call bessel_I_scaled_backward(Nmax_BBy+20, BBy, I_B_y)
-
       call bessel_I_scaled_backward(Nmax_AAy + upper, AAy, I_A_y(0:Nmax_AAy+upper))
       call bessel_I_scaled_backward(Nmax_BBy + upper, BBy, I_B_y(0:Nmax_BBy+upper))
 
@@ -282,18 +275,16 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
 
       Nmax_AAz = get_Nmax_from_bessel_1D(AAz)
       Nmax_BBz = get_Nmax_from_bessel_1D(BBz)
- 
-      !call bessel_I_scaled_backward(Nmax_AAz+20, AAz, I_A_z)
-      !call bessel_I_scaled_backward(Nmax_BBz+20, BBz, I_B_z)
-
 
       call bessel_I_scaled_backward(Nmax_AAz + upper, AAz, I_A_z(0:Nmax_AAz+upper))
       call bessel_I_scaled_backward(Nmax_BBz + upper, BBz, I_B_z(0:Nmax_BBz+upper))
 
       fill_hiz = max(Nmax_AAz, Nmax_BBz) + upper + padz
 
-      if (fill_hiz > Nmax_AAz + upper) I_A_z(Nmax_AAz+upper+1 : fill_hiz) = 0.d0
-      if (fill_hiz > Nmax_BBz + upper) I_B_z(Nmax_BBz+upper+1 : fill_hiz) = 0.d0
+      !if (fill_hiz > Nmax_AAz + upper) I_A_z(Nmax_AAz+upper+1 : fill_hiz) = 0.d0
+      !if (fill_hiz > Nmax_BBz + upper) I_B_z(Nmax_BBz+upper+1 : fill_hiz) = 0.d0
+
+      ! --------------------------------------------------------------- !
 
 
       cxpa  = dcos(xpA) ; cypa  = dcos(ypA) ; czpa  = dcos(zpA) 
@@ -7029,7 +7020,6 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
       double precision function S(i_quad) result(sum)
 
       use bessel_functions
-      use table_lookup_module
       use precomputed_bessel
       
       ! --------------------------------------------------------------- !

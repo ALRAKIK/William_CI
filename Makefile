@@ -52,7 +52,6 @@ MODULES_IN_ORDER = constants_module \
                    files \
                    precompute_t \
                    Tools \
-                   Lookup_table \
                    1D_bessel_Nmax \
                    atom_basis \
                    keywords \

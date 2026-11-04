@@ -7,7 +7,6 @@ program CI
       use classification_ERI
       use trexio
       use keywords
-      use table_lookup_module
       use table_1d_lookup
       use precomputed_bessel
       use unitcell_module
@@ -112,7 +111,7 @@ program CI
       c_physicist   = any(keyword == 'physicist')
       c_ccsdt       = any(keyword == 'ccsdt'    )
       c_Lanczos     = any(keyword == 'Lanczos'  )
-      c_Spin_adapt  = any(keyword == 'Spin'     )
+      c_Spin_adapt  = any(keyword == 'Spin'     )     ! 25
       c_screen      = any(keyword == 'screen'   )
                               
       ! --------------------------------------------------------------- !
@@ -174,8 +173,7 @@ program CI
       !                     Read the table for Nmax                     !
       ! --------------------------------------------------------------- !      
 
-          call load_table   ('table.bin'   )
-          call load_table_1d('table_1D.bin')
+        call load_table_1d('table_1D.bin')
           
 
       end if 
@@ -541,7 +539,11 @@ program CI
         allocate(ERI_MO(nBas,nBas,nBas,nBas))
 
         call cpu_time(start)
-          call AO_to_MO_ERI(nBas,coeff,ERI,ERI_MO)
+          if (c_physicist .or. c_MCDE) then 
+            call AO_to_MO_ERI_physicist(nBas,coeff,ERI,ERI_MO)
+          else 
+            call AO_to_MO_ERI_chemist(nBas,coeff,ERI,ERI_MO)
+          end if
         call cpu_time(end)
 
         !call print_MO_file(nBas,ERI_MO)
@@ -615,8 +617,8 @@ program CI
       !-----------------------------------------------------------------!
 
       if (c_MCDE) then
-        call  MCDE_3_1(nBas, nO, e, ERI_MO, c_Lanczos, c_Spin_adapt, c_screen)
-        !call  MCDE(nBas, nO, e, ERI_MO, c_Lanczos, c_Spin_adapt, c_screen)
+        !call  MCDE_3_1(nBas, nO, e, ERI_MO, c_Lanczos, c_Spin_adapt, c_screen)
+        call  MCDE(nBas, nO, e, ERI_MO, c_Lanczos, c_Spin_adapt, c_screen)
       end if 
     
       !-----------------------------------------------------------------!
