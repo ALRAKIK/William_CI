@@ -33,7 +33,6 @@ subroutine ERI_integral_4_function_toroidal(one,two,three,four,value)
       double precision                :: mu_x, mu_y , mu_z
       double precision                :: nu_x, nu_y , nu_z
       double precision                :: xpA , xpB , xqC , xqD , phi 
-      double precision                :: test 
       integer                         :: pattern_id, encode_orbital_pattern
 
       ! --------------------------------------------------------------- !
@@ -100,12 +99,12 @@ subroutine ERI_integral_4_function_toroidal(one,two,three,four,value)
               inv_gade            = 1.d0 / gade 
               reduced_nu          = gamma * delta * inv_gade
 
-              yq     = (gamma * yc + delta * yd) * inv_gade
-              zq     = (gamma * zc + delta * zd) * inv_gade
+              yq      = (gamma * yc + delta * yd) * inv_gade
+              zq      = (gamma * zc + delta * zd) * inv_gade
 
-              const  = (c1*c2*c3*c4) * 2.d0 /dsqrt(pi) * (Lx * Lx) * dexp(- reduced_mu * (Yab*Yab) ) * dexp(- reduced_nu * (Ycd*Ycd) ) * dexp(- reduced_mu * (Zab*Zab) ) * dexp(- reduced_nu * (Zcd*Zcd) )
+              const   = (c1*c2*c3*c4) * 2.d0 /dsqrt(pi) * (Lx * Lx) * dexp(- reduced_mu * (Yab*Yab) ) * dexp(- reduced_nu * (Ycd*Ycd) ) * dexp(- reduced_mu * (Zab*Zab) ) * dexp(- reduced_nu * (Zcd*Zcd) )
 
-              test = dexp(-0.5d0*(alpha+beta+gamma+delta-mu_x-nu_x)*(Lx*Lx)/(pi*pi)) * const
+              const   = dexp(-0.5d0*(alpha+beta+gamma+delta-mu_x-nu_x)*(Lx*Lx)/(pi*pi)) * const
 
               xpA     = ax*(xp - xa)
               xpB     = ax*(xp - xb)
@@ -115,14 +114,13 @@ subroutine ERI_integral_4_function_toroidal(one,two,three,four,value)
 
               pattern_id = encode_orbital_pattern(o1, o2, o3, o4)
 
-              if ( dabs(test) <= 2.22d-16 ) cycle
+              if ( dabs(const) <= 2.22d-16 ) cycle
 
-                call integrate_ERI_sum(pattern_id,albe,gade,mu_x,nu_x,phi,xpA,xpB,xqC,xqD,xa,xb,xc,xd,xp,xq&
-                &                                                                        ,ya,yb,yc,yd,yp,yq&
-                &                                                                        ,za,zb,zc,zd,zp,zq,value_s)
-                value  = value    + test * value_s
+              call integrate_ERI_sum(pattern_id,albe,gade,mu_x,nu_x,phi,xpA,xpB,xqC,xqD,xa,xb,xc,xd,xp,xq&
+              &                                                                        ,ya,yb,yc,yd,yp,yq&
+              &                                                                        ,za,zb,zc,zd,zp,zq,value_s)
+              value  = value    + const * value_s
 
-              
             end do
           end do 
         end do 

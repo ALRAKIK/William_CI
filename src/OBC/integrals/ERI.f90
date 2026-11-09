@@ -1,4 +1,4 @@
-subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_electron)
+subroutine ERI_integral(number_of_atoms,nBas,geometry,atoms,two_electron)
 
       use files 
       use omp_lib
@@ -16,9 +16,9 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
 
       type(ERI_function),allocatable :: ERI  (:)
       integer                        :: i , j , k , l
-      integer                        :: number_of_functions
+      integer                        :: nBas
       double precision               :: geometry(number_of_atoms,3)
-      double precision               :: two_electron(number_of_functions,number_of_functions,number_of_functions,number_of_functions)
+      double precision               :: two_electron(nBas,nBas,nBas,nBas)
       double precision               :: value 
 
       double precision               :: num_total_int
@@ -41,16 +41,16 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
       double precision, allocatable :: Q_schwarz(:,:)
       double precision              :: val_iijj
       double precision, parameter   :: schwarz_thresh = 1.d-14
-      integer                       :: n_screened, n_computed
+      integer                       :: n_screened
       
       !-----------------------------------------------------------------!
 
       call omp_set_dynamic(.false.)
       call omp_set_num_threads(omp_get_max_threads())
       
-      allocate(ERI(number_of_functions))
+      allocate(ERI(nBas))
       
-      call classification(number_of_atoms,number_of_functions,geometry,atoms,ERI)
+      call classification(number_of_atoms,nBas,geometry,atoms,ERI)
 
       !$omp parallel
       if (omp_get_thread_num() == 0) then
@@ -80,8 +80,8 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
       ! Precompute all i-j pairs for manual collapse
 
       total_ij_pairs = 0
-      do i = 1, number_of_functions
-        do j = i, number_of_functions
+      do i = 1, nBas
+        do j = i, nBas
           total_ij_pairs = total_ij_pairs + 1
         end do
       end do
@@ -89,8 +89,8 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
       allocate(i_index(total_ij_pairs), j_index(total_ij_pairs))
 
       total_ij_pairs = 0
-      do i = 1, number_of_functions
-        do j = i, number_of_functions
+      do i = 1, nBas
+        do j = i, nBas
           total_ij_pairs = total_ij_pairs + 1
           i_index(total_ij_pairs) = i
           j_index(total_ij_pairs) = j
@@ -101,8 +101,8 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
       do ij_index = 1, total_ij_pairs
         i = i_index(ij_index)
         j = j_index(ij_index)
-        do k = 1, number_of_functions
-          do l = k, number_of_functions
+        do k = 1, nBas
+          do l = k, nBas
             if (i <= k .or. (i == k .and. j <= l)) then
               num_total_int = num_total_int + 1.d0
             end if 
@@ -116,14 +116,14 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
       !   Done ONCE here, reused for every screening check below        !
       !-----------------------------------------------------------------!
 
-      allocate(Q_schwarz(number_of_functions, number_of_functions))
+      allocate(Q_schwarz(nBas, nBas))
       Q_schwarz = 0.d0
       write(*,'(A)')          'Precomputing Schwarz screening matrix...'
       write(outfile,'(6x,A)') 'Precomputing Schwarz screening matrix...'
 
 
-      do i = 1, number_of_functions
-        do j = i, number_of_functions
+      do i = 1, nBas
+        do j = i, nBas
           call ERI_integral_4_function(ERI(i), ERI(j), ERI(i), ERI(j), val_iijj)
           Q_schwarz(i,j) = dsqrt(dabs(val_iijj))
           Q_schwarz(j,i) = Q_schwarz(i,j)
@@ -142,17 +142,14 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
       ! --- Diagnostic: count how many integrals survive ---
 
       n_screened = 0
-      n_computed = 0
       do ij_index = 1, total_ij_pairs
         i = i_index(ij_index)
         j = j_index(ij_index)
-        do k = 1, number_of_functions
-          do l = k, number_of_functions
+        do k = 1, nBas
+          do l = k, nBas
             if (i <= k .or. (i == k .and. j <= l)) then
               if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) then
                 n_screened = n_screened + 1
-              else
-                n_computed = n_computed + 1
               end if
             end if
           end do
@@ -161,7 +158,7 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
       
       write(*,'(A,I0)')   'Total number of unique integrals :    ', int(num_total_int,16)
       write(*,'(A,I0)')   'Screened out by Schwarz:              ', n_screened
-      write(*,'(A,I0)')   'Total unique integrals will computed: ', n_computed
+      write(*,'(A,I0)')   'Total unique integrals will computed: ', int(num_total_int,16) - n_screened
       write(*,'(A,F8.2,A)') 'Reduction:                 ', &
         100.d0 * dble(n_screened) / num_total_int, ' %'
 
@@ -169,7 +166,7 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
 
       write(outfile,'(6x,A,I0)')   'Total number of unique integrals :    ', int(num_total_int,16)
       write(outfile,'(6x,A,I0)')   'Screened out by Schwarz:              ', n_screened
-      write(outfile,'(6x,A,I0)')   'Total unique integrals will computed: ', n_computed
+      write(outfile,'(6x,A,I0)')   'Total unique integrals will computed: ', int(num_total_int,16) - n_screened
       write(outfile,'(6x,A,F8.2,A)') 'Reduction:                 ', &
         100.d0 * dble(n_screened) / num_total_int, ' %'
 
@@ -189,8 +186,8 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
       do ij_index = 1, total_ij_pairs
           i = i_index(ij_index)
           j = j_index(ij_index)
-        do k = 1, number_of_functions
-          do l = k, number_of_functions
+        do k = 1, nBas
+          do l = k, nBas
 
             if (i <= k .or. (i == k .and. j <= l)) then
 
@@ -226,7 +223,7 @@ subroutine ERI_integral(number_of_atoms,number_of_functions,geometry,atoms,two_e
 
               !$omp critical
               integrals_done = integrals_done + 1.d0
-              current_pct = int((integrals_done * 100.0d0) / n_computed)
+              current_pct = int((integrals_done * 100.0d0) / dble(num_total_int - n_screened))
               if (current_pct > last_pct .and. mod(current_pct, 5) == 0) then
                   write(*,'(I3,"% done")') current_pct
                   flush(6)

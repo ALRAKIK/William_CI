@@ -46,7 +46,7 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
       double precision, allocatable :: Q_schwarz(:,:)
       double precision              :: val_iijj
       double precision, parameter   :: schwarz_thresh = 1.d-14
-      integer(8)                    :: n_screened, n_computed
+      integer(8)                    :: n_screened
       !-----------------------------------------------------------------!
 
       call initialize_bessel_table()
@@ -153,15 +153,14 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
       write(*,'(A,ES12.4)') 'Threshold   = ', schwarz_thresh
 
       ! --- Diagnostic: count how many integrals survive ---
+      
       n_screened = 0
-      n_computed = 0
       do ij_index = 1, total_ij_pairs
         i = i_index(ij_index)
         j = j_index(ij_index)
         do k = 1, nBas
           do l = k, nBas
             if (i <= k .or. (i == k .and. j <= l)) then
-              n_computed = n_computed + 1
               if (Q_schwarz(i,j) * Q_schwarz(k,l) < schwarz_thresh) then
                 n_screened = n_screened + 1
               end if
@@ -172,7 +171,7 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
       
       write(*,'(A,I0)')   'Total number of unique integrals :    ', int(num_total_int,16)
       write(*,'(A,I0)')   'Screened out by Schwarz:              ', n_screened
-      write(*,'(A,I0)')   'Total unique integrals will computed: ', n_computed
+      write(*,'(A,I0)')   'Total unique integrals will computed: ', int(num_total_int,16) - n_screened
       write(*,'(A,F8.2,A)') 'Reduction:                 ', &
         100.d0 * dble(n_screened) / num_total_int, ' %'
 
@@ -180,7 +179,7 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
 
       write(outfile,'(6x,A,I0)')   'Total number of unique integrals :    ', int(num_total_int,16)
       write(outfile,'(6x,A,I0)')   'Screened out by Schwarz:              ', n_screened
-      write(outfile,'(6x,A,I0)')   'Total unique integrals will computed: ', n_computed
+      write(outfile,'(6x,A,I0)')   'Total unique integrals will computed: ', int(num_total_int,16) - n_screened
       write(outfile,'(6x,A,F8.2,A)') 'Reduction:                 ', &
         100.d0 * dble(n_screened) / num_total_int, ' %'
 
@@ -241,7 +240,7 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
 
               !$omp critical
               integrals_done = integrals_done + 1.d0
-              current_pct = int((integrals_done * 100.0d0) / n_computed)
+              current_pct = int((integrals_done * 100.0d0) / dble(num_total_int - n_screened))
               if (current_pct > last_pct .and. mod(current_pct, 5) == 0) then
                   write(*,'(I3,"% done")') current_pct
                   flush(6)
@@ -299,7 +298,7 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
 
               !$omp critical
               integrals_done = integrals_done + 1.d0
-              current_pct = int((integrals_done * 100.0d0) / n_computed)
+              current_pct = int((integrals_done * 100.0d0) / dble(num_total_int - n_screened))
               if (current_pct > last_pct .and. mod(current_pct, 5) == 0) then
                   write(*,'(I3,"% done")') current_pct
                   flush(6)

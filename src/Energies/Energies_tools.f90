@@ -182,27 +182,12 @@ subroutine get_X_from_overlap(N,over,X)
 
       call diagonalize_matrix(N,Evec,Eval)
 
-      ! //////////////////////////////////////////////////////////////// !
-      !call header_under("The Overlap Eigenvalues",-1)
-      !write(outfile, "(5f16.8)") (Eval(i), i=1,n)
-      !write(outfile,*) ""
-      !write(outfile,*) ""
-      !write(outfile,'(a,g16.8)') " The smallest eigenvalue : " , MINVAL(Eval)
-      !write(outfile,*) ""
-      !if (Minval(Eval) < 0.d0) then 
-      !  call header("Error",-1)
-      !    write(outfile,'(a80)')'*******************************************************************************************'
-      !    write(outfile,'(a80)')           "* The smallest eigenvalue of the overlap is negative, exiting the program      *"
-      !    write(outfile,'(a80)')'*******************************************************************************************'
-      !    stop            
-      !end if
-      ! //////////////////////////////////////////////////////////////// !
-
       do i = 1 , N
           if (Eval(i) > thresh) then
             Eval(i) = dsqrt(1.d0 / Eval(i))
           else
             write(outfile,"(a,I3,a,4x,E16.10)") 'Eigenvalue ',i,' is too small for Lowdin orthogonalization',Eval(i)
+            Eval(i) = 0.d0
           end if
       end do
     

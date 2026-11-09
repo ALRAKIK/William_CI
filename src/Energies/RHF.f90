@@ -1,4 +1,4 @@
-subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
+subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c,natom,Zat)
 
       ! Perform a restricted Hartree-Fock calculation
 
@@ -20,6 +20,9 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
       double precision,intent(in)   :: ERI(nBas,nBas,nBas,nBas)
 
       double precision,intent(in)   :: ENuc
+
+      integer         , intent(in)  :: natom
+      integer         , intent(in)  :: Zat(natom)
   
       ! Local variables
   
@@ -79,11 +82,11 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
       allocate(F_diis(nBas*nBas,max_diis))
        
       if (c_Huckel) then 
-         call header_under("Huckel guess",-1)
-         call guess_Huckel_RHF(nBas,c_details,nO,Hc,X,ENuc,S,T,V,P)
+        call header_under("Huckel guess",-1)
+        call guess_Huckel_RHF(nBas,c_details,nO,Hc,X,ENuc,S,T,V,P)
       else 
-         call header_under("AO guess",-1)
-      call    guess_AO_RHF(nBas,c_details,nO,HC,X,ENuc,S,T,V,P)
+        call header_under("AO guess",-1)
+        call guess_AO_RHF(nBas,c_details,nO,HC,X,ENuc,S,T,V,P)
       end if 
          
       ! --------------------------------------------------------------- !
@@ -327,9 +330,14 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
   
       endif
   
+
+        
+
         ! Compute final HF energy
 
         call print_RHF(nBas,nO,e,C,ENuc,ET,EV,EJ,EK,EHF)
+
+        call print_mulliken_charges(nBas, natom, nBas/natom, S, P, Zat)
 	
 	      ! Memory deallocation
 	

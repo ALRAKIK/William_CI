@@ -79,6 +79,8 @@ subroutine build_super_molecule(keyword,num_atom_per_unitcell)
 
       close(1)
 
+      nauc = num_atoms
+
       ! --------------------------------------------------------------- !
       ! --------------------------------------------------------------- !
 
@@ -340,6 +342,8 @@ subroutine read_keywords(keyword)
         if (trim(line) == 'physicist' )  keyword(22) = 'physicist'
 
         if (trim(line) == 'ccsdt'     )  keyword(23) = 'ccsdt'
+
+        if (trim(line) == 'inv_sym'   )  keyword(24) = 'inv_sym'
 
         ! MCDE keywords !
 

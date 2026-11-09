@@ -14,6 +14,11 @@ module keywords
       public  :: c_nquad_128
       public  :: c_physicist
       public  :: c_ccsdt
+      public  :: c_inv_sym
+
+
+
+
       public  :: c_Spin_adapt
       public  :: c_Lanczos
       public  :: c_screen
@@ -31,6 +36,10 @@ module keywords
       logical :: c_nquad_128
       logical :: c_physicist
       logical :: c_ccsdt
+      logical :: c_inv_sym
+
+
+
       logical :: c_Spin_adapt
       logical :: c_Lanczos
       logical :: c_screen

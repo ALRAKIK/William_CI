@@ -1,4 +1,4 @@
-subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
+subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
 
       ! Perform a restricted Hartree-Fock calculation
 
@@ -74,8 +74,8 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
 
       type(K_block)                 ::             blk(N_cell)
 
-      
-
+      integer         , intent(in)  :: natom
+      integer         , intent(in)  :: Zat(natom)
       
       !-----------------------------------------------------------------!
 
@@ -411,6 +411,10 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk)
         ! Compute final HF energy
 
         call print_RHF_SAO(nBas,nO,e,coeff_SAO,ENuc,ET,EV,EJ,EK,EHF,blk)
+
+        call print_mulliken_charges(nBas, natom, nBas/natom, S, P, Zat)
+
+        ! Memory deallocation
 
         deallocate(P,error,J,K,F,err_diis,F_diis,S_SAO,X_SAO,P_SAO,F_SAO,Fp_SAO,idx,e_sorted)
 

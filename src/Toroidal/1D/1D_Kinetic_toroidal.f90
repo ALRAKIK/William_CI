@@ -2,7 +2,6 @@ subroutine kinetic_matrix_toroidal_1D(nBas,AO,kinetic)
 
       use files 
       use torus_init
-      use atom_basis
       use classification_ERI
       use keywords
       use unitcell_module

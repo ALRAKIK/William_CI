@@ -1,5 +1,5 @@
 subroutine Hartree_Fock_SAO(nBas,nO,S,T,V,Hc,ERI,X,Enuc,EHF,e,c,coeff_SAO &
-                       ,n_alpha, n_beta,blk)
+                       ,n_alpha, n_beta,blk,natom,Zat)
 
       use keywords
       use constants_module
@@ -24,6 +24,9 @@ subroutine Hartree_Fock_SAO(nBas,nO,S,T,V,Hc,ERI,X,Enuc,EHF,e,c,coeff_SAO &
 
       double precision,intent(in)   :: ENuc
 
+      integer         , intent(in)  :: natom
+      integer         , intent(in)  :: Zat(natom)
+
 
       ! local ! 
 
@@ -36,25 +39,19 @@ subroutine Hartree_Fock_SAO(nBas,nO,S,T,V,Hc,ERI,X,Enuc,EHF,e,c,coeff_SAO &
       type(K_block),   intent(out)  :: blk(N_cell)
        
 
-
-      if (c_SAO) then 
-        call RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,Enuc,EHF,e,coeff_SAO,blk)
-        go to 100
-      end if 
-
       if (c_UHF) then 
         call UHF(nBas,c_details,n_alpha,n_beta,S,T,V,Hc,ERI,X,Enuc,EHF,e,c)
         go to 100
       end if
 
-      call RHF(nBas,nO,S,T,V,Hc,ERI,X,Enuc,EHF,e,c)
+      call RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,Enuc,EHF,e,coeff_SAO,blk,natom,Zat)
 
 100 continue
 
 end subroutine 
 
 
-subroutine Hartree_Fock(nBas,nO,S,T,V,Hc,ERI,X,Enuc,EHF,e,c,n_alpha, n_beta)
+subroutine Hartree_Fock(nBas,nO,S,T,V,Hc,ERI,X,Enuc,EHF,e,c,n_alpha, n_beta,natom,Zat)
 
       use keywords
       use constants_module
@@ -78,6 +75,9 @@ subroutine Hartree_Fock(nBas,nO,S,T,V,Hc,ERI,X,Enuc,EHF,e,c,n_alpha, n_beta)
 
       double precision,intent(in)   :: ENuc
 
+      integer         , intent(in)  :: natom
+      integer         , intent(in)  :: Zat(natom)
+
 
       ! local ! 
 
@@ -92,7 +92,7 @@ subroutine Hartree_Fock(nBas,nO,S,T,V,Hc,ERI,X,Enuc,EHF,e,c,n_alpha, n_beta)
         go to 100
       end if
 
-      call RHF(nBas,nO,S,T,V,Hc,ERI,X,Enuc,EHF,e,c)
+      call RHF(nBas,nO,S,T,V,Hc,ERI,X,Enuc,EHF,e,c,natom,Zat)
 
 100 continue
 

@@ -11,6 +11,7 @@ subroutine bary_center_toroidal_x(e1,e2,r1,r2,rp)
       ! local !
 
       double precision,parameter    :: epsilon = 1.d-6
+      double precision              :: sin_sum, cos_sum
       double precision              :: val 
 
       ! ----------------------------------------------------------------!
@@ -36,7 +37,10 @@ subroutine bary_center_toroidal_x(e1,e2,r1,r2,rp)
         end if 
       else 
         val = e1*dcos(ax*r1)+e2*dcos(ax*r2)
+        !cos_sum = e1*dcos(ax*r1) + e2*dcos(ax*r2)
+        !sin_sum = e1*dsin(ax*r1) + e2*dsin(ax*r2)
         rp = datan((e1*dsin(ax*r1)+e2*dsin(ax*r2))/val)/ax + 0.5d0 * Lx * Heaviside(-val)
+        !rp = datan2(sin_sum, cos_sum) / ax
       end if
     
 end subroutine bary_center_toroidal_x

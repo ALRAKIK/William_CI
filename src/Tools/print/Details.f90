@@ -17,7 +17,7 @@ subroutine details_integrals(nBas,S,T,V,ERI)
       open(1,file=trim(tmp_file_name)//"/OV.dat ")
         do i = 1 , size(S,1)
           do j = i , size(S,1)
-            if (abs(S(i,j)) > 1e-15 ) write(1,*) i , j , S(i,j)
+            if (abs(S(i,j)) > 1e-15 ) write(1,'(i3,i3,6x,200es24.16e3)') i , j , S(i,j)
           end do 
         end do 
       close(1)
@@ -32,7 +32,7 @@ subroutine details_integrals(nBas,S,T,V,ERI)
       open(1,file=trim(tmp_file_name)//"/KI.dat ")
       do i = 1 , size(T,1)
         do j = i , size(T,1)
-          if (abs(T(i,j)) > 1e-15 ) write(1,*) i, j , T(i,j)
+          if (abs(T(i,j)) > 1e-15 ) write(1,'(i3,i3,6x,200es24.16e3)') i, j , T(i,j)
         end do 
       end do 
       close(1)
@@ -47,7 +47,7 @@ subroutine details_integrals(nBas,S,T,V,ERI)
       open(1,file=trim(tmp_file_name)//"/NA.dat ")
         do i = 1 , size(V,1)
           do j = i , size(V,1)
-            if (abs(V(i,j)) > 1e-15 ) write(1,*) i , j ,  V(i,j)
+            if (abs(V(i,j)) > 1e-15 ) write(1,'(i3,i3,6x,200es24.16e3)') i , j ,  V(i,j)
           end do 
         end do 
       close(1)
@@ -65,7 +65,7 @@ subroutine details_integrals(nBas,S,T,V,ERI)
           do j = 1 , nBas
             do k = 1 , nBas
               do l = 1 , nBas
-                if (abs(ERI(i,j,k,l)) > 1.d-12) write(1,*) i , j , k , l , ERI(i,j,k,l)
+                if (abs(ERI(i,j,k,l)) > 1.d-15) write(1,*) i , j , k , l , ERI(i,j,k,l)
               end do 
             end do 
           end do 
@@ -95,7 +95,7 @@ subroutine details_integrals_SAO(nBas,S,T,V,ERI)
       open(1,file=trim(tmp_file_name)//"/OV.dat ")
         do i = 1 , size(S,1)
           do j = i , size(S,1)
-            if (abs(S(i,j)) > 1e-15 ) write(1,*) i , j , S(i,j)
+            write(1,'(i3,i3,6x,200es24.16e3)') i , j , S(i,j)
           end do 
         end do 
       close(1)
@@ -110,7 +110,7 @@ subroutine details_integrals_SAO(nBas,S,T,V,ERI)
       open(1,file=trim(tmp_file_name)//"/KI.dat ")
       do i = 1 , size(T,1)
         do j = i , size(T,1)
-          if (abs(T(i,j)) > 1e-15 ) write(1,*) i, j , T(i,j)
+          write(1,'(i3,i3,6x,200es24.16e3)') i, j , T(i,j)
         end do 
       end do 
       close(1)
@@ -125,7 +125,7 @@ subroutine details_integrals_SAO(nBas,S,T,V,ERI)
       open(1,file=trim(tmp_file_name)//"/NA.dat ")
         do i = 1 , size(V,1)
           do j = i , size(V,1)
-            if (abs(V(i,j)) > 1e-15 ) write(1,*) i , j ,  V(i,j)
+            write(1,'(i3,i3,6x,200es24.16e3)') i , j ,  V(i,j)
           end do 
         end do 
       close(1)

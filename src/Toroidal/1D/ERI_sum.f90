@@ -104,6 +104,10 @@ subroutine integrate_ERI_sum(pattern_id,p,q,p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,
       Nmax_B = get_Nmax_from_bessel_1D(BBx)
       !call bessel_I_scaled_backward(Nmax_B+20, BBx, I_B_x)
 
+      if (Nmax_A + upper > 50000 .or. Nmax_B + upper > 50000) then
+        error stop "Bessel order exceeds integrate_ERI_sum array bounds"
+      end if
+
       call bessel_I_scaled_backward(Nmax_A + upper, AAx, I_A_x(0:Nmax_A+upper))
       call bessel_I_scaled_backward(Nmax_B + upper, BBx, I_B_x(0:Nmax_B+upper))
 
@@ -4118,7 +4122,6 @@ subroutine integrate_ERI_sum(pattern_id,p,q,p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,
       case default
         F_x(n) = 0.d0
 
-      
       end select
 
       ! -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=--=-=-=-=--=-=-=-=-=-=-=-=-=-=- !
@@ -4144,13 +4147,19 @@ subroutine integrate_ERI_sum(pattern_id,p,q,p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,
       integer, intent(in)                  :: i_quad
       integer                              :: terms
 
-
       ! -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- !
 
       terms = min(fill_hi - pad, I_C_table_x(i_quad)%nmax)
 
       sum = 2.d0 * dot_product(F_x(1:terms), I_C_table_x(i_quad)%I(1:terms)) &
        + F_x(0) * I_C_table_x(i_quad)%I(0)
+
+      if (abs(F_x(fill_hi-pad)) > 1.d-16) print *, "not converged", F_x(fill_hi-pad)
+
+      if (terms >= 1) then
+        if (2.d0 * F_x(terms)   * I_C_table_x(i_quad)%I(terms) > 1.d-16) print *, "The last term =", 2.d0 * F_x(terms)   * I_C_table_x(i_quad)%I(terms)
+      end if
+
 
       end function S
 

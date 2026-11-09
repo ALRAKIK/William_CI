@@ -1,7 +1,6 @@
 subroutine overlap_matrix_toroidal_1D(nBas,AO,overlap)
 
       use files
-      use atom_basis
       use torus_init
       use classification_ERI
       use keywords
@@ -29,12 +28,15 @@ subroutine overlap_matrix_toroidal_1D(nBas,AO,overlap)
       !-----------------------------------------------------------------!
 
       overlap(:,:) = 0.d0
+
       ! --------------------------------------------------------------- !
 
       do i = 1 , nfuc
+
+        AO1 = AO(i)
+
         do j = 1 , nBas
 
-          AO1 = AO(i)
           AO2 = AO(j)
 
           r1(1) = AO1%x ; r2(1) = AO2%x
@@ -72,7 +74,7 @@ subroutine overlap_matrix_toroidal_1D(nBas,AO,overlap)
           do j = i , nBas
             write(outfile,'(i3,i3, 6x,1000(f16.12,2x))') i , j, overlap(i,j)
           end do
-        end do 
+        end do
       end if 
 
 end subroutine overlap_matrix_toroidal_1D

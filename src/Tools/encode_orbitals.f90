@@ -74,4 +74,7 @@ integer function encode_orbital_pattern_AO(o1, o2)
 
       end function orbital_code
 
+
+      
+
 end function

@@ -63,7 +63,8 @@ program CI
       integer                         ::          n_alpha , n_beta
 
 
-      integer                         :: start_count, end_count, count_rate
+      integer                         :: start_count, end_count
+      integer                         :: count_rate
       double precision                :: elapsed
 
       logical                         :: transformation
@@ -108,6 +109,7 @@ program CI
       c_nquad_128   = any(keyword == 'nquad_128')
       c_physicist   = any(keyword == 'physicist')
       c_ccsdt       = any(keyword == 'ccsdt'    )
+      c_inv_sym     = any(keyword == 'inv_sym'  )
       c_Lanczos     = any(keyword == 'Lanczos'  )
       c_Spin_adapt  = any(keyword == 'Spin'     )     ! 25
       c_screen      = any(keyword == 'screen'   )
@@ -234,9 +236,7 @@ program CI
       !                  build the atomic basis set                     !
       ! --------------------------------------------------------------- !
 
-      if (calculation_type == "Tori1D" .or. &
-      &   calculation_type == "Tori2D" .or. &
-          calculation_type == "Tori3D" ) then 
+      if (any(calculation_type == ["Tori1D","Tori2D","Tori3D"])) then
 
         call basis_tor(n_atoms,charge,atoms,calculation_type)
 
@@ -281,9 +281,6 @@ program CI
         nfuc = nfuc  + atoms(i)%num_s_function + 3*atoms(i)%num_p_function
       end do
 
-      N_cell = nBas / nfuc 
-
-
       ! --------------------------------------------------------------- !
       !          Allocate the memory for the atomic orbitals            !
       ! --------------------------------------------------------------- !
@@ -294,14 +291,14 @@ program CI
       !          Classify the atomic orbitals and print them            !
       ! --------------------------------------------------------------- !
 
-      if (calculation_type == "Tori1D" .or.                             &
-      &   calculation_type == "Tori2D" .or.                             & 
-      &   calculation_type == "Tori3D") then 
-        call classification_orbital_tor(n_atoms,nBas,    &
-        &                               geometry,atoms,AO)
+      if (any(calculation_type == ["Tori1D","Tori2D","Tori3D"])) then
+          
+        N_cell = nBas / nfuc 
+
+        call classification_orbital_tor(n_atoms,nBas,geometry,atoms,AO)
+
       else
-        call classification_orbital(n_atoms,nBas,        &
-        &                               geometry,atoms,AO)
+        call classification_orbital    (n_atoms,nBas,geometry,atoms,AO)
       end if
 
       ! --------------------------------------------------------------- !
@@ -374,54 +371,27 @@ program CI
       !              ---------------------------------                 !
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-      if (c_nquad_128) then 
-        write(*,'(A)') 'The integrals will be calculated using 128 point quadrature'
-        nquad_point = 128 
-      else 
-        write(*,'(A)') 'The integrals will be calculated using 64 point quadrature'
-        nquad_point = 64
-      end if
-
       if (c_read) then
 
         write(outfile,'(A)') 'The integrals will be read from file'
+        call read_integrals_from_file(nBas,S,T,V,Hc,ERI,calculation_type)
 
       else 
 
         write(outfile,'(A)') 'The integrals will be calculated'
+        call calculation_type_select(calculation_type,n_atoms,nBas,atoms,geometry,AO,S,T,V,ERI,ERI_size)
 
-        select case (trim(calculation_type))
-          case ("OBC", "Ring", "OBC2D")
-            call molecule(n_atoms,nBas,atoms,geometry,S,T,V,ERI)            ! Molecule 
-          case ("Torus")
-            call Torus_PBC(n_atoms,nBas,atoms,AO,geometry)                  ! Torus with PBC 
-          case ("Tori1D")
-            call Tori1D(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)           ! Toroidal 1D Gaussian TRR
-          case ("Tori2D")
-            call Tori2D(n_atoms,nBas,atoms,AO,geometry)                     ! Real Toroidal 2D Gaussian
-          case ("Tori3D")
-            call Tori3D(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)           ! Real Toroidal 3D Gaussian
-          case default
-            write(outfile,'(A)') 'Unknown calculation type: ',          &
-            &                     trim(calculation_type)
-            stop
-        end select         
+        Hc(:,:) = T(:,:) + V(:,:)
 
       end if
 
       ! --------------------------------------------------------------- !
-      !            Read the one and the two electron integrals     
+      !          Stop if only the integrals calculation needed          !
       ! --------------------------------------------------------------- !      
 
       if (c_Integral) then
         write(outfile,'(A)') 'All of The integrals calculated'
         stop 
-      end if
-
-      if (c_read) then
-        call read_integrals_from_file(nBas,S,T,V,Hc,ERI,calculation_type)
-      else
-        Hc(:,:) = T(:,:) + V(:,:)
       end if
 
       ! --------------------------------------------------------------- !
@@ -473,11 +443,11 @@ program CI
        
       if (c_SAO) then 
         call cpu_time(start)
-          call Hartree_Fock_SAO(nBas,nO,S,T,V,Hc,ERI,X,E_nuc,EHF,e,coeff,coeff_SAO,n_alpha,n_beta,blk)
+          call Hartree_Fock_SAO(nBas,nO,S,T,V,Hc,ERI,X,E_nuc,EHF,e,coeff,coeff_SAO,n_alpha,n_beta,blk,n_atoms,charge)
         call cpu_time(end)
       else 
         call cpu_time(start)
-          call Hartree_Fock(nBas,nO,S,T,V,Hc,ERI,X,E_nuc,EHF,e,coeff,n_alpha,n_beta)
+          call Hartree_Fock(nBas,nO,S,T,V,Hc,ERI,X,E_nuc,EHF,e,coeff,n_alpha,n_beta,n_atoms,charge)
         call cpu_time(end)
       end if 
       

@@ -313,7 +313,7 @@ subroutine trexio_conv_integrals(nBas,S,T,V,Hc,ERI)
         call trexio_string_of_error(rc, err_msg)
           print *, 'Error: '//trim(err_msg)
         call exit(-1)
-      end if
+      end if      
 
       rc = trexio_write_ao_1e_int_core_hamiltonian(trexio_file, Hc)
       if (rc /= TREXIO_SUCCESS) then
