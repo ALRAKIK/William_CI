@@ -187,7 +187,7 @@ subroutine get_X_from_overlap(N,over,X)
             Eval(i) = dsqrt(1.d0 / Eval(i))
           else
             write(outfile,"(a,I3,a,4x,E16.10)") 'Eigenvalue ',i,' is too small for Lowdin orthogonalization',Eval(i)
-            Eval(i) = 0.d0
+            !Eval(i) = 0.d0
           end if
       end do
     
