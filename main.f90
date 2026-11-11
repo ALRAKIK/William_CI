@@ -73,7 +73,6 @@ program CI
       !                        END variables                            !
       !-----------------------------------------------------------------!
 
-      ! --------------------------------------------------------------- !
       ! *************************************************************** !
 
       ! --------------------------------------------------------------- !
@@ -86,39 +85,8 @@ program CI
       !                        Read key words                           !
       ! --------------------------------------------------------------- !
 
-      c_integral    = any(keyword == 'Integrals')
-      c_read        = any(keyword == 'Read'     )
-      c_trexio      = any(keyword == 'Trexio'   )
-      c_Angstrom    = any(keyword == 'Angstrom' )
-      c_plot        = any(keyword == 'Plot'     )     ! 5
-      c_details     = any(keyword == 'Details'  )
-      c_MO          = any(keyword == 'MO'       )
-      c_UHF         = any(keyword == 'UHF'      )
-      c_Huckel      = any(keyword == 'Huckel'   )
-      c_MP2         = any(keyword == 'MP2'      )     ! 10
-      c_OV          = any(keyword == 'OV'       )
-      c_K           = any(keyword == 'K'        )
-      c_NA          = any(keyword == 'NA'       )
-      c_ERI         = any(keyword == 'ERI'      )
-      c_One         = any(keyword == 'One'      )     ! 15
-      c_Orbitals    = any(keyword == 'Orbitals' )
-      c_SAO         = any(keyword == 'SAO'      )
-      c_save        = any(keyword == 'Save'     )
-      c_DIIS        = any(keyword == 'DIIS'     )     
-      c_MCDE        = any(keyword == 'MCDE'     )     ! 20
-      c_nquad_128   = any(keyword == 'nquad_128')
-      c_physicist   = any(keyword == 'physicist')
-      c_ccsdt       = any(keyword == 'ccsdt'    )
-      c_inv_sym     = any(keyword == 'inv_sym'  )
-      c_debug       = any(keyword == 'debug'    )     ! 25 
-
-
-      ! started from 50 ! 
-
-      c_Lanczos     = any(keyword == 'Lanczos'  )
-      c_Spin_adapt  = any(keyword == 'Spin'     )
-      c_screen      = any(keyword == 'screen'   )
-                              
+      call get_keywords(keyword)
+                        
       ! --------------------------------------------------------------- !
       !            Read number of alpha and beta electrons              !
       ! --------------------------------------------------------------- !
@@ -130,10 +98,6 @@ program CI
         do
         read(1, '(A)',iostat=io_stat) line
         if (io_stat /= 0) then
-          write(*,'(a)') ""
-          write(*,'(a)')'Error: Reached end of file without finding'
-          write(*,'(a)')'             UHF keywords in your unitcell'
-          write(*,'(a)') ""
           close(1)
           stop
         end if
@@ -260,7 +224,7 @@ program CI
         n_electron = n_electron + atoms(i)%charge
       end do 
 
-      nO = n_electron/2
+      nO = n_electron / 2
 
       nBAS = 0 
       do i = 1 , n_atoms

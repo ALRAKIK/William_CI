@@ -263,7 +263,6 @@ subroutine UHF(nBas,c_details,n_alpha,n_beta,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
         EHF_old = EHF 
       end if 
 
-
       ! ****************** !
       !   Compute HOMO-LUMO gap
       ! ****************** !
@@ -333,6 +332,9 @@ subroutine UHF(nBas,c_details,n_alpha,n_beta,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
       write(outfile,*) repeat('-', 110)
       
       enddo
+
+
+      if (c_details) call details_print_HF(nBas,nSCF,J,P_beta,P_alpha,0)
 
       !------------------------------------------------------------------------
       ! End of SCF loop
