@@ -52,6 +52,57 @@ subroutine normalize_basis()
           end do
           deallocate(exponent,contraction,contractionN) 
         end if
+
+        ! d function ! 
+
+        if (lines == "$ D-TYPE FUNCTIONS") then 
+          read(1,*) n_gaussian , n_contraction
+          allocate(exponent(n_gaussian),contraction(n_gaussian,n_contraction),contractionN(n_gaussian,n_contraction))
+          do i = 1 , n_gaussian
+            read(1,*) exponent(i) , (contraction(i,j),j=1,n_contraction)
+          end do 
+          n_type = 3 
+          call norm_orb(n_gaussian,n_contraction,exponent,contraction,n_type,contractionN)
+          write(2,'(4I4)') n_gaussian ,  n_contraction
+          do i = 1 , n_gaussian
+            write(2,*) exponent(i) , (contractionN(i,j),j=1,n_contraction)
+          end do
+          deallocate(exponent,contraction,contractionN) 
+        end if
+
+        ! F function ! 
+
+        if (lines == "$ F-TYPE FUNCTIONS") then 
+          read(1,*) n_gaussian , n_contraction
+          allocate(exponent(n_gaussian),contraction(n_gaussian,n_contraction),contractionN(n_gaussian,n_contraction))
+          do i = 1 , n_gaussian
+            read(1,*) exponent(i) , (contraction(i,j),j=1,n_contraction)
+          end do 
+          n_type = 4 
+          call norm_orb(n_gaussian,n_contraction,exponent,contraction,n_type,contractionN)
+          write(2,'(4I4)') n_gaussian ,  n_contraction
+          do i = 1 , n_gaussian
+            write(2,*) exponent(i) , (contractionN(i,j),j=1,n_contraction)
+          end do
+          deallocate(exponent,contraction,contractionN) 
+        end if
+
+        ! G function ! 
+
+        if (lines == "$ G-TYPE FUNCTIONS") then 
+          read(1,*) n_gaussian , n_contraction
+          allocate(exponent(n_gaussian),contraction(n_gaussian,n_contraction),contractionN(n_gaussian,n_contraction))
+          do i = 1 , n_gaussian
+            read(1,*) exponent(i) , (contraction(i,j),j=1,n_contraction)
+          end do 
+          n_type = 5 
+          call norm_orb(n_gaussian,n_contraction,exponent,contraction,n_type,contractionN)
+          write(2,'(4I4)') n_gaussian ,  n_contraction
+          do i = 1 , n_gaussian
+            write(2,*) exponent(i) , (contractionN(i,j),j=1,n_contraction)
+          end do
+          deallocate(exponent,contraction,contractionN) 
+        end if
       
       end do 
 
@@ -67,15 +118,14 @@ subroutine norm_orb(n_gaussian,n_contraction,exponent,contraction,n_type,contrac
 
       implicit none 
 
-      integer,intent(in)            :: n_gaussian , n_contraction
-
+      integer          ,intent(in)  :: n_gaussian , n_contraction
+      integer          ,intent(in)  :: n_type 
       double precision ,intent(in)  :: exponent(n_gaussian) , contraction(n_gaussian,n_contraction)
-
       double precision ,intent(out) :: contractionN(n_gaussian,n_contraction)
 
       ! local ! 
 
-      integer          :: n , i , j , n_type 
+      integer          :: n , i , j
 
       double precision :: D0 = 0.0D0, D1 = 1.0D0, D2 = 2.0D0, D4 = 4.0D0   ,&
                           & DP25 = 0.25D0, DP5 = 0.5D0, DP75 = 0.75D0      ,&

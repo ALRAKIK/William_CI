@@ -175,7 +175,7 @@ subroutine MCDE_3_1(nBas, nOcc, energies, ERI, lanczos, spin, screen)
             call diagonalize_matrix(heffbasS,heffMatrix,heff_energies)
             call matout(heffbasS,1,heff_energies)
          else
-            call diagonalize_matrix(heffbas,heffMatrix,heff_energies)
+            call diagonalize_matrix_d(heffbas,heffMatrix,heff_energies)
             call matout(heffbas,1,heff_energies)
             allocate(A_w(int((e_max-e_min)/step,4),2))
             call spectral_function(A_w, heffMatrix, eta, heff_energies, e_min, e_max, step, nBas, heffbas)

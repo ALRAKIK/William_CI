@@ -8,7 +8,7 @@ subroutine print_basis(number_of_atoms,charge)
       integer              :: charge(number_of_atoms)
 
       integer              :: i 
-      character(len=100)   :: lines
+      character(len=1000)  :: lines
 
       character(len=10)    :: atom_type1(number_of_atoms)
       character(len=10)    :: atom_type2(number_of_atoms)

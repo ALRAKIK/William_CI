@@ -37,7 +37,7 @@ else
     LIBS = src/lib/libquadpack.a \
            -L/usr/local/lib -ltrexio \
            -lm -fopenmp \
-           -L/opt/homebrew/opt/openblas/lib -lopenblas -lpthread
+           -L/opt/homebrew/opt/openblas/lib -lopenblas -lpthread -I/opt/homebrew/include -L/opt/homebrew/lib -Wl,-rpath,/opt/homebrew/lib -lcint
     EXECUTABLE = $(BDIR)/CI_pop
     $(info Building for LOCAL environment)
 endif
@@ -61,6 +61,7 @@ MODULES_IN_ORDER = constants_module \
                    heaviside \
                    unitcell \
                    functions \
+                   lib_int \
                    K_blocks \
                    sorts    \
 # =================================================== #

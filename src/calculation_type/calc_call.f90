@@ -43,9 +43,7 @@ subroutine calculation_type_select(calculation_type,n_atoms,nBas,atoms,geometry,
 
       select case (trim(calculation_type))
         case ("OBC", "Ring", "OBC2D")
-          call molecule(n_atoms,nBas,atoms,geometry,S,T,V,ERI)            ! Molecule 
-        case ("Torus")
-          call Torus_PBC(n_atoms,nBas,atoms,AO,geometry)                  ! Torus with PBC 
+          call molecule(n_atoms,nBas,atoms,geometry,S,T,V,ERI)            ! Molecule
         case ("Tori1D")
           call Tori1D(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)           ! Toroidal 1D Gaussian TRR
         case ("Tori2D")

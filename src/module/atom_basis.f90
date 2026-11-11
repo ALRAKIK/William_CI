@@ -24,6 +24,17 @@ module atom_basis
         integer                         :: num_exponent_d 
         double precision  , allocatable :: exponent_d(:)        
         double precision  , allocatable :: coefficient_d(:,:)
+        ! f ! 
+        integer                         :: num_f_function
+        integer                         :: num_exponent_f
+        double precision  , allocatable :: exponent_f(:)        
+        double precision  , allocatable :: coefficient_f(:,:)
+        ! g ! 
+        integer                         :: num_g_function
+        integer                         :: num_exponent_g
+        double precision  , allocatable :: exponent_g(:)        
+        double precision  , allocatable :: coefficient_g(:,:)
+
         
       end type atom
 

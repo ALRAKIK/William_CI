@@ -1,4 +1,4 @@
-subroutine molecule(n_atoms,number_of_functions,atoms,geometry,OV,K,NA,ERI)
+subroutine molecule_mod(n_atoms,number_of_functions,atoms,geometry,OV,K,NA,ERI)
 
       use files
       use torus_init
@@ -52,4 +52,4 @@ subroutine molecule(n_atoms,number_of_functions,atoms,geometry,OV,K,NA,ERI)
       ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - !
 
 
-end subroutine molecule 
+end subroutine molecule_mod

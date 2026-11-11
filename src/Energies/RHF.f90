@@ -188,6 +188,7 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c,natom,Zat)
       !  Compute the error vector and extract the convergence criterion !
 
       error = matmul(F,matmul(P,S)) - matmul(matmul(S,P),F)
+      
       if(nSCF > 1) Conv = maxval(abs(error))
       if (Conv < thresh) exit 
 

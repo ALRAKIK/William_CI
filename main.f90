@@ -170,12 +170,11 @@ program CI
           call Torus_def()
 
       ! --------------------------------------------------------------- !
-      !                     Read the table for Nmax                     !
+      !     Read the table for the maximum number of bessel function    !
       ! --------------------------------------------------------------- !      
 
         call load_table_1d('table_1D.bin')
           
-
       end if 
 
       ! --------------------------------------------------------------- !
@@ -229,6 +228,7 @@ program CI
 
       write(outfile,*)
       write(outfile,*)
+      flush(outfile)
 
       ! --------------------------------------------------------------- !
 
@@ -259,26 +259,44 @@ program CI
 
       nBAS = 0 
       do i = 1 , n_atoms
-        nBAS = nBAS                                                     & 
-        &  + atoms(i)%num_s_function + 3 * atoms(i)%num_p_function
+        nBAS = nBAS &
+                  +      atoms(i)%num_s_function &              ! 1
+                  + 3  * atoms(i)%num_p_function &              ! 3
+                  + 6  * atoms(i)%num_d_function &              ! 6
+                  + 10 * atoms(i)%num_f_function &              ! 10
+                  + 15 * atoms(i)%num_g_function                ! 15
       end do
 
       number_of_primitives = 0
       do i = 1 , n_atoms
-        number_of_primitives = number_of_primitives                     &
-        &  + atoms(i)%num_exponent_s + atoms(i)%num_exponent_p
+        number_of_primitives = number_of_primitives &
+                  + atoms(i)%num_exponent_s &
+                  + atoms(i)%num_exponent_p &
+                  + atoms(i)%num_exponent_d &
+                  + atoms(i)%num_exponent_f &
+                  + atoms(i)%num_exponent_g
       end do
 
       number_of_shells = 0
       do i = 1 , n_atoms
-        number_of_shells = number_of_shells                             &
-        &  + atoms(i)%num_s_function + atoms(i)%num_p_function
+        number_of_shells = number_of_shells &
+                  + atoms(i)%num_s_function &
+                  + atoms(i)%num_p_function &
+                  + atoms(i)%num_d_function & 
+                  + atoms(i)%num_f_function &
+                  + atoms(i)%num_g_function
       end do
 
       nfuc = 0 
 
       do i = 1 , number_of_atom_in_unitcell
-        nfuc = nfuc  + atoms(i)%num_s_function + 3*atoms(i)%num_p_function
+        nfuc = nfuc  & 
+                  +      atoms(i)%num_s_function &              ! 1
+                  + 3  * atoms(i)%num_p_function &              ! 3
+                  + 6  * atoms(i)%num_d_function &              ! 6
+                  + 10 * atoms(i)%num_f_function &              ! 10
+                  + 15 * atoms(i)%num_g_function                ! 15
+
       end do
 
       ! --------------------------------------------------------------- !
@@ -300,13 +318,13 @@ program CI
       else
         call classification_orbital    (n_atoms,nBas,geometry,atoms,AO)
       end if
-
+            
       ! --------------------------------------------------------------- !
       !                    print  The orbital table                     !
       ! --------------------------------------------------------------- !
 
       call print_orbital_table(AO,nBas)
-      
+
       ! --------------------------------------------------------------- !
       !           print  Informations from the Basis set                !
       ! --------------------------------------------------------------- !
@@ -322,7 +340,6 @@ program CI
       ! --------------------------------------------------------------- !
       !             Write the geometry to a TREXIO file                 !
       ! --------------------------------------------------------------- !
-
 
       if (c_trexio) then
         call trexio_conv_init(calculation_type,n_atom_unitcell,label_tmp,n_atoms)
@@ -500,7 +517,7 @@ program CI
       !                  transformation AO --> MO                       !
       !-----------------------------------------------------------------!
 
-      transformation = (c_MCDE .or. c_MP2) .and. (.not. c_SAO)
+      transformation = (c_MP2 .or. c_MCDE) .and. (.not. c_SAO)
 
       if (transformation) then 
 
@@ -513,6 +530,8 @@ program CI
             call AO_to_MO_ERI_chemist(nBas,coeff,ERI,ERI_MO)
           end if
         call cpu_time(end)
+
+        deallocate(ERI)
 
         !call print_MO_file(nBas,ERI_MO)
 

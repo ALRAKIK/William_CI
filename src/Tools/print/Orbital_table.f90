@@ -1,4 +1,4 @@
-subroutine print_orbital_table(ERI, number_of_functions)
+subroutine print_orbital_table(ERI, nBas)
       
       use files
       use classification_ERI
@@ -6,9 +6,9 @@ subroutine print_orbital_table(ERI, number_of_functions)
 
       implicit none
 
-      type(ERI_function)  :: ERI(number_of_functions)
-      integer, intent(in) :: number_of_functions
-      integer             :: i, j
+      integer, intent(in)             :: nBas
+      type(ERI_function) , intent(in) :: ERI(nBas)
+      integer                         :: i, j
 
       ! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> !
 
@@ -17,8 +17,8 @@ subroutine print_orbital_table(ERI, number_of_functions)
       write(outfile,'(A)') "|-----------------------------------------------------------------------------------------|"
       write(outfile,'(A)') "|  Idx         X         Y        Z      Type           Exponent        Coefficient       |"
       write(outfile,'(A)') "|-----------------------------------------------------------------------------------------|"
-      do i = 1, number_of_functions
-        write(outfile,'(a1,I5,3x,3f10.6,3x,a2,6x,f16.10,2x,f16.10,4x,a3)')  "|", i, ERI(i)%x, ERI(i)%y, ERI(i)%z, ERI(i)%orbital, ERI(i)%exponent(1), ERI(i)%coefficient(1), "  |"
+      do i = 1, nBas
+        write(outfile,'(a1,I5,3x,3f10.6,3x,a5,3x,f16.10,2x,f16.10,4x,a3)')  "|", i, ERI(i)%x, ERI(i)%y, ERI(i)%z, ERI(i)%orbital, ERI(i)%exponent(1), ERI(i)%coefficient(1), "  |"
         do j = 2, size(ERI(i)%exponent)
           write(outfile,'(a1,49x,f16.10,2x,f16.10,4x,a3)') "|", ERI(i)%exponent(j), ERI(i)%coefficient(j), "  |"
         end do
@@ -38,8 +38,8 @@ subroutine print_orbital_table(ERI, number_of_functions)
       write(orbfile,'(A)') "|-----------------------------------------------------------------------------------------|"
       write(orbfile,'(A)') "|  Idx         X         Y        Z      Type           Exponent        Coefficient       |"
       write(orbfile,'(A)') "|-----------------------------------------------------------------------------------------|"
-      do i = 1, number_of_functions
-        write(orbfile,'(a1,I5,3x,3f10.6,3x,a2,6x,f16.10,2x,f16.10,4x,a3)')  "|", i, ERI(i)%x, ERI(i)%y, ERI(i)%z, ERI(i)%orbital, ERI(i)%exponent(1), ERI(i)%coefficient(1), "  |"
+      do i = 1, nBas
+        write(orbfile,'(a1,I5,3x,3f10.6,3x,a5,3x,f16.10,2x,f16.10,4x,a3)')  "|", i, ERI(i)%x, ERI(i)%y, ERI(i)%z, ERI(i)%orbital, ERI(i)%exponent(1), ERI(i)%coefficient(1), "  |"
         do j = 2, size(ERI(i)%exponent)
           write(orbfile,'(a1,49x,f16.10,2x,f16.10,4x,a3)') "|", ERI(i)%exponent(j), ERI(i)%coefficient(j), "  |"
         end do

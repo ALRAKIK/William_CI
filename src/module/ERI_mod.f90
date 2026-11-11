@@ -7,7 +7,7 @@ module classification_ERI
         double precision               :: x , y , z 
         double precision , allocatable :: coefficient(:)
         double precision , allocatable :: exponent(:)
-        character(LEN=2)               :: orbital 
+        character(LEN=5)               :: orbital 
     
       end type ERI_function
 
