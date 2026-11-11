@@ -345,6 +345,8 @@ subroutine read_keywords(keyword)
 
         if (trim(line) == 'inv_sym'   )  keyword(24) = 'inv_sym'
 
+        if (trim(line) == 'debug'     )  keyword(25) = 'debug'
+
         ! MCDE keywords !
 
         if (trim(line) == 'Lanczos'  )   keyword(50) = 'Lanczos'

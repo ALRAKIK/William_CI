@@ -5,6 +5,7 @@ subroutine Tori3D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
       use atom_basis
       use classification_ERI
       use keywords
+      use debug_tools
 
       implicit none
 
@@ -46,11 +47,15 @@ subroutine Tori3D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
       call check_the_overlap(nBas,OV)
       call kinetic_matrix_toroidal_3D(nBas,AO,K)
       call nuclear_attraction_matrix_toroidal_3D(n_atoms,nBas,geometry,atoms,AO,NA)
+
+      call check_symmetric('S', OV, outfile)
+      call check_symmetric('T', K, outfile)
+      call check_symmetric('V', NA, outfile)
       
       if (c_One) then 
-            ERI = 0.d0 
+        ERI = 0.d0 
       else 
-            call ERI_integral_toroidal_3D(n_atoms,geometry,nBas,atoms,ERI)
+        call ERI_integral_toroidal_3D(n_atoms,geometry,nBas,atoms,ERI)
       end if 
 
       call cpu_time(end)

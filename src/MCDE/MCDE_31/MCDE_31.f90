@@ -78,7 +78,7 @@ subroutine MCDE_3_1(nBas, nOcc, energies, ERI, lanczos, spin, screen)
       open (unit=3,file="unitcell.mol",action="read")
       read(3,*)
       read(3,*)
-      read(3,*)e_min, e_max, step, it
+      read(3,*) e_min, e_max, step, it
       close(3)
       ! - / - / - / - / - / - / - / - / - / - / - / - / - / - / - / - / !
    

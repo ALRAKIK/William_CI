@@ -62,6 +62,7 @@ MODULES_IN_ORDER = constants_module \
                    unitcell \
                    functions \
                    lib_int \
+                   debug    \
                    K_blocks \
                    sorts    \
 # =================================================== #

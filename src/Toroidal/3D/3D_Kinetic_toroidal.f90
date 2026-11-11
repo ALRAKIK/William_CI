@@ -1,4 +1,4 @@
-subroutine kinetic_matrix_toroidal_3D(nBas,AO,kinetic)
+subroutine kinetic_matrix_toroidal_3D(nBas,AO,T)
 
       use files 
       use torus_init
@@ -24,11 +24,11 @@ subroutine kinetic_matrix_toroidal_3D(nBas,AO,kinetic)
 
       ! output ! 
 
-      double precision,intent(out) :: kinetic(nBas,nBas)
+      double precision,intent(out) :: T(nBas,nBas)
 
       !-----------------------------------------------------------------!
 
-      kinetic(:,:) = 0.d0
+      T(:,:) = 0.d0
       
       do i = 1 , nfuc
         do j = 1 , nBas
@@ -43,7 +43,7 @@ subroutine kinetic_matrix_toroidal_3D(nBas,AO,kinetic)
 
           pattern_id = encode_orbital_pattern_AO(AO1%orbital, AO2%orbital)
 
-          call Kinetic_integral_toroidal_3D(pattern_id,r1,r2,AO1,AO2,kinetic(i,j))
+          call Kinetic_integral_toroidal_3D(pattern_id,r1,r2,AO1,AO2,T(i,j))
           
         end do 
       end do 
@@ -54,11 +54,11 @@ subroutine kinetic_matrix_toroidal_3D(nBas,AO,kinetic)
 
       do i = 1 , nfuc
         do j = 1 , nBas
-          if (abs(kinetic(i,j)) < 1e-14) kinetic(i,j) = 0.d0 
+          if (abs(T(i,j)) < 1e-14) T(i,j) = 0.d0 
         end do 
       end do 
 
-      call fill_with_symmetry(nBas, kinetic)
+      call fill_with_symmetry(nBas, T)
 
 
       if (c_K) then 
@@ -69,12 +69,10 @@ subroutine kinetic_matrix_toroidal_3D(nBas,AO,kinetic)
         write(outfile,'(a)') ""
         do i = 1 , nBas - 1 
           do j = i , nBas
-            write(outfile,'(i3,i3, 6x,1000(f16.12,2x))') i , j, kinetic(i,j)
+            write(outfile,'(i3,i3, 6x,1000(f16.12,2x))') i , j, T(i,j)
           end do
         end do 
       end if 
-
-
 
 end subroutine kinetic_matrix_toroidal_3D
 
@@ -317,7 +315,7 @@ subroutine kinetic_integral_toroidal_3D(pattern_id,r1,r2,AO1,AO2,K_t)
       
         S_10_x = inv_ax * (Icliff(1,0,A_x)*cpa_x + Icliff(0,1,A_x)*spa_x)
         S_00_y = sy_int
-        S_01_z = inv_az * (Icliff(1,0,A_z)*cpa_z + Icliff(0,1,A_z)*spa_z)
+        S_01_z = inv_az * (Icliff(1,0,A_z)*cpb_z + Icliff(0,1,A_z)*spb_z)
         D_10_x = inv_ax * (Icliff(3,0,A_x)*B_x**2*ax2*cpa_x*cpb_x**2 + Icliff(2,1,A_x)*2*B_x**2*ax2*cpa_x*cpb_x*spb_x + Icliff(1,2,A_x)*B_x**2*ax2*cpa_x*spb_x**2 + Icliff(2,1,A_x)*B_x**2*ax2*cpb_x**2*spa_x + Icliff(1,2,A_x)*2*B_x**2*ax2*cpb_x*spa_x*spb_x + Icliff(0,3,A_x)*B_x**2*ax2*spa_x*spb_x**2 - Icliff(1,1,A_x)*B_x*ax2*cpa_x*cpb_x + Icliff(2,0,A_x)*B_x*ax2*cpa_x*spb_x - Icliff(0,2,A_x)*B_x*ax2*cpb_x*spa_x + Icliff(1,1,A_x)*B_x*ax2*spa_x*spb_x)
         D_00_y = Icliff(2,0,A_y)*B_y**2*ay2*cpb_y**2 + Icliff(1,1,A_y)*2*B_y**2*ay2*cpb_y*spb_y + Icliff(0,2,A_y)*B_y**2*ay2*spb_y**2 - Icliff(0,1,A_y)*B_y*ay2*cpb_y + Icliff(1,0,A_y)*B_y*ay2*spb_y
         D_01_z = inv_az * (Icliff(3,0,A_z)*B_z**2*az2*cpb_z**3 + Icliff(2,1,A_z)*3*B_z**2*az2*cpb_z**2*spb_z + Icliff(1,2,A_z)*3*B_z**2*az2*cpb_z*spb_z**2 + Icliff(0,3,A_z)*B_z**2*az2*spb_z**3 - Icliff(1,1,A_z)*3*B_z*az2*cpb_z**2 - Icliff(0,2,A_z)*3*B_z*az2*cpb_z*spb_z + Icliff(2,0,A_z)*3*B_z*az2*cpb_z*spb_z + Icliff(1,1,A_z)*3*B_z*az2*spb_z**2 - Icliff(1,0,A_z)*az2*cpb_z - Icliff(0,1,A_z)*az2*spb_z)
@@ -333,7 +331,7 @@ subroutine kinetic_integral_toroidal_3D(pattern_id,r1,r2,AO1,AO2,K_t)
         S_10_y = inv_ay * (Icliff(1,0,A_y)*cpa_y + Icliff(0,1,A_y)*spa_y)
         S_00_z = sz_int
         D_00_x = Icliff(2,0,A_x)*B_x**2*ax2*cpb_x**2 + Icliff(1,1,A_x)*2*B_x**2*ax2*cpb_x*spb_x + Icliff(0,2,A_x)*B_x**2*ax2*spb_x**2 - Icliff(0,1,A_x)*B_x*ax2*cpb_x + Icliff(1,0,A_x)*B_x*ax2*spb_x
-        D_10_y = inv_ay * (Icliff(3,0,A_y)*B_y**2*ay2*cpa_y*cpb_y**2 + Icliff(2,1,A_y)*2*B_y**2*ay2*cpa_y*cpb_y*spb_y + Icliff(1,2,A_y)*B_y**2*ay2*cpa_y*spb_y**2 + Icliff(2,1,A_y)*B_y**2*ay2*cpb_y**2*spa_y + Icliff(1,2,A_y)*2*B_y**2*ay2*cpb_y*spa_y*spb_y + Icliff(0,3,A_y)*B_y**2*ay2*spa_y*spb_x**2 - Icliff(1,1,A_y)*B_y*ay2*cpa_y*cpb_y + Icliff(2,0,A_y)*B_y*ay2*cpa_y*spb_y - Icliff(0,2,A_y)*B_y*ay2*cpb_y*spa_y + Icliff(1,1,A_y)*B_y*ay2*spa_y*spb_y)
+        D_10_y = inv_ay * (Icliff(3,0,A_y)*B_y**2*ay2*cpa_y*cpb_y**2 + Icliff(2,1,A_y)*2*B_y**2*ay2*cpa_y*cpb_y*spb_y + Icliff(1,2,A_y)*B_y**2*ay2*cpa_y*spb_y**2 + Icliff(2,1,A_y)*B_y**2*ay2*cpb_y**2*spa_y + Icliff(1,2,A_y)*2*B_y**2*ay2*cpb_y*spa_y*spb_y + Icliff(0,3,A_y)*B_y**2*ay2*spa_y*spb_y**2 - Icliff(1,1,A_y)*B_y*ay2*cpa_y*cpb_y + Icliff(2,0,A_y)*B_y*ay2*cpa_y*spb_y - Icliff(0,2,A_y)*B_y*ay2*cpb_y*spa_y + Icliff(1,1,A_y)*B_y*ay2*spa_y*spb_y)
         D_00_z = Icliff(2,0,A_z)*B_z**2*az2*cpb_z**2 + Icliff(1,1,A_z)*2*B_z**2*az2*cpb_z*spb_z + Icliff(0,2,A_z)*B_z**2*az2*spb_z**2 - Icliff(0,1,A_z)*B_z*az2*cpb_z + Icliff(1,0,A_z)*B_z*az2*spb_z
       
         K = -0.5d0 * ( D_00_x * S_10_y * S_00_z + S_00_x * D_10_y * S_00_z + S_00_x * S_10_y * D_00_z )
@@ -347,7 +345,7 @@ subroutine kinetic_integral_toroidal_3D(pattern_id,r1,r2,AO1,AO2,K_t)
         S_10_y = inv_ay * (Icliff(1,0,A_y)*cpa_y + Icliff(0,1,A_y)*spa_y)
         S_00_z = sz_int
         D_01_x = inv_ax * (Icliff(3,0,A_x)*B_x**2*ax2*cpb_x**3 + Icliff(2,1,A_x)*3*B_x**2*ax2*cpb_x**2*spb_x + Icliff(1,2,A_x)*3*B_x**2*ax2*cpb_x*spb_x**2 + Icliff(0,3,A_x)*B_x**2*ax2*spb_x**3 - Icliff(1,1,A_x)*3*B_x*ax2*cpb_x**2 - Icliff(0,2,A_x)*3*B_x*ax2*cpb_x*spb_x + Icliff(2,0,A_x)*3*B_x*ax2*cpb_x*spb_x + Icliff(1,1,A_x)*3*B_x*ax2*spb_x**2 - Icliff(1,0,A_x)*ax2*cpb_x - Icliff(0,1,A_x)*ax2*spb_x)
-        D_10_y = inv_ay * (Icliff(3,0,A_y)*B_y**2*ay2*cpa_y*cpb_y**2 + Icliff(2,1,A_y)*2*B_y**2*ay2*cpa_y*cpb_y*spb_y + Icliff(1,2,A_y)*B_y**2*ay2*cpa_y*spb_y**2 + Icliff(2,1,A_y)*B_y**2*ay2*cpb_y**2*spa_y + Icliff(1,2,A_y)*2*B_y**2*ay2*cpb_y*spa_y*spb_y + Icliff(0,3,A_y)*B_y**2*ay2*spa_y*spb_x**2 - Icliff(1,1,A_y)*B_y*ay2*cpa_y*cpb_y + Icliff(2,0,A_y)*B_y*ay2*cpa_y*spb_y - Icliff(0,2,A_y)*B_y*ay2*cpb_y*spa_y + Icliff(1,1,A_y)*B_y*ay2*spa_y*spb_y)
+        D_10_y = inv_ay * (Icliff(3,0,A_y)*B_y**2*ay2*cpa_y*cpb_y**2 + Icliff(2,1,A_y)*2*B_y**2*ay2*cpa_y*cpb_y*spb_y + Icliff(1,2,A_y)*B_y**2*ay2*cpa_y*spb_y**2 + Icliff(2,1,A_y)*B_y**2*ay2*cpb_y**2*spa_y + Icliff(1,2,A_y)*2*B_y**2*ay2*cpb_y*spa_y*spb_y + Icliff(0,3,A_y)*B_y**2*ay2*spa_y*spb_y**2 - Icliff(1,1,A_y)*B_y*ay2*cpa_y*cpb_y + Icliff(2,0,A_y)*B_y*ay2*cpa_y*spb_y - Icliff(0,2,A_y)*B_y*ay2*cpb_y*spa_y + Icliff(1,1,A_y)*B_y*ay2*spa_y*spb_y)
         D_00_z = Icliff(2,0,A_z)*B_z**2*az2*cpb_z**2 + Icliff(1,1,A_z)*2*B_z**2*az2*cpb_z*spb_z + Icliff(0,2,A_z)*B_z**2*az2*spb_z**2 - Icliff(0,1,A_z)*B_z*az2*cpb_z + Icliff(1,0,A_z)*B_z*az2*spb_z
       
         K = -0.5d0 * ( D_01_x * S_10_y * S_00_z + S_01_x * D_10_y * S_00_z + S_01_x * S_10_y * D_00_z )
@@ -373,9 +371,9 @@ subroutine kinetic_integral_toroidal_3D(pattern_id,r1,r2,AO1,AO2,K_t)
       
         S_00_x = sx_int
         S_10_y = inv_ay * (Icliff(1,0,A_y)*cpa_y + Icliff(0,1,A_y)*spa_y)
-        S_01_z = inv_az * (Icliff(1,0,A_z)*cpa_z + Icliff(0,1,A_z)*spa_z)
+        S_01_z = inv_az * (Icliff(1,0,A_z)*cpb_z + Icliff(0,1,A_z)*spb_z)
         D_00_x = Icliff(2,0,A_x)*B_x**2*ax2*cpb_x**2 + Icliff(1,1,A_x)*2*B_x**2*ax2*cpb_x*spb_x + Icliff(0,2,A_x)*B_x**2*ax2*spb_x**2 - Icliff(0,1,A_x)*B_x*ax2*cpb_x + Icliff(1,0,A_x)*B_x*ax2*spb_x
-        D_10_y = inv_ay * (Icliff(3,0,A_y)*B_y**2*ay2*cpa_y*cpb_y**2 + Icliff(2,1,A_y)*2*B_y**2*ay2*cpa_y*cpb_y*spb_y + Icliff(1,2,A_y)*B_y**2*ay2*cpa_y*spb_y**2 + Icliff(2,1,A_y)*B_y**2*ay2*cpb_y**2*spa_y + Icliff(1,2,A_y)*2*B_y**2*ay2*cpb_y*spa_y*spb_y + Icliff(0,3,A_y)*B_y**2*ay2*spa_y*spb_x**2 - Icliff(1,1,A_y)*B_y*ay2*cpa_y*cpb_y + Icliff(2,0,A_y)*B_y*ay2*cpa_y*spb_y - Icliff(0,2,A_y)*B_y*ay2*cpb_y*spa_y + Icliff(1,1,A_y)*B_y*ay2*spa_y*spb_y)
+        D_10_y = inv_ay * (Icliff(3,0,A_y)*B_y**2*ay2*cpa_y*cpb_y**2 + Icliff(2,1,A_y)*2*B_y**2*ay2*cpa_y*cpb_y*spb_y + Icliff(1,2,A_y)*B_y**2*ay2*cpa_y*spb_y**2 + Icliff(2,1,A_y)*B_y**2*ay2*cpb_y**2*spa_y + Icliff(1,2,A_y)*2*B_y**2*ay2*cpb_y*spa_y*spb_y + Icliff(0,3,A_y)*B_y**2*ay2*spa_y*spb_y**2 - Icliff(1,1,A_y)*B_y*ay2*cpa_y*cpb_y + Icliff(2,0,A_y)*B_y*ay2*cpa_y*spb_y - Icliff(0,2,A_y)*B_y*ay2*cpb_y*spa_y + Icliff(1,1,A_y)*B_y*ay2*spa_y*spb_y)
         D_01_z = inv_az * (Icliff(3,0,A_z)*B_z**2*az2*cpb_z**3 + Icliff(2,1,A_z)*3*B_z**2*az2*cpb_z**2*spb_z + Icliff(1,2,A_z)*3*B_z**2*az2*cpb_z*spb_z**2 + Icliff(0,3,A_z)*B_z**2*az2*spb_z**3 - Icliff(1,1,A_z)*3*B_z*az2*cpb_z**2 - Icliff(0,2,A_z)*3*B_z*az2*cpb_z*spb_z + Icliff(2,0,A_z)*3*B_z*az2*cpb_z*spb_z + Icliff(1,1,A_z)*3*B_z*az2*spb_z**2 - Icliff(1,0,A_z)*az2*cpb_z - Icliff(0,1,A_z)*az2*spb_z)
       
         K = -0.5d0 * ( D_00_x * S_10_y * S_01_z + S_00_x * D_10_y * S_01_z + S_00_x * S_10_y * D_01_z )
@@ -390,7 +388,7 @@ subroutine kinetic_integral_toroidal_3D(pattern_id,r1,r2,AO1,AO2,K_t)
         S_10_z = inv_az * (Icliff(1,0,A_z)*cpa_z + Icliff(0,1,A_z)*spa_z)
         D_00_x = Icliff(2,0,A_x)*B_x**2*ax2*cpb_x**2 + Icliff(1,1,A_x)*2*B_x**2*ax2*cpb_x*spb_x + Icliff(0,2,A_x)*B_x**2*ax2*spb_x**2 - Icliff(0,1,A_x)*B_x*ax2*cpb_x + Icliff(1,0,A_x)*B_x*ax2*spb_x
         D_00_y = Icliff(2,0,A_y)*B_y**2*ay2*cpb_y**2 + Icliff(1,1,A_y)*2*B_y**2*ay2*cpb_y*spb_y + Icliff(0,2,A_y)*B_y**2*ay2*spb_y**2 - Icliff(0,1,A_y)*B_y*ay2*cpb_y + Icliff(1,0,A_y)*B_y*ay2*spb_y
-        D_10_z = inv_az * (Icliff(3,0,A_z)*B_z**2*az2*cpa_z*cpb_z**2 + Icliff(2,1,A_z)*2*B_z**2*az2*cpa_z*cpb_z*spb_z + Icliff(1,2,A_z)*B_z**2*az2*cpa_z*spb_z**2 + Icliff(2,1,A_z)*B_z**2*az2*cpb_z**2*spa_z + Icliff(1,2,A_z)*2*B_z**2*az2*cpb_z*spa_z*spb_z + Icliff(0,3,A_z)*B_z**2*az2*spa_z*spb_x**2 - Icliff(1,1,A_z)*B_z*az2*cpa_z*cpb_z + Icliff(2,0,A_z)*B_z*az2*cpa_z*spb_z - Icliff(0,2,A_z)*B_z*az2*cpb_z*spa_z + Icliff(1,1,A_z)*B_z*az2*spa_z*spb_z)
+        D_10_z = inv_az * (Icliff(3,0,A_z)*B_z**2*az2*cpa_z*cpb_z**2 + Icliff(2,1,A_z)*2*B_z**2*az2*cpa_z*cpb_z*spb_z + Icliff(1,2,A_z)*B_z**2*az2*cpa_z*spb_z**2 + Icliff(2,1,A_z)*B_z**2*az2*cpb_z**2*spa_z + Icliff(1,2,A_z)*2*B_z**2*az2*cpb_z*spa_z*spb_z + Icliff(0,3,A_z)*B_z**2*az2*spa_z*spb_z**2 - Icliff(1,1,A_z)*B_z*az2*cpa_z*cpb_z + Icliff(2,0,A_z)*B_z*az2*cpa_z*spb_z - Icliff(0,2,A_z)*B_z*az2*cpb_z*spa_z + Icliff(1,1,A_z)*B_z*az2*spa_z*spb_z)
       
         K = -0.5d0 * ( D_00_x * S_00_y * S_10_z + S_00_x * D_00_y * S_10_z + S_00_x * S_00_y * D_10_z )
       
@@ -404,7 +402,7 @@ subroutine kinetic_integral_toroidal_3D(pattern_id,r1,r2,AO1,AO2,K_t)
         S_10_z = inv_az * (Icliff(1,0,A_z)*cpa_z + Icliff(0,1,A_z)*spa_z)
         D_01_x = inv_ax * (Icliff(3,0,A_x)*B_x**2*ax2*cpb_x**3 + Icliff(2,1,A_x)*3*B_x**2*ax2*cpb_x**2*spb_x + Icliff(1,2,A_x)*3*B_x**2*ax2*cpb_x*spb_x**2 + Icliff(0,3,A_x)*B_x**2*ax2*spb_x**3 - Icliff(1,1,A_x)*3*B_x*ax2*cpb_x**2 - Icliff(0,2,A_x)*3*B_x*ax2*cpb_x*spb_x + Icliff(2,0,A_x)*3*B_x*ax2*cpb_x*spb_x + Icliff(1,1,A_x)*3*B_x*ax2*spb_x**2 - Icliff(1,0,A_x)*ax2*cpb_x - Icliff(0,1,A_x)*ax2*spb_x)
         D_00_y = Icliff(2,0,A_y)*B_y**2*ay2*cpb_y**2 + Icliff(1,1,A_y)*2*B_y**2*ay2*cpb_y*spb_y + Icliff(0,2,A_y)*B_y**2*ay2*spb_y**2 - Icliff(0,1,A_y)*B_y*ay2*cpb_y + Icliff(1,0,A_y)*B_y*ay2*spb_y
-        D_10_z = inv_az * (Icliff(3,0,A_z)*B_z**2*az2*cpa_z*cpb_z**2 + Icliff(2,1,A_z)*2*B_z**2*az2*cpa_z*cpb_z*spb_z + Icliff(1,2,A_z)*B_z**2*az2*cpa_z*spb_z**2 + Icliff(2,1,A_z)*B_z**2*az2*cpb_z**2*spa_z + Icliff(1,2,A_z)*2*B_z**2*az2*cpb_z*spa_z*spb_z + Icliff(0,3,A_z)*B_z**2*az2*spa_z*spb_x**2 - Icliff(1,1,A_z)*B_z*az2*cpa_z*cpb_z + Icliff(2,0,A_z)*B_z*az2*cpa_z*spb_z - Icliff(0,2,A_z)*B_z*az2*cpb_z*spa_z + Icliff(1,1,A_z)*B_z*az2*spa_z*spb_z)
+        D_10_z = inv_az * (Icliff(3,0,A_z)*B_z**2*az2*cpa_z*cpb_z**2 + Icliff(2,1,A_z)*2*B_z**2*az2*cpa_z*cpb_z*spb_z + Icliff(1,2,A_z)*B_z**2*az2*cpa_z*spb_z**2 + Icliff(2,1,A_z)*B_z**2*az2*cpb_z**2*spa_z + Icliff(1,2,A_z)*2*B_z**2*az2*cpb_z*spa_z*spb_z + Icliff(0,3,A_z)*B_z**2*az2*spa_z*spb_z**2 - Icliff(1,1,A_z)*B_z*az2*cpa_z*cpb_z + Icliff(2,0,A_z)*B_z*az2*cpa_z*spb_z - Icliff(0,2,A_z)*B_z*az2*cpb_z*spa_z + Icliff(1,1,A_z)*B_z*az2*spa_z*spb_z)
       
         K = -0.5d0 * ( D_01_x * S_00_y * S_10_z + S_01_x * D_00_y * S_10_z + S_01_x * S_00_y * D_10_z )
       
@@ -418,7 +416,7 @@ subroutine kinetic_integral_toroidal_3D(pattern_id,r1,r2,AO1,AO2,K_t)
         S_10_z = inv_az * (Icliff(1,0,A_z)*cpa_z + Icliff(0,1,A_z)*spa_z)
         D_00_x = Icliff(2,0,A_x)*B_x**2*ax2*cpb_x**2 + Icliff(1,1,A_x)*2*B_x**2*ax2*cpb_x*spb_x + Icliff(0,2,A_x)*B_x**2*ax2*spb_x**2 - Icliff(0,1,A_x)*B_x*ax2*cpb_x + Icliff(1,0,A_x)*B_x*ax2*spb_x
         D_01_y = inv_ay * (Icliff(3,0,A_y)*B_y**2*ay2*cpb_y**3 + Icliff(2,1,A_y)*3*B_y**2*ay2*cpb_y**2*spb_y + Icliff(1,2,A_y)*3*B_y**2*ay2*cpb_y*spb_y**2 + Icliff(0,3,A_y)*B_y**2*ay2*spb_y**3 - Icliff(1,1,A_y)*3*B_y*ay2*cpb_y**2 - Icliff(0,2,A_y)*3*B_y*ay2*cpb_y*spb_y + Icliff(2,0,A_y)*3*B_y*ay2*cpb_y*spb_y + Icliff(1,1,A_y)*3*B_y*ay2*spb_y**2 - Icliff(1,0,A_y)*ay2*cpb_y - Icliff(0,1,A_y)*ay2*spb_y)
-        D_10_z = inv_az * (Icliff(3,0,A_z)*B_z**2*az2*cpa_z*cpb_z**2 + Icliff(2,1,A_z)*2*B_z**2*az2*cpa_z*cpb_z*spb_z + Icliff(1,2,A_z)*B_z**2*az2*cpa_z*spb_z**2 + Icliff(2,1,A_z)*B_z**2*az2*cpb_z**2*spa_z + Icliff(1,2,A_z)*2*B_z**2*az2*cpb_z*spa_z*spb_z + Icliff(0,3,A_z)*B_z**2*az2*spa_z*spb_x**2 - Icliff(1,1,A_z)*B_z*az2*cpa_z*cpb_z + Icliff(2,0,A_z)*B_z*az2*cpa_z*spb_z - Icliff(0,2,A_z)*B_z*az2*cpb_z*spa_z + Icliff(1,1,A_z)*B_z*az2*spa_z*spb_z)
+        D_10_z = inv_az * (Icliff(3,0,A_z)*B_z**2*az2*cpa_z*cpb_z**2 + Icliff(2,1,A_z)*2*B_z**2*az2*cpa_z*cpb_z*spb_z + Icliff(1,2,A_z)*B_z**2*az2*cpa_z*spb_z**2 + Icliff(2,1,A_z)*B_z**2*az2*cpb_z**2*spa_z + Icliff(1,2,A_z)*2*B_z**2*az2*cpb_z*spa_z*spb_z + Icliff(0,3,A_z)*B_z**2*az2*spa_z*spb_z**2 - Icliff(1,1,A_z)*B_z*az2*cpa_z*cpb_z + Icliff(2,0,A_z)*B_z*az2*cpa_z*spb_z - Icliff(0,2,A_z)*B_z*az2*cpb_z*spa_z + Icliff(1,1,A_z)*B_z*az2*spa_z*spb_z)
       
         K = -0.5d0 * ( D_00_x * S_01_y * S_10_z + S_00_x * D_01_y * S_10_z + S_00_x * S_01_y * D_10_z )
       

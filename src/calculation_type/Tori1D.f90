@@ -6,6 +6,7 @@ subroutine Tori1D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
       use classification_ERI
       use keywords
       use unitcell_module
+      use debug_tools
 
       implicit none
 
@@ -47,6 +48,11 @@ subroutine Tori1D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
       call check_the_overlap(nBas,OV)
       call kinetic_matrix_toroidal_1D(nBas,AO,K)
       call nuclear_attraction_matrix_toroidal_1D(n_atoms,nBas,geometry,atoms,AO,NA)
+
+      call check_symmetric('S', OV, outfile)
+      call check_symmetric('T', K, outfile)
+      call check_symmetric('V', NA, outfile)
+
       if (c_One) then 
         ERI = 0.d0
       else 

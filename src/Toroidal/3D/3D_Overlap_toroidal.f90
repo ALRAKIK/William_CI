@@ -1,4 +1,4 @@
-subroutine overlap_matrix_toroidal_3D(nBas,AO,overlap)
+subroutine overlap_matrix_toroidal_3D(nBas,AO,S)
 
       use files
       use atom_basis
@@ -24,11 +24,11 @@ subroutine overlap_matrix_toroidal_3D(nBas,AO,overlap)
 
       ! output !
 
-      double precision,intent(out) :: overlap(nBas,nBas)
+      double precision,intent(out) :: S(nBas,nBas)
 
       !-----------------------------------------------------------------!
 
-      overlap(:,:) = 0.d0
+      S(:,:) = 0.d0
       
       ! --------------------------------------------------------------- !
 
@@ -45,7 +45,7 @@ subroutine overlap_matrix_toroidal_3D(nBas,AO,overlap)
 
           pattern_id = encode_orbital_pattern_AO(AO1%orbital, AO2%orbital)
 
-          call overlap_integral_toroidal_3D(pattern_id,r1,r2,AO1,AO2,overlap(i,j))
+          call overlap_integral_toroidal_3D(pattern_id,r1,r2,AO1,AO2,S(i,j))
           
         end do 
       end do 
@@ -56,11 +56,11 @@ subroutine overlap_matrix_toroidal_3D(nBas,AO,overlap)
        
       do i = 1 , nfuc
         do j = 1 , nBas
-          if (abs(overlap(i,j)) < 1e-14) overlap(i,j) = 0.d0 
+          if (abs(S(i,j)) < 1e-14) S(i,j) = 0.d0
         end do 
       end do 
 
-      call fill_with_symmetry(nBas, overlap)
+      call fill_with_symmetry(nBas, S)
  
       if (c_OV) then 
         write(outfile,'(a)') ""
@@ -70,10 +70,10 @@ subroutine overlap_matrix_toroidal_3D(nBas,AO,overlap)
         write(outfile,'(a)') ""
         do i = 1 , nBas - 1 
           do j = i , nBas
-            write(outfile,'(i3,i3, 6x,1000(f16.12,2x))') i , j, overlap(i,j)
+            write(outfile,'(i3,i3, 6x,1000(f16.12,2x))') i , j, S(i,j)
           end do
         end do 
-      end if 
+      end if
 
 end subroutine overlap_matrix_toroidal_3D
 

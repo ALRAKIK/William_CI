@@ -9,6 +9,7 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
       use classification_ERI
       use unitcell_module
       use precomputed_bessel
+      use debug_tools
 
       implicit none 
 
@@ -48,6 +49,7 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
       double precision, parameter   :: schwarz_thresh = 1.d-14
       integer(8)                    :: n_screened
       !-----------------------------------------------------------------!
+
 
       call initialize_bessel_table()
       call gauss_legendre_points()
@@ -322,7 +324,6 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
       flush(6)
       write(*,'(a)') ""
 
-
       deallocate(i_index, j_index)
       deallocate(Q_schwarz)
 
@@ -343,7 +344,12 @@ subroutine ERI_integral_toroidal_3D(number_of_atoms,geometry,nBas,atoms,two_elec
       !                    symmetry of the integrals                    !
       !-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-!
 
-      if (c_SAO) go to 200 
+      if (c_SAO) then 
+        if (c_debug) call check_eri_symmetry_SAO(nBas, two_electron_integrals, outfile)
+        go to 200 
+      end if 
+
+      if (c_debug) call check_eri_symmetry(nBas, two_electron, outfile)
 
       call cpu_time(start)
         call symmetry_of_integrals_ERI(nBas,nfuc,two_electron,two_electron_integrals)

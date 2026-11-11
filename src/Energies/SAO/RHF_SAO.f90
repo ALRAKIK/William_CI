@@ -7,6 +7,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       use constants_module
       use unitcell_module
       use k_blocks
+      use debug_tools
 
       implicit none
 
@@ -211,6 +212,8 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       !   Build Fock operator
     
       F(:,:) = Hc(:,:) + J(:,:) + K(:,:)
+
+      if (c_debug) call check_scf_state(nBas, F, P, S, X, outfile)
 
       call transform_AO_to_SAO(nBas,F,F_SAO)
       call transform_SAO_to_AO(nBas,F_SAO,F)

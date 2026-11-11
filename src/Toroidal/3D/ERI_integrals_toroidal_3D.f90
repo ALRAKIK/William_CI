@@ -433,7 +433,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( real_An * imag_Bn ) * dsin(n * phi_x) 
       end do
@@ -561,7 +561,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( real_An * imag_Bn ) * dsin(n * phi_y) 
       end do
@@ -689,7 +689,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( real_An * imag_Bn ) * dsin(n * phi_z) 
       end do
@@ -824,7 +824,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_x) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -957,7 +957,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( real_An * imag_Bn ) * dsin(n * phi_y) 
       end do
@@ -1090,7 +1090,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( real_An * imag_Bn ) * dsin(n * phi_z) 
       end do
@@ -1224,7 +1224,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( real_An * imag_Bn ) * dsin(n * phi_x) 
       end do
@@ -1358,7 +1358,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if 
         F_y(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_y) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -1491,7 +1491,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( real_An * imag_Bn ) * dsin(n * phi_z) 
       end do
@@ -1625,7 +1625,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( real_An * imag_Bn ) * dsin(n * phi_x) 
       end do
@@ -1758,7 +1758,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( real_An * imag_Bn ) * dsin(n * phi_y) 
       end do
@@ -1892,7 +1892,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if 
         F_z(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_z) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -2027,7 +2027,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_x) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -2160,7 +2160,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( real_An * imag_Bn ) * dsin(n * phi_y) 
       end do
@@ -2293,7 +2293,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( real_An * imag_Bn ) * dsin(n * phi_z) 
       end do
@@ -2308,7 +2308,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -2335,7 +2335,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         imag_Bn  = -0.5*cxqd*inv_ax*(-I_B_x(n+1)+I_B_x(Abs(n-1)))
         F_x(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_x) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_x) 
@@ -2363,7 +2363,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -2391,7 +2391,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -2419,7 +2419,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         imag_Bn  = -0.5*cxqc*inv_ax*(-I_B_x(n+1)+I_B_x(Abs(n-1)))
         F_x(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_x) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_x) 
@@ -2447,12 +2447,12 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_x) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -2479,7 +2479,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         imag_Bn  = -0.5*cxqc*inv_ax*(-I_B_x(n+1)+I_B_x(Abs(n-1)))
         F_x(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_x) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_x) 
@@ -2508,7 +2508,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         imag_Bn  = -0.5*cxqc*inv_ax*(-I_B_x(n+1)+I_B_x(Abs(n-1)))
         F_x(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_x) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_x) 
@@ -2537,7 +2537,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -2565,7 +2565,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         imag_Bn  = -0.5*cxqd*inv_ax*(-I_B_x(n+1)+I_B_x(Abs(n-1)))
         F_x(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_x) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_x) 
@@ -2594,7 +2594,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -2605,7 +2605,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( real_An * imag_Bn ) * dsin(n * phi_y) 
       end do
@@ -2626,7 +2626,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -2655,7 +2655,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -2683,7 +2683,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         imag_Bn  = -0.5*cxqd*inv_ax*(-I_B_x(n+1)+I_B_x(Abs(n-1)))
         F_x(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_x) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_x) 
@@ -2712,7 +2712,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -2741,7 +2741,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAx) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ax2*n*s2xpab*(I_A_x(n+1)+I_A_x(Abs(n-1)))/AAx
+          imag_An  = 0.5*inv_ax2*(cxpa*sxpb+cxpb*sxpa)*(n*I_A_x(n+1)+n*I_A_x(Abs(n-1))+I_A_x(n+1)-I_A_x(Abs(n-1)))/AAx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -2758,7 +2758,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( real_An * imag_Bn ) * dsin(n * phi_z) 
       end do
@@ -2898,7 +2898,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_x) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -3037,7 +3037,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if 
         F_y(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_y) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -3175,7 +3175,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( real_An * imag_Bn ) * dsin(n * phi_z) 
       end do
@@ -3315,7 +3315,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_x) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -3453,7 +3453,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( real_An * imag_Bn ) * dsin(n * phi_y) 
       end do
@@ -3592,7 +3592,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if 
         F_z(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_z) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -3726,7 +3726,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( real_An * imag_Bn ) * dsin(n * phi_x) 
       end do
@@ -3860,7 +3860,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if 
         F_y(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_y) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -3993,7 +3993,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( real_An * imag_Bn ) * dsin(n * phi_z) 
       end do
@@ -4133,7 +4133,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_x) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -4272,7 +4272,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if 
         F_y(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_y) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -4410,7 +4410,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( real_An * imag_Bn ) * dsin(n * phi_z) 
       end do
@@ -4431,7 +4431,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -4459,7 +4459,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -4486,7 +4486,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         imag_Bn  = -0.5*cyqd*inv_ay*(-I_B_y(n+1)+I_B_y(Abs(n-1)))
         F_y(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_y) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_y) 
@@ -4514,7 +4514,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -4543,7 +4543,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -4564,7 +4564,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( real_An * imag_Bn ) * dsin(n * phi_x) 
       end do
@@ -4575,7 +4575,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -4603,7 +4603,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         imag_Bn  = -0.5*cyqd*inv_ay*(-I_B_y(n+1)+I_B_y(Abs(n-1)))
         F_y(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_y) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_y) 
@@ -4632,7 +4632,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -4660,7 +4660,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         imag_Bn  = -0.5*cyqc*inv_ay*(-I_B_y(n+1)+I_B_y(Abs(n-1)))
         F_y(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_y) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_y) 
@@ -4689,7 +4689,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         imag_Bn  = -0.5*cyqc*inv_ay*(-I_B_y(n+1)+I_B_y(Abs(n-1)))
         F_y(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_y) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_y) 
@@ -4717,12 +4717,12 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if 
         F_y(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_y) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -4749,7 +4749,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         imag_Bn  = -0.5*cyqc*inv_ay*(-I_B_y(n+1)+I_B_y(Abs(n-1)))
         F_y(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_y) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_y) 
@@ -4778,7 +4778,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -4807,7 +4807,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -4835,7 +4835,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         imag_Bn  = -0.5*cyqd*inv_ay*(-I_B_y(n+1)+I_B_y(Abs(n-1)))
         F_y(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_y) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_y) 
@@ -4864,7 +4864,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAy) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_ay2*n*s2ypab*(I_A_y(n+1)+I_A_y(Abs(n-1)))/AAy
+          imag_An  = 0.5*inv_ay2*(cypa*sypb+cypb*sypa)*(n*I_A_y(n+1)+n*I_A_y(Abs(n-1))+I_A_y(n+1)-I_A_y(Abs(n-1)))/AAy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -4875,7 +4875,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( real_An * imag_Bn ) * dsin(n * phi_z) 
       end do
@@ -5014,7 +5014,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( real_An * imag_Bn ) * dsin(n * phi_x) 
       end do
@@ -5153,7 +5153,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if 
         F_y(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_y) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -5292,7 +5292,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if 
         F_z(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_z) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -5426,7 +5426,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( real_An * imag_Bn ) * dsin(n * phi_x) 
       end do
@@ -5559,7 +5559,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if  
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( real_An * imag_Bn ) * dsin(n * phi_y) 
       end do
@@ -5693,7 +5693,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if 
         F_z(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_z) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -5833,7 +5833,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_x) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_x) 
       end do
@@ -5971,7 +5971,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( real_An * imag_Bn ) * dsin(n * phi_y) 
       end do
@@ -6110,7 +6110,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if 
         F_z(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_z) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -6249,7 +6249,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( real_An * imag_Bn ) * dsin(n * phi_x) 
       end do
@@ -6388,7 +6388,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if 
         F_y(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_y) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_y) 
       end do
@@ -6527,7 +6527,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if 
         F_z(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_z) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -6554,7 +6554,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -6582,7 +6582,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -6610,7 +6610,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -6637,7 +6637,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         imag_Bn  = -0.5*czqd*inv_az*(-I_B_z(n+1)+I_B_z(Abs(n-1)))
         F_z(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_z) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_z) 
@@ -6666,7 +6666,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -6681,7 +6681,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBx) < 1.d-300) then 
           imag_Bn = 0.d0 
         else   
-          imag_Bn  = -0.5*inv_ax2*n*s2xqcd*(I_B_x(n+1)+I_B_x(Abs(n-1)))/BBx
+          imag_Bn  = -0.5*inv_ax2*(cxqc*sxqd+cxqd*sxqc)*(n*I_B_x(n+1)+n*I_B_x(Abs(n-1))+I_B_x(n+1)-I_B_x(Abs(n-1)))/BBx
         end if 
         F_x(n)   = ( real_An * real_Bn ) * dcos(n * phi_x) - ( real_An * imag_Bn ) * dsin(n * phi_x) 
       end do
@@ -6698,7 +6698,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -6727,7 +6727,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -6755,7 +6755,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         imag_Bn  = -0.5*czqd*inv_az*(-I_B_z(n+1)+I_B_z(Abs(n-1)))
         F_z(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_z) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_z) 
@@ -6784,7 +6784,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -6813,7 +6813,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -6834,7 +6834,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(BBy) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_ay2*n*s2yqcd*(I_B_y(n+1)+I_B_y(Abs(n-1)))/BBy
+          imag_Bn  = -0.5*inv_ay2*(cyqc*syqd+cyqd*syqc)*(n*I_B_y(n+1)+n*I_B_y(Abs(n-1))+I_B_y(n+1)-I_B_y(Abs(n-1)))/BBy
         end if 
         F_y(n)   = ( real_An * real_Bn ) * dcos(n * phi_y) - ( real_An * imag_Bn ) * dsin(n * phi_y) 
       end do
@@ -6845,7 +6845,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         F_z(n)   = ( real_An * real_Bn ) * dcos(n * phi_z) - ( imag_An * real_Bn ) * dsin(n * phi_z) 
       end do
@@ -6873,7 +6873,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         imag_Bn  = -0.5*czqd*inv_az*(-I_B_z(n+1)+I_B_z(Abs(n-1)))
         F_z(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_z) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_z) 
@@ -6901,7 +6901,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         imag_Bn  = -0.5*czqc*inv_az*(-I_B_z(n+1)+I_B_z(Abs(n-1)))
         F_z(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_z) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_z) 
@@ -6930,7 +6930,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         imag_Bn  = -0.5*czqc*inv_az*(-I_B_z(n+1)+I_B_z(Abs(n-1)))
         F_z(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_z) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_z) 
@@ -6959,7 +6959,7 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         imag_Bn  = -0.5*czqc*inv_az*(-I_B_z(n+1)+I_B_z(Abs(n-1)))
         F_z(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_z) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_z) 
@@ -6987,12 +6987,12 @@ subroutine integrate_ERI_3D(pattern_id, p_x,q_x,phi_x,xpA,xpB,xqC,xqD,xa,xb,xc,x
         if (dabs(AAz) < 1.d-300) then 
           imag_An = 0.d0 
         else
-          imag_An  = 0.5*inv_az2*n*s2zpab*(I_A_z(n+1)+I_A_z(Abs(n-1)))/AAz
+          imag_An  = 0.5*inv_az2*(czpa*szpb+czpb*szpa)*(n*I_A_z(n+1)+n*I_A_z(Abs(n-1))+I_A_z(n+1)-I_A_z(Abs(n-1)))/AAz
         end if 
         if (dabs(BBz) < 1.d-300) then 
           imag_Bn = 0.d0 
         else
-          imag_Bn  = -0.5*inv_az2*n*s2zqcd*(I_B_z(n+1)+I_B_z(Abs(n-1)))/BBz
+          imag_Bn  = -0.5*inv_az2*(czqc*szqd+czqd*szqc)*(n*I_B_z(n+1)+n*I_B_z(Abs(n-1))+I_B_z(n+1)-I_B_z(Abs(n-1)))/BBz
         end if 
         F_z(n)   = ( real_An * real_Bn - imag_An * imag_Bn) * dcos(n * phi_z) - ( real_An * imag_Bn + imag_An * real_Bn ) * dsin(n * phi_z) 
       end do

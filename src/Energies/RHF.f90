@@ -4,6 +4,7 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c,natom,Zat)
 
       use files 
       use keywords
+      use debug_tools
 
       implicit none
 
@@ -60,7 +61,6 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c,natom,Zat)
 
 
       !-----------------------------------------------------------------!
-
       
       if (c_details) then 
         open(HFfile,file=trim(tmp_file_name)//"/RHF.out")
@@ -184,6 +184,8 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c,natom,Zat)
       !   Build Fock operator
     
       F(:,:) = Hc(:,:) + J(:,:) + K(:,:)
+
+      if (c_debug) call check_scf_state(nBas, F, P, S, X, outfile)
        
       !  Compute the error vector and extract the convergence criterion !
 
@@ -265,7 +267,6 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c,natom,Zat)
 
       if (c_details) then 
 
-      
       call header_HF("Density matrix P = 2 c c^t", -1)
       write(HFfile,'(17x,*(i3,15x))') (i,i=1,size(P,1))
       do i = 1 , size(P,1)

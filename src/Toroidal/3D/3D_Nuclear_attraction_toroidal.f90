@@ -35,9 +35,9 @@ subroutine nuclear_attraction_matrix_toroidal_3D(number_of_atoms,nBas,geometry,a
 
       !-----------------------------------------------------------------!
       ! Parallelization variables
-      integer                        :: total_ij_pairs, ij_index
-      integer, allocatable           :: i_index(:), j_index(:)
-      integer                        :: num_threads, optimal_chunk_size
+      integer                       :: total_ij_pairs, ij_index
+      integer, allocatable          :: i_index(:), j_index(:)
+      integer                       :: num_threads, optimal_chunk_size
       !-----------------------------------------------------------------!
 
       !-----------------------------------------------------------------!

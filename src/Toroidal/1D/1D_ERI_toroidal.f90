@@ -9,6 +9,7 @@ subroutine ERI_integral_toroidal_1D(number_of_atoms,geometry,nBas,atoms,two_elec
       use classification_ERI
       use unitcell_module
       use precomputed_bessel
+      use debug_tools
 
       implicit none 
 
@@ -355,6 +356,9 @@ subroutine ERI_integral_toroidal_1D(number_of_atoms,geometry,nBas,atoms,two_elec
       !-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-!
       !                    symmetry of the integrals                    !
       !-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-/-!
+
+
+      if (c_debug) call check_eri_symmetry(nBas, two_electron, outfile)   ! O(n^4): debug only
 
       
       if (c_SAO) go to 200

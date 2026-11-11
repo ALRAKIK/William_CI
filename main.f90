@@ -80,7 +80,7 @@ program CI
       !                   build the super molecule                      !
       ! --------------------------------------------------------------- !
       
-      call build_super_molecule(keyword,n_atom_unitcell)                ! build the super molecule from the unitcell file 
+      call build_super_molecule(keyword,n_atom_unitcell)
 
       ! --------------------------------------------------------------- !
       !                        Read key words                           !
@@ -110,8 +110,13 @@ program CI
       c_physicist   = any(keyword == 'physicist')
       c_ccsdt       = any(keyword == 'ccsdt'    )
       c_inv_sym     = any(keyword == 'inv_sym'  )
+      c_debug       = any(keyword == 'debug'    )     ! 25 
+
+
+      ! started from 50 ! 
+
       c_Lanczos     = any(keyword == 'Lanczos'  )
-      c_Spin_adapt  = any(keyword == 'Spin'     )     ! 25
+      c_Spin_adapt  = any(keyword == 'Spin'     )
       c_screen      = any(keyword == 'screen'   )
                               
       ! --------------------------------------------------------------- !

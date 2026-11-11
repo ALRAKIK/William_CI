@@ -15,6 +15,7 @@ module keywords
       public  :: c_physicist
       public  :: c_ccsdt
       public  :: c_inv_sym
+      public  :: c_debug
 
 
 
@@ -37,6 +38,7 @@ module keywords
       logical :: c_physicist
       logical :: c_ccsdt
       logical :: c_inv_sym
+      logical :: c_debug
 
 
 
