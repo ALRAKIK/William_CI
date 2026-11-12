@@ -29,7 +29,7 @@ program CI
       integer                         ::           n_atom_unitcell 
       integer                         ::      number_of_primitives
       integer                         ::          number_of_shells
-      character*(10)                  ::               keyword(100)
+      character*(10)                  ::              keyword(100)
 
       double precision  ,allocatable  ::             geometry(:,:)
       integer           ,allocatable  ::                 charge(:)
