@@ -648,135 +648,136 @@ contains
       !------------------------------------------------------------------
 
       subroutine eri_libcint_physicist(atm, bas, env, offset, natm, nbas, dim, ERI)
-        use iso_c_binding, only: c_null_ptr
-        implicit none
-      
-        integer,          intent(in)  :: natm, nbas, dim
-        integer,          intent(in)  :: atm(6,natm), bas(8,nbas), offset(nbas+1)
-        double precision, intent(in)  :: env(:)
-        double precision, intent(out) :: ERI(dim,dim,dim,dim)
-      
-        integer, external :: CINTcgto_cart, cint2e_cart
-      
-        integer :: ish, jsh, ksh, lsh, lsh_max, ipair, npairs
-        integer :: di, dj, dk, dl, ioff, joff, koff, loff, not0, shls(4)
-        integer :: a, b, c, d, ia, jb, kc, ld
-        integer, allocatable :: pair_i(:), pair_j(:)
-        double precision :: val, schwarz_thresh
-        double precision, allocatable :: buf(:,:,:,:), schwarz(:,:)
-      
-        schwarz_thresh = 1.0d-12
-        ERI = 0.0d0
-      
-        !--------------------------------------------------------------------
-        ! Step 1: Schwarz bounds — identical to chemist version
-        !--------------------------------------------------------------------
-        allocate(schwarz(nbas, nbas))
-        schwarz = 0.0d0
-        do ish = 1, nbas
-          di = CINTcgto_cart(ish-1, bas)
-          do jsh = 1, ish
-            dj   = CINTcgto_cart(jsh-1, bas)
-            shls = [ish-1, jsh-1, ish-1, jsh-1]
-            allocate(buf(di, dj, di, dj))
-            buf  = 0.0d0
-            not0 = cint2e_cart(buf, shls, atm, natm, bas, nbas, env, c_null_ptr)
-            schwarz(ish,jsh) = sqrt(maxval(abs(buf)))
-            schwarz(jsh,ish) = schwarz(ish,jsh)
-            deallocate(buf)
-          end do
-        end do
-     
-        !--------------------------------------------------------------------
-        ! Step 2: Flat pair list — identical to chemist version
-        !--------------------------------------------------------------------
-        npairs = nbas*(nbas+1)/2
-        allocate(pair_i(npairs), pair_j(npairs))
-        ipair = 0
-        do ish = 1, nbas
-          do jsh = 1, ish
-            ipair = ipair + 1
-            pair_i(ipair) = ish
-            pair_j(ipair) = jsh
-          end do
-        end do
-     
-        !--------------------------------------------------------------------
-        ! Step 3: Main loop — physicist version
-        !
-        !  3 differences from chemist:
-        !  (a) shls = [ish-1, ksh-1, jsh-1, lsh-1]  ← permuted
-        !  (b) allocate(buf(di, dk, dj, dl))          ← dk and dj swapped
-        !  (c) val = buf(a, c, b, d)                  ← c and b swapped
-        !
-        !  Why: <ij|kl>_phys = (ik|jl)_chem
-        !  Passing shells [ish,ksh,jsh,lsh] to libcint gives
-        !  buf(a,b,c,d) = (ish_a, ksh_b | jsh_c, lsh_d)_chem
-        !  so buf(a,c,b,d) = (ish_a, ksh_c | jsh_b, lsh_d)_chem
-        !                  = <ish_a, jsh_b | ksh_c, lsh_d>_phys  ✓
-        !
-        !  8-fold physicist symmetry (real orbitals):
-        !  <ij|kl> = <kj|il> = <il|kj> = <kl|ij>
-        !          = <ji|lk> = <li|jk> = <jk|li> = <lk|ji>
-        !--------------------------------------------------------------------
-        !$omp parallel do schedule(dynamic) &
-        !$omp   private(ipair,ish,jsh,ksh,lsh,lsh_max, &
-        !$omp           di,dj,dk,dl,ioff,joff,koff,loff, &
-        !$omp           shls,not0,buf,a,b,c,d,ia,jb,kc,ld,val)
-        do ipair = 1, npairs
-          ish  = pair_i(ipair);  jsh = pair_j(ipair)
-          ioff = offset(ish);    joff = offset(jsh)
-          di   = CINTcgto_cart(ish-1, bas)
-          dj   = CINTcgto_cart(jsh-1, bas)
-      
-          do ksh = 1, ish
-            lsh_max = ksh
-            if (ksh == ish) lsh_max = jsh
-            koff = offset(ksh)
-            dk   = CINTcgto_cart(ksh-1, bas)
          
-            do lsh = 1, lsh_max
-              if (schwarz(ish,jsh) * schwarz(ksh,lsh) < schwarz_thresh) cycle
+      use iso_c_binding, only: c_null_ptr
+      implicit none
             
-              loff = offset(lsh)
-              dl   = CINTcgto_cart(lsh-1, bas)
+      integer,          intent(in)  :: natm, nbas, dim
+      integer,          intent(in)  :: atm(6,natm), bas(8,nbas), offset(nbas+1)
+      double precision, intent(in)  :: env(:)
+      double precision, intent(out) :: ERI(dim,dim,dim,dim)
             
-              ! (a) permuted shell order
-              shls = [ish-1, ksh-1, jsh-1, lsh-1]
-              ! (b) buffer shape matches permuted shells: (di, dk, dj, dl)
-              allocate(buf(di, dk, dj, dl))
-              buf  = 0.0d0
-              not0 = cint2e_cart(buf, shls, atm, natm, bas, nbas, env, c_null_ptr)
+      integer, external :: CINTcgto_cart, cint2e_cart
             
-              do d = 1, dl;  ld = loff + d
-                do b = 1, dj;  jb = joff + b        ! note: b loops over jsh
-                  do c = 1, dk;  kc = koff + c      ! note: c loops over ksh
-                    do a = 1, di;  ia = ioff + a
-                      ! (c) read buf(a,c,b,d) to get <ia,jb|kc,ld>_phys
-                      val = buf(a, c, b, d)
-                      ! 8-fold physicist symmetry
-                      ERI(ia,jb,kc,ld) = val    ! <ij|kl>
-                      ERI(kc,jb,ia,ld) = val    ! <kj|il>
-                      ERI(ia,ld,kc,jb) = val    ! <il|kj>
-                      ERI(kc,ld,ia,jb) = val    ! <kl|ij>
-                      ERI(jb,ia,ld,kc) = val    ! <ji|lk>
-                      ERI(ld,ia,jb,kc) = val    ! <li|jk>
-                      ERI(jb,kc,ld,ia) = val    ! <jk|li>
-                      ERI(ld,kc,jb,ia) = val    ! <lk|ji>
-                    end do
-                  end do
+      integer :: ish, jsh, ksh, lsh, ik_pair, jl_pair, npairs
+      integer :: di, dj, dk, dl, ioff, joff, koff, loff, not0, shls(4)
+      integer :: a, b, c, d, ia, jc, kb, ld
+      integer, allocatable :: pair_i(:), pair_j(:)
+      double precision :: val, schwarz_thresh
+      double precision, allocatable :: buf(:,:,:,:), schwarz(:,:)
+            
+      schwarz_thresh = 1.0d-12
+      ERI = 0.0d0
+            
+      !--------------------------------------------------------------------
+      ! Step 1: Schwarz bounds  Q(a,b) = sqrt( max|(ab|ab)_chem| )
+      !         Same formula as chemist; used here as Q(ish,ksh)*Q(jsh,lsh)
+      !         to bound (ish,ksh|jsh,lsh)_chem = <ish,jsh|ksh,lsh>_phys
+      !--------------------------------------------------------------------
+      allocate(schwarz(nbas, nbas))
+      schwarz = 0.0d0
+      do ish = 1, nbas
+        di = CINTcgto_cart(ish-1, bas)
+        do ksh = 1, ish
+          dk   = CINTcgto_cart(ksh-1, bas)
+          shls = [ish-1, ksh-1, ish-1, ksh-1]   ! (ik|ik)
+          allocate(buf(di, dk, di, dk))
+          buf  = 0.0d0
+          not0 = cint2e_cart(buf, shls, atm, natm, bas, nbas, env, c_null_ptr)
+          schwarz(ish,ksh) = sqrt(maxval(abs(buf)))
+          schwarz(ksh,ish) = schwarz(ish,ksh)
+          deallocate(buf)
+        end do
+      end do
+   
+      !--------------------------------------------------------------------
+      ! Step 2: Flat pair list  (a,b) with a >= b
+      !--------------------------------------------------------------------
+      npairs = nbas*(nbas+1)/2
+      allocate(pair_i(npairs), pair_j(npairs))
+      ik_pair = 0
+      do ish = 1, nbas
+        do ksh = 1, ish
+          ik_pair = ik_pair + 1
+          pair_i(ik_pair) = ish
+          pair_j(ik_pair) = ksh
+        end do
+      end do
+   
+      !--------------------------------------------------------------------
+      ! Step 3: Main loop — PHYSICIST canonical
+      !
+      !  <ij|kl>_phys = (ik|jl)_chem
+      !
+      !  The 8-fold physicist symmetry groups (i,k) as the electron-1 pair
+      !  and (j,l) as the electron-2 pair.  So the canonical loop must be:
+      !
+      !    ik_pair over (ish,ksh) with ish >= ksh  — electron-1 shells
+      !    jl_pair over (jsh,lsh) with jsh >= lsh  — electron-2 shells
+      !    jl_pair <= ik_pair                       — pair ordering
+      !
+      !  libcint call: shls = [ish-1, ksh-1, jsh-1, lsh-1]
+      !  returns buf(a,b,c,d) = (ish_a, ksh_b | jsh_c, lsh_d)_chem
+      !                       = <ish_a, jsh_c | ksh_b, lsh_d>_phys
+      !
+      !  So:  ia = ish orbital,  jc = jsh orbital,
+      !        kb = ksh orbital,  ld = lsh orbital
+      !  val  = buf(a,b,c,d) = <ia, jc | kb, ld>_phys
+      !
+      !  8-fold physicist symmetry of <ij|kl>_phys (real orbitals):
+      !    <ij|kl> = <kj|il> = <il|kj> = <kl|ij>
+      !            = <ji|lk> = <li|jk> = <jk|li> = <lk|ji>
+      !--------------------------------------------------------------------
+      !$omp parallel do schedule(dynamic) &
+      !$omp   private(ik_pair,jl_pair,ish,ksh,jsh,lsh, &
+      !$omp           di,dk,dj,dl,ioff,koff,joff,loff, &
+      !$omp           shls,not0,buf,a,b,c,d,ia,jc,kb,ld,val)
+      do ik_pair = 1, npairs
+        ish  = pair_i(ik_pair);   ksh  = pair_j(ik_pair)
+        ioff = offset(ish);       koff = offset(ksh)
+        di   = CINTcgto_cart(ish-1, bas)
+        dk   = CINTcgto_cart(ksh-1, bas)
+      
+        do jl_pair = 1, ik_pair
+          jsh  = pair_i(jl_pair);   lsh  = pair_j(jl_pair)
+          joff = offset(jsh);       loff = offset(lsh)
+          dj   = CINTcgto_cart(jsh-1, bas)
+          dl   = CINTcgto_cart(lsh-1, bas)
+         
+          ! Schwarz screen for (ish,ksh|jsh,lsh)_chem
+          if (schwarz(ish,ksh) * schwarz(jsh,lsh) < schwarz_thresh) cycle
+         
+          shls = [ish-1, ksh-1, jsh-1, lsh-1]
+          allocate(buf(di, dk, dj, dl))
+          buf  = 0.0d0
+          not0 = cint2e_cart(buf, shls, atm, natm, bas, nbas, env, c_null_ptr)
+         
+          do d = 1, dl;  ld = loff + d
+            do c = 1, dj;  jc = joff + c    ! c → jsh orbital
+              do b = 1, dk;  kb = koff + b  ! b → ksh orbital
+                do a = 1, di;  ia = ioff + a
+                  val = buf(a, b, c, d)      ! = <ia, jc | kb, ld>_phys
+                  ERI(ia,jc,kb,ld) = val    ! <ij|kl>
+                  ERI(kb,jc,ia,ld) = val    ! <kj|il>
+                  ERI(ia,ld,kb,jc) = val    ! <il|kj>
+                  ERI(kb,ld,ia,jc) = val    ! <kl|ij>
+                  ERI(jc,ia,ld,kb) = val    ! <ji|lk>
+                  ERI(ld,ia,jc,kb) = val    ! <li|jk>
+                  ERI(jc,kb,ld,ia) = val    ! <jk|li>
+                  ERI(ld,kb,jc,ia) = val    ! <lk|ji>
                 end do
               end do
-              deallocate(buf)
-           
-            end do ! lsh
-          end do ! ksh
-        end do ! ipair
-        !$omp end parallel do
-     
-        deallocate(schwarz, pair_i, pair_j)
-     
-      end subroutine eri_libcint_physicist
+            end do
+          end do
+          deallocate(buf)
+         
+        end do   ! jl_pair
+      end do   ! ik_pair
+      !$omp end parallel do
+   
+      deallocate(schwarz, pair_i, pair_j)
+
+end subroutine eri_libcint_physicist
 
       !------------------------------------------------------------------
       ! destroy_libcint_tables : free memory
