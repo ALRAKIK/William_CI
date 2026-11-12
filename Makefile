@@ -67,6 +67,7 @@ MODULES_IN_ORDER = constants_module \
                    lib_int \
                    debug    \
                    K_blocks \
+                   HF_constant \
                    sorts    \
 # =================================================== #
 

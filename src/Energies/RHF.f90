@@ -5,6 +5,7 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c,natom,Zat)
       use files 
       use keywords
       use debug_tools
+      use HF_parameter
 
       implicit none
 
@@ -27,8 +28,6 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c,natom,Zat)
   
       ! Local variables
   
-      integer,parameter             ::             maxSCF = 100
-      double precision,parameter    ::            thresh = 1d-8
       integer                       ::                     nSCF
       double precision              ::                     Conv
       double precision              ::                      Gap
@@ -42,7 +41,7 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c,natom,Zat)
       double precision,allocatable  ::               error(:,:)
       double precision,external     ::             trace_matrix
 
-      integer                       ::             max_diis = 5
+      
       integer                       ::                   n_diis
       integer                       ::                   i  , o
       integer                       ::                  mu , nu 

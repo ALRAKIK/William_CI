@@ -8,6 +8,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       use unitcell_module
       use k_blocks
       use debug_tools
+      use HF_parameter
 
       implicit none
 
@@ -27,8 +28,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
   
       ! Local variables
   
-      integer,parameter             ::             maxSCF = 100
-      double precision,parameter    ::            thresh = 1d-8
+      
       integer                       ::                     nSCF
       double precision              ::                     Conv
       double precision              ::                      Gap
@@ -42,7 +42,6 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       double precision,allocatable  ::               error(:,:)
       double precision,external     ::             trace_matrix
 
-      integer                       ::             max_diis = 5
       integer                       ::                   n_diis
       integer                       ::                   i  , o
       integer                       ::                  mu , nu
