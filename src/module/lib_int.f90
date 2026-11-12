@@ -529,8 +529,8 @@ contains
       !-----------------------------------------------------------------!
 
       !------------------------------------------------------------------
-! Chemist notation: ERI(i,j,k,l) = (ij|kl)
-!------------------------------------------------------------------
+      ! Chemist notation: ERI(i,j,k,l) = (ij|kl)
+      !------------------------------------------------------------------
 subroutine eri_libcint_chemist(atm, bas, env, offset, natm, nbas, dim, ERI)
 
       use iso_c_binding, only: c_null_ptr
@@ -544,11 +544,11 @@ subroutine eri_libcint_chemist(atm, bas, env, offset, natm, nbas, dim, ERI)
       integer, external :: CINTcgto_cart
       integer, external :: cint2e_cart
 
-      integer          :: ish, jsh, ksh, lsh
-      integer          :: di, dj, dk, dl, ioff, joff, koff, loff, not0, shls(4)
-      integer          :: a, b, c, d
-      double precision :: buf(1296)        ! stack buffer — no allocate needed
-                                           ! 1296 = 6^4 covers up to g-functions
+      integer                      :: ish, jsh, ksh, lsh
+      integer                      :: di, dj, dk, dl, ioff, joff, koff, loff, not0, shls(4)
+      integer                      :: a, b, c, d
+      double precision,allocatable :: buf(:,:,:,:)
+                                            
 
       ERI = 0.0d0
 
@@ -569,6 +569,8 @@ subroutine eri_libcint_chemist(atm, bas, env, offset, natm, nbas, dim, ERI)
 
               shls = [ish-1, jsh-1, ksh-1, lsh-1]   ! natural order
 
+              allocate(buf(di, dj, dk, dl))
+
               buf  = 0.0d0
               not0 = cint2e_cart(buf, shls, atm, natm, bas, nbas, env, c_null_ptr)
 
@@ -577,12 +579,12 @@ subroutine eri_libcint_chemist(atm, bas, env, offset, natm, nbas, dim, ERI)
                 do c = 1, dk
                   do b = 1, dj
                     do a = 1, di
-                      ERI(ioff+a, joff+b, koff+c, loff+d) = buf(a + di*(b-1 + dj*(c-1 + dk*(d-1))))
+                      ERI(ioff+a, joff+b, koff+c, loff+d) = buf(a,b,c,d)
                     end do
                   end do
                 end do
               end do
-
+              deallocate(buf)
             end do
           end do
         end do
@@ -608,10 +610,10 @@ subroutine eri_libcint_physicist(atm, bas, env, offset, natm, nbas, dim, ERI)
       integer, external :: CINTcgto_cart
       integer, external :: cint2e_cart
 
-      integer          :: ish, jsh, ksh, lsh
-      integer          :: di, dj, dk, dl, ioff, joff, koff, loff, not0, shls(4)
-      integer          :: a, b, c, d
-      double precision :: buf(1296)        ! stack buffer — no allocate needed
+      integer                      :: ish, jsh, ksh, lsh
+      integer                      :: di, dj, dk, dl, ioff, joff, koff, loff, not0, shls(4)
+      integer                      :: a, b, c, d
+      double precision,allocatable :: buf(:,:,:,:)
 
       ERI = 0.0d0
 
@@ -632,6 +634,8 @@ subroutine eri_libcint_physicist(atm, bas, env, offset, natm, nbas, dim, ERI)
 
               shls = [ish-1, ksh-1, jsh-1, lsh-1]   ! permuted: gives <ij|kl> after read
 
+              allocate(buf(di, dk, dj, dl))
+
               buf  = 0.0d0
               not0 = cint2e_cart(buf, shls, atm, natm, bas, nbas, env, c_null_ptr)
 
@@ -641,12 +645,12 @@ subroutine eri_libcint_physicist(atm, bas, env, offset, natm, nbas, dim, ERI)
                 do b = 1, dj
                   do c = 1, dk
                     do a = 1, di
-                      ERI(ioff+a, joff+b, koff+c, loff+d) = buf(a + di*(c-1 + dk*(b-1 + dj*(d-1))))
+                      ERI(ioff+a, joff+b, koff+c, loff+d) = buf(a,c,b,d)
                     end do
                   end do
                 end do
               end do
-
+              deallocate(buf)
             end do
           end do
         end do
