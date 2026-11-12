@@ -10,7 +10,6 @@ subroutine read_basis_class_tor(atom_type)
       character(len=100)  :: lines
       character(len=10)   :: atom_type_charge
       logical             :: found_s, found_p , found_d  , found_f , found_g
-      logical             :: basis_problem
       
       write(atom_type_charge,'(A,I0)') "A ", atom_type%charge 
 
@@ -137,19 +136,7 @@ subroutine read_basis_class_tor(atom_type)
 
           end if 
 
-        end do 
-
-        basis_problem = .not. (found_s .and. found_p .and. found_d .and. found_f .and. found_g) 
-
-        if (basis_problem) then 
-          write(outfile,'(6x,A)') "Problem in the basis set:"
-          write(outfile,'(6x,A)') " * -  check the basis  "
-          write(outfile,'(6x,A)') " * -  check the syntax "
-
-          write(*,'(6x,A)') "Problem in the basis set:"
-          write(*,'(6x,A)') " * -  check the basis  "
-          write(*,'(6x,A)') " * -  check the syntax "
-        end if 
+        end do
 
 3      close(1)
 

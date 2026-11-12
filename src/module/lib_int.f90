@@ -528,7 +528,10 @@ contains
       ! eri_libcint : full (ij|kl) tensor — shell-quartet loop
       !-----------------------------------------------------------------!
 
-      subroutine eri_libcint(atm, bas, env, offset, natm, nbas, dim, ERI)
+      !------------------------------------------------------------------
+! Chemist notation: ERI(i,j,k,l) = (ij|kl)
+!------------------------------------------------------------------
+subroutine eri_libcint_chemist(atm, bas, env, offset, natm, nbas, dim, ERI)
 
       use iso_c_binding, only: c_null_ptr
       implicit none
@@ -541,56 +544,116 @@ contains
       integer, external :: CINTcgto_cart
       integer, external :: cint2e_cart
 
-      integer :: ish, jsh, ksh, lsh
-      integer :: di, dj, dk, dl, ioff, joff, koff, loff, not0, shls(4)
-      integer :: a, b, c, d
-      double precision, allocatable :: buf(:,:,:,:)
+      integer          :: ish, jsh, ksh, lsh
+      integer          :: di, dj, dk, dl, ioff, joff, koff, loff, not0, shls(4)
+      integer          :: a, b, c, d
+      double precision :: buf(1296)        ! stack buffer — no allocate needed
+                                           ! 1296 = 6^4 covers up to g-functions
 
       ERI = 0.0d0
 
       !$omp parallel do collapse(2) schedule(dynamic) &
-      !$omp   private(di, dj, dk, dl, ioff, joff, koff, loff, shls, not0) &
-      !$omp   private(buf, a, b, c, d)
+      !$omp   private(ish,jsh,ksh,lsh,di,dj,dk,dl,ioff,joff,koff,loff,shls,not0,buf,a,b,c,d)
       do ish = 1, nbas
-         do jsh = 1, nbas
-            do ksh = 1, nbas
-               do lsh = 1, nbas
-                  di = CINTcgto_cart(ish-1, bas)
-                  dj = CINTcgto_cart(jsh-1, bas)
-                  dk = CINTcgto_cart(ksh-1, bas)
-                  dl = CINTcgto_cart(lsh-1, bas)
-               
-                  ioff = offset(ish); joff = offset(jsh)
-                  koff = offset(ksh); loff = offset(lsh)
-               
-                  ! 2nd and 3rd indices SWAPPED for chemist's output:
-                  shls = [ish-1, ksh-1, jsh-1, lsh-1]
-               
-                  allocate(buf(di, dk, dj, dl))     ! middle dims swapped
-                  buf = 0.0d0
-                  not0 = cint2e_cart(buf, shls, atm, natm, bas, nbas, env, c_null_ptr)
-               
-                  ! buf(a, c, b, d) = ⟨ish_a, ksh_c | jsh_b, lsh_d⟩
-                  !                 = chem(ish_a, jsh_b | ksh_c, lsh_d)
-                  ! Write with middle indices transposed (a,c,b,d) → (a,b,c,d):
-                  do a = 1, di
-                     do c = 1, dk
-                        do b = 1, dj
-                           do d = 1, dl
-                              ERI(ioff+a, joff+b, koff+c, loff+d) = buf(a, c, b, d)
-                           end do
-                        end do
-                     end do
+        do jsh = 1, nbas
+          do ksh = 1, nbas
+            do lsh = 1, nbas
+
+              di = CINTcgto_cart(ish-1, bas)
+              dj = CINTcgto_cart(jsh-1, bas)
+              dk = CINTcgto_cart(ksh-1, bas)
+              dl = CINTcgto_cart(lsh-1, bas)
+
+              ioff = offset(ish); joff = offset(jsh)
+              koff = offset(ksh); loff = offset(lsh)
+
+              shls = [ish-1, jsh-1, ksh-1, lsh-1]   ! natural order
+
+              buf  = 0.0d0
+              not0 = cint2e_cart(buf, shls, atm, natm, bas, nbas, env, c_null_ptr)
+
+              ! buf(a,b,c,d) = (ish_a, jsh_b | ksh_c, lsh_d)_chem  → direct store
+              do d = 1, dl
+                do c = 1, dk
+                  do b = 1, dj
+                    do a = 1, di
+                      ERI(ioff+a, joff+b, koff+c, loff+d) = buf(a + di*(b-1 + dj*(c-1 + dk*(d-1))))
+                    end do
                   end do
-                  deallocate(buf)
-               end do
+                end do
+              end do
+
             end do
-         end do
+          end do
+        end do
       end do
-       !$omp end parallel do
+      !$omp end parallel do
 
-end subroutine eri_libcint
+end subroutine eri_libcint_chemist
 
+
+!------------------------------------------------------------------
+! Physicist notation: ERI(i,j,k,l) = <ij|kl>
+!------------------------------------------------------------------
+subroutine eri_libcint_physicist(atm, bas, env, offset, natm, nbas, dim, ERI)
+
+      use iso_c_binding, only: c_null_ptr
+      implicit none
+
+      integer,          intent(in)  :: natm, nbas, dim
+      integer,          intent(in)  :: atm(6,natm), bas(8,nbas), offset(nbas+1)
+      double precision, intent(in)  :: env(:)
+      double precision, intent(out) :: ERI(dim,dim,dim,dim)
+
+      integer, external :: CINTcgto_cart
+      integer, external :: cint2e_cart
+
+      integer          :: ish, jsh, ksh, lsh
+      integer          :: di, dj, dk, dl, ioff, joff, koff, loff, not0, shls(4)
+      integer          :: a, b, c, d
+      double precision :: buf(1296)        ! stack buffer — no allocate needed
+
+      ERI = 0.0d0
+
+      !$omp parallel do collapse(2) schedule(dynamic) &
+      !$omp   private(ish,jsh,ksh,lsh,di,dj,dk,dl,ioff,joff,koff,loff,shls,not0,buf,a,b,c,d)
+      do ish = 1, nbas
+        do jsh = 1, nbas
+          do ksh = 1, nbas
+            do lsh = 1, nbas
+
+              di = CINTcgto_cart(ish-1, bas)
+              dj = CINTcgto_cart(jsh-1, bas)
+              dk = CINTcgto_cart(ksh-1, bas)
+              dl = CINTcgto_cart(lsh-1, bas)
+
+              ioff = offset(ish); joff = offset(jsh)
+              koff = offset(ksh); loff = offset(lsh)
+
+              shls = [ish-1, ksh-1, jsh-1, lsh-1]   ! permuted: gives <ij|kl> after read
+
+              buf  = 0.0d0
+              not0 = cint2e_cart(buf, shls, atm, natm, bas, nbas, env, c_null_ptr)
+
+              ! buf filled as (ish_a, ksh_b | jsh_c, lsh_d)_chem
+              ! reading buf(a,c,b,d) = <ish_a, jsh_b | ksh_c, lsh_d>_phys
+              do d = 1, dl
+                do b = 1, dj
+                  do c = 1, dk
+                    do a = 1, di
+                      ERI(ioff+a, joff+b, koff+c, loff+d) = buf(a + di*(c-1 + dk*(b-1 + dj*(d-1))))
+                    end do
+                  end do
+                end do
+              end do
+
+            end do
+          end do
+        end do
+      end do
+      !$omp end parallel do
+
+end subroutine eri_libcint_physicist
 
       !------------------------------------------------------------------
       ! destroy_libcint_tables : free memory
