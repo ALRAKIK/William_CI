@@ -27,7 +27,10 @@ ifeq ($(BUILD),cluster)
     FC = gfortran
     FFLAGS = -Wall -Wno-unused -Wno-unused-dummy-argument -O3 -lblas -g -fimplicit-none -lm -ffree-line-length-none -fopenmp -ftree-vectorize -ffast-math -frecursive -march=native
     MODDIR = -J$(ODIR) -I$(ODIR) -I/usr/local/include
-    LIBS = -fopenmp src/lib/libquadpack.a src/lib/liblapack.a src/lib/librefblas.a -ltrexio
+    LIBS = -fopenmp src/lib/libquadpack.a src/lib/liblapack.a src/lib/librefblas.a -ltrexio \
+       -I/nfs/home/aalrakik/work/libcint/build/include \
+       -L/nfs/home/aalrakik/work/libcint/build -lcint \
+       -Wl,-rpath=/nfs/home/aalrakik/work/libcint/build
     EXECUTABLE = $(BDIR)/CI_pop
     $(info Building for CLUSTER environment)
 else
