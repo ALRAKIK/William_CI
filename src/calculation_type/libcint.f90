@@ -59,6 +59,8 @@ subroutine molecule(n_atoms,number_of_functions,atoms,geometry,OV,K,NA,ERI)
 
       call destroy_libcint_tables(atm, bas, env, offset)
 
+      print*, "ERI done"
+
       call cpu_time(end)
 
       time = end - start
