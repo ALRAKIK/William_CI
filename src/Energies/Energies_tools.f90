@@ -320,6 +320,68 @@ end subroutine get_X_from_overlap_complex
 ! --------------------------------------------------------------------- !
 ! --------------------------------------------------------------------- !
 
+!=====================================================================!
+! [Nov 2026] Lowdin X = S^-1/2 of a k-block-diagonal complex overlap,  !
+! block by block (same result as get_X_from_overlap_complex on the     !
+! full matrix, since S^-1/2 of a block-diagonal matrix is the          !
+! block-diagonal matrix of the S_k^-1/2). Cost N_cell * nfuc^3 instead !
+! of nBas^3. Same threshold and message for small eigenvalues. X.dat  !
+! is written only with the keyword Details.                           !
+!=====================================================================!
+subroutine get_X_from_overlap_complex_blocks(N,nf,nk,over,X)
+
+      use files
+      use keywords , only : c_details
+      use constants_module
+
+      implicit none
+
+      integer         , intent(in)  :: N , nf , nk
+      complex(dpc)    , intent(in)  :: over(N,N)
+      complex(dpc)    , intent(out) :: X(N,N)
+
+      integer                       :: k , b1 , b2 , i , o
+      double precision, parameter   :: thresh = 1d-6
+      complex(dpc)    , allocatable :: Evec(:,:) , Xb(:,:)
+      double precision, allocatable :: Eval(:)
+
+      X = (0.0_dp, 0.0_dp)
+
+      !$omp parallel default(shared) private(k,b1,b2,i,Evec,Xb,Eval)
+      allocate(Evec(nf,nf), Xb(nf,nf), Eval(nf))
+      !$omp do schedule(static)
+      do k = 1 , nk
+        b1 = (k-1)*nf + 1 ; b2 = k*nf
+        Evec(:,:) = over(b1:b2,b1:b2)
+        call diagonalize_matrix_complex(nf,Evec,Eval)
+        do i = 1 , nf
+          if (Eval(i) > thresh) then
+            Eval(i) = dsqrt(1.d0 / Eval(i))
+          else
+            !$omp critical
+            write(outfile,"(a,I3,a,I3,a,4x,E16.10)") 'Eigenvalue ',i,' of k block ',k, &
+                                                    ' is too small for Lowdin orthogonalization',Eval(i)
+            !$omp end critical
+          end if
+        end do
+        call ADAt_complex(nf,Evec,Eval,Xb)
+        X(b1:b2,b1:b2) = Xb
+      end do
+      !$omp end do
+      deallocate(Evec, Xb, Eval)
+      !$omp end parallel
+
+      if (c_details) then
+        open(1,file=trim(tmp_file_name)//"/X.dat")
+        write(1,'(15x,1000(i3,15x))') (i,i=1,size(X,1))
+        do i = 1 , size(X,1)
+          write(1,'(i3,6x,1000(f16.10,2x))') i ,  (X(i,o),o=1,size(X,1))
+        end do
+        close(1)
+      end if
+
+end subroutine get_X_from_overlap_complex_blocks
+
 subroutine ADAt_complex(N,A,D,B)
   
       ! Perform B = A.D.At where A is a NxN matrix and D is a diagonal matrix given 

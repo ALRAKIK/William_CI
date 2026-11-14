@@ -31,4 +31,28 @@ subroutine  get_keywords(keyword)
       c_ccsdt       = any(keyword == 'ccsdt'    )
       c_debug       = any(keyword == 'debug'    )     ! 25 
 
+      ! [Nov 2026] ONE rule for the order in which the AO two-electron
+      ! integrals are stored (used by libcint, Tori integrals, J/K, AO->MO):
+      !   c_physicist = .true.  ->  ERI(i,k,j,l) = (ij|kl)  (physicist)
+      ! MCDE reads physicist-ordered integrals, so MCDE switches it on.
+      ! (before: libcint used MCDE, the Tori code used physicist and J/K
+      !  used "physicist or MCDE" -> wrong Fock matrix for some combinations)
+      if (c_MCDE) c_physicist = .true.
+
+      ! [Nov 2026] the SAO path (k-space transformation, J/K) works with
+      ! chemist-ordered integrals only; physicist order is only needed by
+      ! MCDE, which does not run in the SAO path
+      if (c_SAO .and. c_MCDE) then
+        write(*,'(a)') ' ERROR: MCDE is not available with SAO (remove one of the two keywords)'
+        stop
+      end if
+      if (c_SAO .and. c_UHF) then
+        write(*,'(a)') ' ERROR: UHF is not available with SAO (remove one of the two keywords)'
+        stop
+      end if
+      if (c_SAO .and. c_physicist) then
+        write(*,'(a)') ' WARNING: keyword physicist ignored with SAO (the SAO path uses chemist order)'
+        c_physicist = .false.
+      end if
+
 end subroutine get_keywords

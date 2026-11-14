@@ -71,7 +71,7 @@ subroutine molecule(n_atoms,number_of_functions,atoms,geometry,OV,K,NA,ERI)
       call check_the_overlap (number_of_functions,OV)
 
       if (.not. c_One) then 
-        if (c_MCDE) then 
+        if (c_physicist) then        ! [Nov 2026] was c_MCDE: one flag for the stored order (get_kw.f90)
           call eri_libcint_physicist(atm, bas, env, offset, natm, nbas, dim, ERI)
         else 
           call eri_libcint_chemist(atm, bas, env, offset, natm, nbas, dim, ERI)

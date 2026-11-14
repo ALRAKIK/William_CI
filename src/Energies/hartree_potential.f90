@@ -24,7 +24,7 @@ subroutine hartree_potential(nBas,P,ERI,J)
       J(:,:) = 0d0
 
 
-      if (c_physicist .or. c_MCDE) then 
+      if (c_physicist) then        ! [Nov 2026] was (c_physicist .or. c_MCDE); MCDE now sets c_physicist
 
       do si=1,nBas
         do la=1,nBas

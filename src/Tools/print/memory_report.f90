@@ -88,12 +88,9 @@ subroutine memory_report(calculation_type, nBas, nfuc_in, N_cell_in, nO)
 
         call add("Integrals (SAO)",  "ERI(nfuc,nBas,nBas,nBas)", d*B3 + d*N2)
 
-        if (c_UHF) then
-          call add("UHF (SAO path)", "WARNING: UHF expects ERI(nBas^4)", d*B3 + 14.d0*d*N2)
-        else
-          call add("RHF (SAO)", "ERI + 6 real + 5 complex nBas^2 + DIIS", &
-                   d*B3 + 6.d0*d*N2 + 5.d0*z*N2 + 2.d0*d*N2*max_diis)
-        end if
+        ! [Nov 2026] SAO + UHF is now stopped in get_kw.f90
+        call add("RHF (SAO)", "ERI + 7 real + 5 complex nBas^2 + DIIS", &
+                 d*B3 + 7.d0*d*N2 + 5.d0*z*N2 + 2.d0*d*N2*max_diis)
 
         if (c_MP2) then
           o    = dble(ceiling(dble(nO)/C))               ! occupied bands per k (estimate)

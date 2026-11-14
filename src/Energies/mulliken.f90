@@ -1,23 +1,33 @@
-subroutine print_mulliken_charges(nBas, natom, nao_atom, S, P, Zat)
+!---------------------------------------------------------------------!
+! [Nov 2026] the number of basis functions of each atom is taken from  !
+! nao_atom(:) (module atom_basis, filled in main from the basis set).  !
+! Before: nBas/natom functions were assumed for every atom, which is   !
+! wrong as soon as the atoms are different (e.g. H2O).                 !
+! The functions of atom iat are consecutive (same order as the AO list)!
+!---------------------------------------------------------------------!
+subroutine print_mulliken_charges(nBas, natom, S, P, Zat)
 
       use files, only: outfile
+      use atom_basis, only: nao_atom
 
       implicit none
-      integer         , intent(in) :: nBas, natom, nao_atom
+      integer         , intent(in) :: nBas, natom
       double precision, intent(in) :: S(nBas,nBas), P(nBas,nBas)
       integer         , intent(in) :: Zat(natom)   
 
-      integer          :: iat, mu, nu, imu
+      integer          :: iat, mu, nu, imu, first
       double precision :: pop(natom), q
 
       pop(:) = 0d0
+      first = 0
       do iat = 1, natom
-         do imu = 1, nao_atom
-            mu = (iat-1)*nao_atom + imu
+         do imu = 1, nao_atom(iat)
+            mu = first + imu
             do nu = 1, nBas
                pop(iat) = pop(iat) + P(mu,nu) * S(nu,mu)
             end do
          end do
+         first = first + nao_atom(iat)
       end do
 
       write(outfile,'(6x,a)') ""

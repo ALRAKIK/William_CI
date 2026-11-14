@@ -204,6 +204,14 @@ program CI
 
       call basis(n_atoms,charge,atoms)
 
+      ! [Nov 2026] number of basis functions of every atom (Mulliken analysis)
+      allocate(nao_atom(n_atoms))
+      do i = 1 , n_atoms
+        nao_atom(i) =       atoms(i)%num_s_function + 3 *atoms(i)%num_p_function &
+                    + 6  *  atoms(i)%num_d_function + 10*atoms(i)%num_f_function &
+                    + 15 *  atoms(i)%num_g_function
+      end do
+
       ! --------------------------------------------------------------- !
       !                 Information from the Basis set                  !
       ! --------------------------------------------------------------- !
@@ -493,7 +501,10 @@ program CI
 
         ! in place: the AO array becomes the MO array (no second N^4 array)
         w_start = omp_get_wtime()
-          call AO_to_MO_ERI_inplace(nBas,coeff,ERI,c_physicist)
+          ! [Nov 2026] the MO integrals are kept in physicist order when MCDE
+          ! runs (MCDE reads <pq|rs>), otherwise chemist order (pq|rs) for MP2.
+          ! With physicist-ordered AO integrals, swapping indices 2,3 gives chemist.
+          call AO_to_MO_ERI_inplace(nBas,coeff,ERI,c_physicist .and. .not. c_MCDE)
           call move_alloc(ERI, ERI_MO)
         w_end = omp_get_wtime()
 
@@ -559,7 +570,7 @@ program CI
         else 
 
           call cpu_time(start)
-            call MP2(nBas,nO,e,ERI_MO,E_nuc,EHF)
+            call MP2(nBas,nO,e,ERI_MO,E_nuc,EHF,c_MCDE)   ! [Nov 2026] MO order: physicist if MCDE
           call cpu_time(end)
 
           time = end - start

@@ -40,6 +40,9 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       double precision,allocatable  ::                   K(:,:)
       double precision,allocatable  ::                   F(:,:)
       double precision,allocatable  ::               error(:,:)
+      double precision,allocatable  ::             error_o(:,:)   ! [Nov 2026] X^T error X
+      logical                       ::               converged     ! [Nov 2026]
+      integer                       ::        kb , b1 , b2 , nf    ! [Nov 2026] k-block bounds
       double precision,external     ::             trace_matrix
 
       integer                       ::                   n_diis
@@ -91,7 +94,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
   
       ! Memory allocation
   
-      allocate(P(nBas,nBas) ,error(nBas,nBas))
+      allocate(P(nBas,nBas) ,error(nBas,nBas), error_o(nBas,nBas))
       allocate(J(nBas,nBas) ,    K(nBas,nBas))
       allocate(F(nBas,nBas))
 
@@ -131,26 +134,32 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
 
       ! --------------------------------------------------------------- !
       !              apply the density on the functions 
+      ! [Nov 2026] printed only with the keyword Details (nBas lines)
       ! --------------------------------------------------------------- !
 
-      sum_o(:) = 0.d0 
+      if (c_details) then
+        sum_o(:) = 0.d0 
 
-      do o = 1 , nbas
-          sum_o(o) = dot_product(S(:,o), matmul(P, S(:,o)))
-      end do 
+        do o = 1 , nbas
+            sum_o(o) = dot_product(S(:,o), matmul(P, S(:,o)))
+        end do 
 
-      call header_under("P_{mu nu} S_{mu s} S_{nu s}",-1)
+        call header_under("P_{mu nu} S_{mu s} S_{nu s}",-1)
 
-      write(outfile,"(a)") "P_{mu nu} S_{mu s} S_{nu s} :  "
-      do i = 1 , nbas 
-        write(outfile,"(40x,i3,1x,f16.8)") i , sum_o(i)
-      end do 
+        write(outfile,"(a)") "P_{mu nu} S_{mu s} S_{nu s} :  "
+        do i = 1 , nbas 
+          write(outfile,"(40x,i3,1x,f16.8)") i , sum_o(i)
+        end do 
+      end if
 
       ! --------------------------------------------------------------- !
 
       call transform_AO_to_SAO(nBas,S,S_SAO)
 
-      call get_X_from_overlap_complex(nBas,S_SAO,X_SAO)
+      ! [Nov 2026] S_SAO is block diagonal in k: Lowdin S^-1/2 computed block
+      ! by block (same X, cost N_cell*nfuc^3 instead of nBas^3)
+      ! (was: call get_X_from_overlap_complex(nBas,S_SAO,X_SAO))
+      call get_X_from_overlap_complex_blocks(nBas,nfuc,N_cell,S_SAO,X_SAO)
       
       ! --------------------------------------------------------------- !
 
@@ -168,6 +177,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
 
       EHF_old         = 0d0 
       EHF             = 0d0 
+      converged       = .false.
   
       !------------------------------------------------------------------------
       ! Main SCF loop
@@ -200,12 +210,9 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
   
       nSCF = nSCF + 1
   
-      !   Compute the Hartree potential J
-      call hartree_potential_SAO(nBas,P,ERI,J)
-      ! ****************** !
-  
-      !   Compute the exchange potential K
-      call exchange_potential_SAO(nBas,P,ERI,K)
+      !   [Nov 2026] Coulomb J and exchange K (rows mu <= nfuc) in one
+      !   parallel pass (was: hartree_potential_SAO + exchange_potential_SAO)
+      call hartree_exchange_potential(nfuc,nBas,P,ERI,J,K)
       ! ****************** !
 
       !   Build Fock operator
@@ -217,18 +224,10 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       call transform_AO_to_SAO(nBas,F,F_SAO)
       call transform_SAO_to_AO(nBas,F_SAO,F)
 
-      ! Compute the error vector and extract the convergence criterion  !
-
-      error = matmul(F,matmul(P,S)) - matmul(matmul(S,P),F)
-      if(nSCF > 1) Conv = maxval(abs(error))
-      if (Conv < thresh) exit 
-
-      ! ****************** !
-
-      if (c_details) call details_print_HF(nBas,nSCF,J,K,F,1)
-
       !---------------------------------------------------------------- !
       !   Compute HF energy
+      !   [Nov 2026] computed BEFORE the convergence test, so the final
+      !   energy belongs to the final density (before: one iteration late)
       !---------------------------------------------------------------- !
   
       !   Compute the kinetic energy
@@ -253,25 +252,53 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
   
       EHF = ET + EV + EJ + EK
 
-      if ((abs(EHF - EHF_old) < thresh ) .and. nSCF > 2 ) exit
+      ! Compute the error vector and extract the convergence criterion  !
+      ! [Nov 2026] error in the orthogonal basis, X^T (FPS - SPF) X : used
+      ! for the convergence test AND for DIIS (standard, better conditioned)
+
+      error   = matmul(F,matmul(P,S)) - matmul(matmul(S,P),F)
+      error_o = matmul(transpose(X),matmul(error,X))
+      if(nSCF > 1) Conv = maxval(abs(error_o))
+
+      ! [Nov 2026] stop ONLY when the orbitals are converged. Before, the
+      ! loop also stopped when |EHF - EHF_old| < thresh (energy converges
+      ! much faster than the orbitals -> MP2/CC errors 1e-8 .. 1e-7)
+      if (Conv < thresh) then
+        converged = .true.
+        exit
+      end if
 
       EHF_old = EHF
 
-
       ! ****************** !
+
+      if (c_details) call details_print_HF(nBas,nSCF,J,K,F,1)
 
       ! DIIS extrapolation ! 
 
       if (c_DIIS) then 
         if(max_diis > 1) then
           n_diis = min(n_diis+1,max_diis)
-          call DIIS_extrapolation(rcond,nBas*nBas,nBas*nBas,n_diis,err_diis,F_diis,error,F)
+          call DIIS_extrapolation(rcond,nBas*nBas,nBas*nBas,n_diis,err_diis,F_diis,error_o,F)   ! [Nov 2026] error_o
         end if
       end if
 
+      ! [Nov 2026] BUG FIX: F_SAO must be rebuilt from the DIIS-extrapolated F.
+      ! Before, F_SAO was the one built before DIIS, so DIIS had no effect at
+      ! all in the SAO path (identical runs with and without the keyword DIIS).
+      call transform_AO_to_SAO(nBas,F,F_SAO)
+
       !   Transform for the Fock matrix F in the orthogonal basis 
-      
-      Fp_SAO = matmul(conjg(transpose(X_SAO)), matmul(F_SAO, X_SAO)) 
+      !   [Nov 2026] block by block (F_SAO and X_SAO are block diagonal in k):
+      !   N_cell products of nfuc x nfuc instead of one nBas x nBas product
+      !   (was: Fp_SAO = matmul(conjg(transpose(X_SAO)), matmul(F_SAO, X_SAO)))
+
+      Fp_SAO = (0.0_dp, 0.0_dp)
+      do kb = 1, N_cell
+        b1 = (kb-1)*nfuc + 1 ; b2 = kb*nfuc
+        Fp_SAO(b1:b2,b1:b2) = matmul(conjg(transpose(X_SAO(b1:b2,b1:b2))), &
+                                     matmul(F_SAO(b1:b2,b1:b2), X_SAO(b1:b2,b1:b2)))
+      end do
             
       !   Diagonalize F' to get MO coefficients (eigenvectors in the orthogonal basis) c' and MO energies (eigenvalues) e
       
@@ -299,16 +326,27 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
 
       !   Back-transform the MO coefficients c in the original non-orthogonal basis
 
-      coeff_SAO = matmul(X_SAO, Fp_SAO)
+      !   [Nov 2026] block by block (was: coeff_SAO = matmul(X_SAO, Fp_SAO))
+      coeff_SAO = (0.0_dp, 0.0_dp)
+      do kb = 1, N_cell
+        b1 = (kb-1)*nfuc + 1 ; b2 = kb*nfuc
+        coeff_SAO(b1:b2,b1:b2) = matmul(X_SAO(b1:b2,b1:b2), Fp_SAO(b1:b2,b1:b2))
+      end do
 
       !   Compute the density matrix P  !
+      !   [Nov 2026] an orbital of block kb has coefficients only in rows of
+      !   block kb, so its contribution 2 c c^* is limited to that block
+      !   (was: a loop over all nBas x nBas elements for every orbital)
 
       P_SAO = (0.0_dp, 0.0_dp)
+      nf    = nfuc
 
       do i = 1, nO
         occ_col = idx(i)
-        do mu = 1, nBas
-          do nu = 1, nBas
+        kb = (occ_col-1)/nf + 1
+        b1 = (kb-1)*nf + 1 ; b2 = kb*nf
+        do nu = b1, b2
+          do mu = b1, b2
             P_SAO(mu, nu) = P_SAO(mu, nu) + 2.0_dp * coeff_SAO(mu, occ_col) * conjg(coeff_SAO(nu, occ_col))
           end do
         end do
@@ -394,7 +432,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       ! End of SCF loop
       !------------------------------------------------------------------------
   
-      if(nSCF == maxSCF) then
+      if(.not. converged) then          ! [Nov 2026] was nSCF == maxSCF
   
         write(outfile,*)
         write(outfile,*)'!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
@@ -404,7 +442,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
 
         call print_RHF_SAO(nBas,nO,e,coeff_SAO,ENuc,ET,EV,EJ,EK,EHF,blk)
 
-        deallocate(P,error,J,K,F,err_diis,F_diis,S_SAO,X_SAO,P_SAO,F_SAO,Fp_SAO,idx,e_sorted)
+        deallocate(P,error,error_o,J,K,F,err_diis,F_diis,S_SAO,X_SAO,P_SAO,F_SAO,Fp_SAO,idx,e_sorted)
   
         stop
   
@@ -414,11 +452,11 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
 
         call print_RHF_SAO(nBas,nO,e,coeff_SAO,ENuc,ET,EV,EJ,EK,EHF,blk)
 
-        call print_mulliken_charges(nBas, natom, nBas/natom, S, P, Zat)
+        call print_mulliken_charges(nBas, natom, S, P, Zat)   ! [Nov 2026] real number of functions per atom
 
         ! Memory deallocation
 
-        deallocate(P,error,J,K,F,err_diis,F_diis,S_SAO,X_SAO,P_SAO,F_SAO,Fp_SAO,idx,e_sorted)
+        deallocate(P,error,error_o,J,K,F,err_diis,F_diis,S_SAO,X_SAO,P_SAO,F_SAO,Fp_SAO,idx,e_sorted)
 
         write(*,'(a)') ""
         write(*,'(a)') "╔───────────────────────────────────────────────╗"

@@ -1,4 +1,4 @@
-subroutine MP2(nBas,nO,e,ERI,ENuc,EHF)
+subroutine MP2(nBas,nO,e,ERI,ENuc,EHF,physicist_MO)
 
       use files 
       implicit none
@@ -11,6 +11,10 @@ subroutine MP2(nBas,nO,e,ERI,ENuc,EHF)
       double precision,intent(in)   ::                      EHF
       double precision,intent(in)   ::                  e(nBas)
       double precision,intent(in)   :: ERI(nBas,nBas,nBas,nBas)
+      ! [Nov 2026] order of the MO integrals: physicist (when MCDE runs in
+      ! the same calculation) or chemist. (ia|jb) = <ij|ab>
+      logical,intent(in)            :: physicist_MO
+      double precision              :: g_iajb, g_ibja
 
       ! Local variables
 
@@ -41,11 +45,20 @@ subroutine MP2(nBas,nO,e,ERI,ENuc,EHF)
             
               ! Second-order ring diagram
             
-              E2d   = E2d   - ERI(i,a,j,b)*ERI(i,a,j,b)/Dijab
+              ! [Nov 2026] read (ia|jb) and (ib|ja) in the stored order
+              if (physicist_MO) then
+                g_iajb = ERI(i,j,a,b)
+                g_ibja = ERI(i,j,b,a)
+              else
+                g_iajb = ERI(i,a,j,b)
+                g_ibja = ERI(i,b,j,a)
+              end if
+
+              E2d   = E2d   - g_iajb*g_iajb/Dijab
             
               ! Second-order exchange diagram
             
-              E2x   = E2x   - ERI(i,a,j,b)*ERI(i,b,j,a)/Dijab
+              E2x   = E2x   - g_iajb*g_ibja/Dijab
             
             enddo
           enddo
