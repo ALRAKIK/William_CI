@@ -334,7 +334,8 @@ contains
                off = off + nprim
                bas(PTR_COEFF, ish) = off
                do k = 1, nprim
-                  env(off+k) = atoms(iatm)%coefficient_s(k, ish_s) * fac_s
+                  env(off+k) = atoms(iatm)%coefficient_s(k, ish_s) * fac_s &
+                             * prim_norm(atoms(iatm)%exponent_s(k), 0)
                end do
                off = off + nprim
             end do
@@ -355,7 +356,8 @@ contains
                off = off + nprim
                bas(PTR_COEFF, ish) = off
                do k = 1, nprim
-                  env(off+k) = atoms(iatm)%coefficient_p(k, ish_p) * fac_p
+                  env(off+k) = atoms(iatm)%coefficient_p(k, ish_p) * fac_p &
+                             * prim_norm(atoms(iatm)%exponent_p(k), 1)
                end do
                off = off + nprim
             end do
@@ -376,7 +378,8 @@ contains
                off = off + nprim
                bas(PTR_COEFF, ish) = off
                do k = 1, nprim
-                  env(off+k) = atoms(iatm)%coefficient_d(k, ish_d) * fac_d
+                  env(off+k) = atoms(iatm)%coefficient_d(k, ish_d) * fac_d &
+                             * prim_norm(atoms(iatm)%exponent_d(k), 2)
                end do
                off = off + nprim
             end do
@@ -397,7 +400,8 @@ contains
                off = off + nprim
                bas(PTR_COEFF, ish) = off
                do k = 1, nprim
-                  env(off+k) = atoms(iatm)%coefficient_f(k, ish_f) * fac_f
+                  env(off+k) = atoms(iatm)%coefficient_f(k, ish_f) * fac_f &
+                             * prim_norm(atoms(iatm)%exponent_f(k), 3)
                end do
                off = off + nprim
             end do
@@ -418,7 +422,8 @@ contains
                off = off + nprim
                bas(PTR_COEFF, ish) = off
                do k = 1, nprim
-                  env(off+k) = atoms(iatm)%coefficient_g(k, ish_g) * fac_g
+                  env(off+k) = atoms(iatm)%coefficient_g(k, ish_g) * fac_g &
+                             * prim_norm(atoms(iatm)%exponent_g(k), 4)
                end do
                off = off + nprim
             end do
@@ -473,6 +478,19 @@ contains
       end if
 
       write(*,*) "the table finished"
+
+      contains
+
+      ! primitive normalization (same as the old norm_orb, n_type = l+1):
+      ! N = (1/(2 pi))^(3/4) * (4 alpha)^(l/2 + 3/4)
+      ! The coefficients in the Basis file refer to NORMALIZED primitives,
+      ! so this must be applied before contracting. The contraction norm
+      ! itself is fixed afterwards in molecule (dn = 1/sqrt(S_ii)).
+      pure double precision function prim_norm(alpha, l)
+        double precision, intent(in) :: alpha
+        integer,          intent(in) :: l
+        prim_norm = (0.5d0/pi)**0.75d0 * (4.d0*alpha)**(0.5d0*l + 0.75d0)
+      end function prim_norm
 
       end subroutine build_libcint_tables
 

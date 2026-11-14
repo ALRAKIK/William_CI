@@ -35,21 +35,18 @@ subroutine calculation_type_select(calculation_type,n_atoms,nBas,atoms,geometry,
         nquad_point = 64
       end if
 
-      if (c_inv_sym) then
-        call sym_call(calculation_type,n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)
-        return 
-      end if 
+ 
       
 
       select case (trim(calculation_type))
         case ("OBC", "Ring", "OBC2D")
-          call molecule(n_atoms,nBas,atoms,geometry,S,T,V,ERI)            ! Molecule
+          call molecule(n_atoms,nBas,atoms,geometry,S,T,V,ERI)             ! Molecule
         case ("Tori1D")
-          call Tori1D(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)           ! Toroidal 1D Gaussian TRR
+          call Tori1D(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)            ! Toroidal 1D Gaussian (any l)
         case ("Tori2D")
-          call Tori2D(n_atoms,nBas,atoms,AO,geometry)                     ! Real Toroidal 2D Gaussian
+          call Tori2D(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)            ! Toroidal 2D Gaussian (any l)
         case ("Tori3D")
-          call Tori3D(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)           ! Real Toroidal 3D Gaussian
+          call Tori3D(n_atoms,nBas,atoms,AO,geometry,S,T,V,ERI)            ! Toroidal 3D Gaussian (any l)
         case default
           write(outfile,'(A)') 'Unknown calculation type: ',          &
           &                     trim(calculation_type)

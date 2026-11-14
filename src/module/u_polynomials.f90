@@ -1,16 +1,10 @@
 module u_funcs
     implicit none
     private
-    public :: u0, u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12, u13
+    public :: u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12, u13
     
     ! Mark all as pure and inline-friendly
 contains
-    
-    pure function u0(t) result(res)
-        real(8), intent(in) :: t(0:)
-        real(8) :: res
-        res = 1.0d0
-    end function u0
     
     pure function u1(t) result(res)
         real(8), intent(in) :: t(0:)

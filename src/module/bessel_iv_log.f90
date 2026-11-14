@@ -17,7 +17,7 @@ module bessel_functions
       private
     
       ! Public interface
-      public                      :: iv_log , iv_scaled , iv_log_scaled
+      public                      :: iv_log , iv_scaled 
     
       ! Constants
       integer, parameter          :: N_TERMS = 41
@@ -326,15 +326,5 @@ module bessel_functions
           Iv = dexp(iv_log(dble(v_in),x))
           
       end function iv_scaled
-
-      pure elemental function iv_log_scaled(v_in, x) result(Iv)
-
-        double precision, intent(in) :: x
-        integer, intent(in)          :: v_in
-        double precision             :: Iv
-        
-          Iv = iv_log(dble(v_in),x)
-          
-      end function iv_log_scaled
 
 end module bessel_functions

@@ -2,7 +2,7 @@ module debug_tools
       implicit none
       private
       public :: check_symmetric, check_scf_state
-      public :: check_eri_symmetry , check_eri_symmetry_SAO
+      public :: check_eri_symmetry 
 
 contains
 
@@ -40,21 +40,6 @@ contains
           use unitcell_module
           integer,          intent(in) :: n, unit
           double precision, intent(in) :: ERI(n,n,n,n)
-          double precision :: dmax
-          integer :: p, q, r, s
-          dmax = 0d0
-          do s=1,nfuc; do r=1,n; do q=1,n; do p=1,n     ! column-major order
-            dmax = max(dmax, abs(ERI(p,q,r,s)-ERI(q,p,r,s)), &
-                             abs(ERI(p,q,r,s)-ERI(p,q,s,r)), &
-                             abs(ERI(p,q,r,s)-ERI(r,s,p,q)))
-          end do; end do; end do; end do
-          write(unit,'(1x,a,es12.4)') 'max ERI symmetry violation = ', dmax
-      end subroutine
-
-      subroutine check_eri_symmetry_SAO(n, ERI, unit)
-          use unitcell_module
-          integer,          intent(in) :: n, unit
-          double precision, intent(in) :: ERI(nfuc,n,n,n)
           double precision :: dmax
           integer :: p, q, r, s
           dmax = 0d0

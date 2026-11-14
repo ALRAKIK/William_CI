@@ -29,7 +29,6 @@ subroutine  get_keywords(keyword)
       c_nquad_128   = any(keyword == 'nquad_128')
       c_physicist   = any(keyword == 'physicist')
       c_ccsdt       = any(keyword == 'ccsdt'    )
-      c_inv_sym     = any(keyword == 'inv_sym'  )
       c_debug       = any(keyword == 'debug'    )     ! 25 
 
 end subroutine get_keywords

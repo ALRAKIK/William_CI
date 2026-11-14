@@ -27,7 +27,7 @@ ifeq ($(BUILD),cluster)
     FC = gfortran
     FFLAGS = -Wall -Wno-unused -Wno-unused-dummy-argument -O3 -lblas -g -fimplicit-none -lm -ffree-line-length-none -fopenmp -ftree-vectorize -ffast-math -frecursive -march=native
     MODDIR = -J$(ODIR) -I$(ODIR) -I/usr/local/include
-    LIBS = -fopenmp src/lib/libquadpack.a src/lib/liblapack.a src/lib/librefblas.a -ltrexio \
+    LIBS = -fopenmp src/lib/liblapack.a src/lib/librefblas.a -ltrexio \
        -I/nfs/home/aalrakik/work/libcint/build/include \
        -L/nfs/home/aalrakik/work/libcint/build -lcint \
        -Wl,-rpath=/nfs/home/aalrakik/work/libcint/build
@@ -37,8 +37,7 @@ else
     FC = gfortran
     FFLAGS = -Wall -Wno-unused -Wno-unused-dummy-argument -O3 -g -fimplicit-none -fopenmp -funroll-loops -ftree-vectorize -ffast-math -frecursive -Wno-conversion -march=native
     MODDIR = -J$(ODIR) -I$(ODIR) -I/usr/local/include
-    LIBS = src/lib/libquadpack.a \
-           -L/usr/local/lib -ltrexio \
+    LIBS = -L/usr/local/lib -ltrexio \
            -lm -fopenmp \
            -L/opt/homebrew/opt/openblas/lib -lopenblas -lpthread -I/opt/homebrew/include -L/opt/homebrew/lib -Wl,-rpath,/opt/homebrew/lib -lcint
     EXECUTABLE = $(BDIR)/CI_pop
@@ -48,27 +47,22 @@ endif
 # =================================================== #
 MODULES_IN_ORDER = constants_module \
                    u_polynomials \
-                   boys \
                    trexio_f \
                    Torus_init \
                    bessel_iv_log \
                    files \
                    precompute_t \
-                   Tools \
-                   1D_bessel_Nmax \
+                   clifford_tools \
                    atom_basis \
                    keywords \
                    ERI_mod \
-                   bessel_derivative \
                    filter \
                    heaviside \
                    unitcell \
-                   functions \
                    lib_int \
                    debug    \
                    K_blocks \
                    HF_constant \
-                   sorts    \
 # =================================================== #
 
 # Find all module files

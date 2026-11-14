@@ -57,7 +57,6 @@ subroutine diagonalize_matrix_nonh(N,A,e,c,VR,VL)
       ! Diagonalize a square matrix
 
       use files
-      use sorts
       implicit none
 
       ! =============================================================== !
@@ -91,7 +90,6 @@ subroutine diagonalize_matrix_nonh(N,A,e,c,VR,VL)
       ! diagonalization 
 
       call dgeev('V','V',N,A,N,e,c,VL,N,VR,N,work,lwork,info)
-      ! call bubble_sort(e)
 
       if(info /= 0) then
         write(outfile,'(a,I0)') 'Problem in diagonalize_matrix (dgeev)!!  --> ' , info 

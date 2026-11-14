@@ -343,7 +343,6 @@ subroutine read_keywords(keyword)
 
         if (trim(line) == 'ccsdt'     )  keyword(23) = 'ccsdt'
 
-        if (trim(line) == 'inv_sym'   )  keyword(24) = 'inv_sym'
 
         if (trim(line) == 'debug'     )  keyword(25) = 'debug'
 

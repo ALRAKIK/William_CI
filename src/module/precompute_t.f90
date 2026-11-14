@@ -18,6 +18,17 @@ module precomputed_bessel
       type(bessel_col), allocatable :: I_C_table_y(:) ! it can be 64 or 128
       type(bessel_col), allocatable :: I_C_table_z(:) ! it can be 64 or 128
 
+      ! ------------------------------------------------------------------ !
+      ! Packed contiguous 2-D Bessel tables for cache-efficient dot products !
+      ! IC_x_packed(k, n) = I_C_table_x(n)%I(k)                            !
+      ! All 64 columns are contiguous => L2/L3 cache stays warm              !
+      ! across all 479K integrals once the first few have been computed.     !
+      ! ------------------------------------------------------------------ !
+      double precision, allocatable :: IC_x_packed(:,:)  ! (0:max_nmax_x, 1:nquad_point)
+      double precision, allocatable :: IC_y_packed(:,:)
+      double precision, allocatable :: IC_z_packed(:,:)
+      integer :: max_nmax_x, max_nmax_y, max_nmax_z
+
 
       contains
 
@@ -366,6 +377,15 @@ module precomputed_bessel
       write(*,*) " "
       print*, "Total memory for x-axis Bessel table:          ", max_mem * 8 / 1024.0d0 / 1024.0d0, " MB"
       write(*,*) " "
+
+      ! Pack I_C_table_x into contiguous 2-D array for cache-efficient dot products
+      max_nmax_x = maxval(I_C_table_x(1:nquad_point)%nmax)
+      allocate(IC_x_packed(0:max_nmax_x, 1:nquad_point))
+      IC_x_packed = 0.d0
+      do i = 1, nquad_point
+        IC_x_packed(0:I_C_table_x(i)%nmax, i) = I_C_table_x(i)%I(0:I_C_table_x(i)%nmax)
+      end do
+      print*, "IC_x_packed: rows=", max_nmax_x+1, " cols=", nquad_point
   
       end if 
 
@@ -396,6 +416,14 @@ module precomputed_bessel
 
       print*, "Total memory for y-axis Bessel table:          ", max_mem * 8 / 1024.0d0 / 1024.0d0, " MB"
 
+      ! Pack I_C_table_y into contiguous 2-D array
+      max_nmax_y = maxval(I_C_table_y(1:nquad_point)%nmax)
+      allocate(IC_y_packed(0:max_nmax_y, 1:nquad_point))
+      IC_y_packed = 0.d0
+      do i = 1, nquad_point
+        IC_y_packed(0:I_C_table_y(i)%nmax, i) = I_C_table_y(i)%I(0:I_C_table_y(i)%nmax)
+      end do
+
       end if 
 
       if (Lz .ne. 0.d0 ) then 
@@ -424,6 +452,14 @@ module precomputed_bessel
       end do 
 
       print*, "Total memory for z-axis Bessel table:          ", max_mem * 8 / 1024.0d0 / 1024.0d0, " MB"
+
+      ! Pack I_C_table_z into contiguous 2-D array
+      max_nmax_z = maxval(I_C_table_z(1:nquad_point)%nmax)
+      allocate(IC_z_packed(0:max_nmax_z, 1:nquad_point))
+      IC_z_packed = 0.d0
+      do i = 1, nquad_point
+        IC_z_packed(0:I_C_table_z(i)%nmax, i) = I_C_table_z(i)%I(0:I_C_table_z(i)%nmax)
+      end do
 
       end if 
 

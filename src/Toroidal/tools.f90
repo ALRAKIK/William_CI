@@ -11,7 +11,6 @@ subroutine bary_center_toroidal_x(e1,e2,r1,r2,rp)
       ! local !
 
       double precision,parameter    :: epsilon = 1.d-6
-      double precision              :: sin_sum, cos_sum
       double precision              :: val 
 
       ! ----------------------------------------------------------------!

@@ -30,6 +30,8 @@ subroutine molecule(n_atoms,number_of_functions,atoms,geometry,OV,K,NA,ERI)
       integer, allocatable           :: atm(:,:), bas(:,:), offset(:)
       double precision, allocatable  :: env(:)
       integer                        :: natm, nbas, dim
+      integer                        :: ia, jb, kc, ld
+      double precision, allocatable  :: dn(:)
 
       ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - !
 
@@ -47,6 +49,25 @@ subroutine molecule(n_atoms,number_of_functions,atoms,geometry,OV,K,NA,ERI)
 
       call one_electron_libcint(atm, bas, env, offset, natm, nbas, dim, OV, K, NA)
 
+      ! ---- in-memory AO normalization (replaces the old normOBC) ---- !
+      ! every Cartesian AO gets <i|i> = 1, same convention as the       !
+      ! Clifford branches. dn(ia) = 1/sqrt(OV(ia,ia))                       !
+      allocate(dn(dim))
+      do ia = 1, dim
+        if (OV(ia,ia) <= 0.d0) then
+          write(*,*) "ERROR: non-positive self overlap for AO ", ia, OV(ia,ia)
+          stop
+        end if
+        dn(ia) = 1.d0 / sqrt(OV(ia,ia))
+      end do
+      do jb = 1, dim
+        do ia = 1, dim
+          OV(ia,jb) = OV(ia,jb) * dn(ia) * dn(jb)
+          K (ia,jb) = K (ia,jb) * dn(ia) * dn(jb)
+          NA(ia,jb) = NA(ia,jb) * dn(ia) * dn(jb)
+        end do
+      end do
+
       call check_the_overlap (number_of_functions,OV)
 
       if (.not. c_One) then 
@@ -56,6 +77,21 @@ subroutine molecule(n_atoms,number_of_functions,atoms,geometry,OV,K,NA,ERI)
           call eri_libcint_chemist(atm, bas, env, offset, natm, nbas, dim, ERI)
         end if 
       end if 
+
+      if (.not. c_One) then
+        !$omp parallel do private(ia,jb,kc,ld) collapse(2)
+        do ld = 1, dim
+          do kc = 1, dim
+            do jb = 1, dim
+              do ia = 1, dim
+                ERI(ia,jb,kc,ld) = ERI(ia,jb,kc,ld) * dn(ia) * dn(jb) * dn(kc) * dn(ld)
+              end do
+            end do
+          end do
+        end do
+        !$omp end parallel do
+      end if
+      deallocate(dn)
 
       call destroy_libcint_tables(atm, bas, env, offset)
 

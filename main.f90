@@ -7,7 +7,6 @@ program CI
       use classification_ERI
       use trexio
       use keywords
-      use table_1d_lookup
       use precomputed_bessel
       use unitcell_module
       use k_blocks
@@ -138,12 +137,6 @@ program CI
         
           call Torus_def()
 
-      ! --------------------------------------------------------------- !
-      !     Read the table for the maximum number of bessel function    !
-      ! --------------------------------------------------------------- !      
-
-        call load_table_1d('table_1D.bin')
-          
       end if 
 
       ! --------------------------------------------------------------- !
@@ -205,15 +198,7 @@ program CI
       !                  build the atomic basis set                     !
       ! --------------------------------------------------------------- !
 
-      if (any(calculation_type == ["Tori1D","Tori2D","Tori3D"])) then
-
-        call basis_tor(n_atoms,charge,atoms,calculation_type)
-
-      else
-
-        call basis(n_atoms,charge,atoms)
-
-      end if 
+      call basis(n_atoms,charge,atoms)
 
       ! --------------------------------------------------------------- !
       !                 Information from the Basis set                  !
@@ -256,6 +241,16 @@ program CI
                   + atoms(i)%num_g_function
       end do
 
+      ! ---- non-periodic (OBC/Ring/OBC2D): no unit cell, no SAO ---- !
+      if (.not. any(calculation_type == ["Tori1D","Tori2D","Tori3D"])) then   
+        if (c_SAO) then
+          write(outfile,'(6x,A)') 'WARNING: SAO keyword ignored for non-periodic calculation ('//trim(calculation_type)//')'
+          write(*,'(A)')          ' WARNING: SAO keyword ignored for non-periodic calculation ('//trim(calculation_type)//')'
+          c_SAO = .false.
+        end if
+        number_of_atom_in_unitcell = n_atoms
+      end if
+
       nfuc = 0 
 
       do i = 1 , number_of_atom_in_unitcell
@@ -265,7 +260,6 @@ program CI
                   + 6  * atoms(i)%num_d_function &              ! 6
                   + 10 * atoms(i)%num_f_function &              ! 10
                   + 15 * atoms(i)%num_g_function                ! 15
-
       end do
 
       ! --------------------------------------------------------------- !
@@ -278,21 +272,15 @@ program CI
       !          Classify the atomic orbitals and print them            !
       ! --------------------------------------------------------------- !
 
-      if (any(calculation_type == ["Tori1D","Tori2D","Tori3D"])) then
-          
-        N_cell = nBas / nfuc 
-
-        call classification_orbital_tor(n_atoms,nBas,geometry,atoms,AO)
-
-      else
-        call classification_orbital    (n_atoms,nBas,geometry,atoms,AO)
-      end if
+      if (any(calculation_type == ["Tori1D","Tori2D","Tori3D"])) N_cell = nBas / nfuc
+           
+      call classification    (n_atoms,nBas,geometry,atoms,AO)
             
       ! --------------------------------------------------------------- !
       !                    print  The orbital table                     !
       ! --------------------------------------------------------------- !
-
-      call print_orbital_table(AO,nBas)
+      
+        call print_shell_table(AO,nBas)      
 
       ! --------------------------------------------------------------- !
       !           print  Informations from the Basis set                !
@@ -417,7 +405,6 @@ program CI
       !        pure 2D toroidal case (not 2D in 3D normal case)         !
       ! --------------------------------------------------------------- !
 
-      !call get_X_from_overlap_2D(nBAS,S,X)
     
       call get_X_from_overlap(nBAS,S,X)      
        
