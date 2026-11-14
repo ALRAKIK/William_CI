@@ -8,7 +8,7 @@
   <h3 align="center">William_CI Project</h3>
 
   <p align="center">
-    Calculate the quantum chemistry integral required for the Hartree-Fock mechanism.
+    Calculate the quantum chemistry integrals required for the Hartree-Fock method, MP2, and CCSD(T). 
     <br />
     <a href="https://github.com/ALRAKIK/William_CI"><strong>Explore the Project »</strong></a>
     <br />
@@ -20,9 +20,6 @@
 <details>
   <summary>Table of Contents</summary>
   <ol>
-    <li>
-      <a href="#thomson">About The Project</a>
-    </li>
     <li>
       <a href="#prerequisite">Getting Started</a>
       <ul>
@@ -38,8 +35,8 @@
   </ol>
 </details>
 
-# William_CI
-A program to calculate the integrals needed in a quantum chemistry code, and calculate the energy of the ground state using the Hartree-Fock mechanism (if required).
+# William CI
+A program to calculate the integrals needed in a quantum chemistry code and calculate the energy of the ground state using the Hartree-Fock, MP2, or CCSD(T) (if required).
 
 # Prerequisite
 
@@ -54,11 +51,7 @@ sudo apt install gfortran
 sudo apt install liblapack-dev libopenblas-dev libomp-dev
 ```
 
-* 3 - quadpack library:
-
-Have a look at https://github.com/jacobwilliams/quadpack
-
-* 4 - trexio:
+* 3 - trexio:
 
 Have a look at https://github.com/TREX-CoE/trexio
 
@@ -86,19 +79,19 @@ make clean
 
 # unitcell.mol file 
 
-* The first line contains the type of calculation, the number of the unitcells, the distance between the unitcell and the length of the torus.
+* The first line contains the type of calculation, the number of unit cells, the distance between the unit cells, and the length of the torus.
 
-  | type of calculation                | `char` (  'OBC'  ,  'Ring'  ,  'Toroidal'  ,  'Tori'  ,  'Tori3D'  )
+  | type of calculation                | `char` (  'OBC'  ,  'Ring' ,  'Tori1D'  ,  'Tori2D'  ,  'Tori3D'  )
 
     * * `OBC` Open boundry condation == molecular calculation 
 
-    * * `Ring` molcular with ring geometry (If user insert only atoms on x axis)
+    * * `Ring` molecular with ring geometry (If user inserts only atoms on x axis)
+ 
+    * * `Tori1D`     using Clifford Gaussian in one dimension
 
-    * * `Toroidal` using R^3 gaussian with the modification of the integral
+    * * `Tori2D`     using Clifford Gaussian in two dimensions
  
-    * * `Tori`     using Clifford Gaussian in one Dimenstion
- 
-    * * `Tori3D`   using Clifford Gaussian in Three Dimenstion
+    * * `Tori3D`     using Clifford Gaussian in  three dimensions
  
   | number of unitcells                | `int`
 
@@ -115,7 +108,7 @@ make clean
 
   `Trexio`     write the integrals as a trexio file (to be used with other programs like (quantum package) )
 
-* user can write the geometry for the unit cell using $$ sign form a line then go to the next line and add the geometry and end with $$ sign again, for example:
+* user can write the geometry for the unit cell using $$ sign form a line then go to the next line and add the geometry and end with $$ sign again, for example:three dimensions
 
   ```
   $$
@@ -125,7 +118,7 @@ make clean
   
 * **Example:**
 
-  calculation using Clifford gaussian on one direction with two unitcells and a distance between them 1.8000 and the length of the Torus 3.60000
+  Calculation using Clifford Gaussian in one direction with two unit cells and a distance between them of 1.8000 and the length of the Torus 3.60000
 
   ```
   Tori  2    1.8000000    3.6000000000
@@ -136,16 +129,8 @@ make clean
 
 # Basis file
 
-  reading the same basis file as dalton, user should rename the basis file to "Basis"
+  Reading the same basis file as Dalton, the user should rename the basis file to "Basis"
   
-  
-
-
-
-
-
-
-
 
 
 
