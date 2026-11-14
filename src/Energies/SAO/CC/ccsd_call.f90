@@ -4,6 +4,7 @@ subroutine k_ccsd_T(blk,ERI_kMO,EHF,Enuc,EMP2)
       use constants_module, only: dp, dpc
       use unitcell_module , only: nfuc, N_cell
       use k_blocks        , only: K_block
+      use cc_dims         , only: o_hi, v_lo, set_cc_dims
       use omp_lib
 
       implicit none 
@@ -11,7 +12,7 @@ subroutine k_ccsd_T(blk,ERI_kMO,EHF,Enuc,EMP2)
       ! input !
 
       type(K_block), intent(in) :: blk(N_cell)
-      complex(dpc) , intent(in) :: ERI_kMO(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      complex(dpc) , intent(inout) :: ERI_kMO(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)   ! vvvv block used as Wvvvv during CCSD, restored
       real(dp)     , intent(in) :: EHF , Enuc , EMP2
 
       ! local ! 
@@ -25,6 +26,7 @@ subroutine k_ccsd_T(blk,ERI_kMO,EHF,Enuc,EMP2)
       integer                   :: k1 , k2 , k3
       integer                   :: fourth_k
       integer,allocatable       :: ktab(:,:,:)
+      integer,allocatable       :: occ_tab(:,:)
 
       
       complex(dpc),allocatable  :: t1(:,:,:)
@@ -55,8 +57,16 @@ subroutine k_ccsd_T(blk,ERI_kMO,EHF,Enuc,EMP2)
       write(*,'(a)') ""
 
 
+      ! compact ranges of occupied / virtual bands (module cc_dims)
+      allocate(occ_tab(nfuc,N_cell))
+      do k1 = 1, N_cell
+        occ_tab(:,k1) = blk(k1)%occupation(1:nfuc)
+      end do
+      call set_cc_dims(nfuc, N_cell, occ_tab)
+      deallocate(occ_tab)
+
       allocate(t1(nfuc,nfuc,N_cell))
-      allocate(t2(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell))
+      allocate(t2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell))   ! occ,occ,vir,vir only
       allocate(ktab(N_cell,N_cell,N_cell))
 
       do k1=1,N_cell

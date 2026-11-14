@@ -2,6 +2,7 @@ subroutine build_ccsd_t(blk,g,ktab,t1,t2,et)
 
       use constants_module, only: dp,dpc
       use unitcell_module , only: nfuc,N_cell
+      use cc_dims         , only: o_hi, v_lo
       use k_blocks        , only: K_block
       
       implicit none
@@ -9,7 +10,7 @@ subroutine build_ccsd_t(blk,g,ktab,t1,t2,et)
       type(K_block), intent(in) :: blk(N_cell)
       complex(dpc) , intent(in) :: g(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
       complex(dpc) , intent(in) :: t1(nfuc,nfuc,N_cell)
-      complex(dpc) , intent(in) :: t2(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      complex(dpc) , intent(in) :: t2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell)
       integer      , intent(in) :: ktab(N_cell,N_cell,N_cell)
       ! output !
       real(dp)     , intent(out):: et

@@ -52,7 +52,14 @@ subroutine fill_with_symmetry(nBas, matrix)
 end subroutine fill_with_symmetry
 
 
-subroutine symmetry_of_integrals_ERI(nf, fpuc, eri_tmp, eri)
+!---------------------------------------------------------------------!
+! Fill the rows i > fpuc of eri from the rows i <= fpuc (computed     !
+! before, in the same array) using the translational symmetry:       !
+!   (i j|k l) = (i0 j'|k' l') ,  i0 = i in the first cell, j',k',l'    !
+!   shifted by the same lattice vector. In place: only rows <= fpuc   !
+!   are read.                                                         !
+!---------------------------------------------------------------------!
+subroutine symmetry_of_integrals_ERI(nf, fpuc, eri)
 
       use unitcell_module
       use omp_lib
@@ -63,8 +70,7 @@ subroutine symmetry_of_integrals_ERI(nf, fpuc, eri_tmp, eri)
       integer                      :: nf, fpuc
       integer                      :: func_i
       integer                      :: idx, ii, m, n, p
-      double precision             :: eri_tmp(fpuc, nf, nf, nf)
-      double precision,intent(out) ::     eri(nf, nf, nf, nf)
+      double precision,intent(inout) :: eri(nf, nf, nf, nf)
 
       ! Precomputation arrays
       integer                      :: icell(nf), jcell(nf), kcell(nf), func_idx(nf)
@@ -76,7 +82,6 @@ subroutine symmetry_of_integrals_ERI(nf, fpuc, eri_tmp, eri)
 
       !-----------------------------------------------------------------!
 
-      eri(:,:,:,:) = 0.d0
       
       ! Precompute cell and function indices
       do idx = 1, nf
@@ -89,7 +94,6 @@ subroutine symmetry_of_integrals_ERI(nf, fpuc, eri_tmp, eri)
       end do
     
       
-      eri(1:nfuc,:,:,:) = eri_tmp(:,:,:,:)
 
       ! Precompute equivalence mapping table
       do i = 1, nf

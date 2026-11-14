@@ -1,7 +1,8 @@
-subroutine build_ccsd_w(blk,g,ktab,t1,t2,Woooo,Wvvvv,Wvoov,Wvovo)
+subroutine build_ccsd_w(blk,g,ktab,t1,t2,Woooo,Wvoov,Wvovo)
 
       use constants_module, only: dp, dpc
       use unitcell_module , only: nfuc, N_cell
+      use cc_dims       , only: o_hi, v_lo
       use k_blocks        , only: K_block
 
       implicit none
@@ -10,15 +11,14 @@ subroutine build_ccsd_w(blk,g,ktab,t1,t2,Woooo,Wvvvv,Wvoov,Wvovo)
       type(K_block), intent(in) :: blk(N_cell)
       complex(dpc) , intent(in) :: g(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
       complex(dpc) , intent(in) :: t1(nfuc,nfuc,N_cell)
-      complex(dpc) , intent(in) :: t2(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      complex(dpc) , intent(in) :: t2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell)
       integer      , intent(in) :: ktab(N_cell,N_cell,N_cell)
 
       ! output !
 
-      complex(dpc), intent(out) :: Woooo(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
-      complex(dpc), intent(out) :: Wvvvv(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
-      complex(dpc), intent(out) :: Wvoov(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
-      complex(dpc), intent(out) :: Wvovo(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      complex(dpc), intent(out) :: Woooo(o_hi,o_hi,o_hi,o_hi,N_cell,N_cell,N_cell)
+      complex(dpc), intent(out) :: Wvoov(v_lo:nfuc,o_hi,o_hi,v_lo:nfuc,N_cell,N_cell,N_cell)
+      complex(dpc), intent(out) :: Wvovo(v_lo:nfuc,o_hi,v_lo:nfuc,o_hi,N_cell,N_cell,N_cell)
 
       ! local !
 
@@ -31,7 +31,8 @@ subroutine build_ccsd_w(blk,g,ktab,t1,t2,Woooo,Wvvvv,Wvoov,Wvovo)
       complex(dpc), parameter :: zero=(0.0_dp,0.0_dp)
 
       ! Layouts (unchanged):
-      ! Woooo(m,n,i,j,km,kn,ki), Wvvvv(a,b,e,f,ka,kb,ke),
+      ! Woooo(m,n,i,j,km,kn,ki),
+      ! (Wvvvv is kept inside the vvvv block of g, see update_vvvv_in_g)
       ! Wvoov(a,m,i,e,ka,km,ki), Wvovo(a,m,e,i,ka,km,ke), ks=ktab(kp,kq,kr)
       ! g(b1,b2,b3,b4,k1,k2,k3), t1(bi,ba,k), t2(bi,bj,ba,bb,ki,kj,ka)
 
@@ -77,27 +78,6 @@ subroutine build_ccsd_w(blk,g,ktab,t1,t2,Woooo,Wvvvv,Wvoov,Wvovo)
             end do
           end do
           Woooo(bp,bq,br,bs,kp,kq,kr)=w
-        end do; end do; end do; end do
-      end do; end do; end do
-      !$omp end do nowait
-
-      ! ---- Wvvvv: all virtual ----
-      !$omp do collapse(3) schedule(dynamic)
-      do kp=1,N_cell; do kq=1,N_cell; do kr=1,N_cell
-        ks=ktab(kp,kq,kr)
-        Wvvvv(:,:,:,:,kp,kq,kr)=zero
-        do ii=1,nVir(kp); bp=kVir(ii,kp)
-        do jj=1,nVir(kq); bq=kVir(jj,kq)
-        do mm=1,nVir(kr); br=kVir(mm,kr)
-        do nn=1,nVir(ks); bs=kVir(nn,ks)
-          w=g(bp,br,bq,bs,kp,kr,kq)
-          do ll=1,nOcc(kq); bl=kOcc(ll,kq)
-            w=w-g(bl,bs,bp,br,kq,ks,kp)*t1(bl,bq,kq)
-          end do
-          do ll=1,nOcc(kp); bl=kOcc(ll,kp)
-            w=w-g(bl,br,bq,bs,kp,kr,kq)*t1(bl,bp,kp)
-          end do
-          Wvvvv(bp,bq,br,bs,kp,kq,kr)=w
         end do; end do; end do; end do
       end do; end do; end do
       !$omp end do nowait
@@ -168,3 +148,69 @@ subroutine build_ccsd_w(blk,g,ktab,t1,t2,Woooo,Wvvvv,Wvoov,Wvovo)
 
       !$omp end parallel
 end subroutine build_ccsd_w
+
+
+!=====================================================================!
+!  Wvvvv kept INSIDE the all-virtual block of g (no extra array):     !
+!                                                                     !
+!    Wvvvv(a,b,c,d) = g(a,c,b,d) - Delta(t1)(a,b,c,d)                 !
+!    Delta(t)(a,b,c,d) = sum_{l in kb} g(l,d,a,c) t(l,b,kb)            !
+!                      + sum_{l in ka} g(l,c,b,d) t(l,a,ka)            !
+!                                                                     !
+!  Delta is linear in t and uses only integrals with an occupied      !
+!  index (never written here), so each CCSD iteration does            !
+!        g_vvvv <- g_vvvv - Delta(t1_new - t1_old)                    !
+!  and at the end Delta(-t1_old) restores the original integrals.     !
+!  Nothing else in the CC code reads the all-virtual block of g.     !
+!  Element Wvvvv(p,q,r,s,kp,kq,kr) is stored at g(p,r,q,s,kp,kr,kq).  !
+!=====================================================================!
+subroutine update_vvvv_in_g(blk,g,ktab,dt1)
+
+      use constants_module, only: dp, dpc
+      use unitcell_module , only: nfuc, N_cell
+      use k_blocks        , only: K_block
+
+      implicit none
+
+      type(K_block), intent(in)    :: blk(N_cell)
+      complex(dpc) , intent(inout) :: g(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      integer      , intent(in)    :: ktab(N_cell,N_cell,N_cell)
+      complex(dpc) , intent(in)    :: dt1(nfuc,nfuc,N_cell)
+
+      integer      :: kOcc(nfuc,N_cell), nOcc(N_cell), kVir(nfuc,N_cell), nVir(N_cell)
+      integer      :: k, p, kp, kq, kr, ks, ii, jj, mm, nn, ll, bp, bq, br, bs, bl
+      complex(dpc) :: w
+      complex(dpc), parameter :: zero=(0.0_dp,0.0_dp)
+
+      nOcc=0; nVir=0
+      do k=1,N_cell
+        do p=1,nfuc
+          if (blk(k)%occupation(p)==2) then
+            nOcc(k)=nOcc(k)+1; kOcc(nOcc(k),k)=p
+          else if (blk(k)%occupation(p)==0) then
+            nVir(k)=nVir(k)+1; kVir(nVir(k),k)=p
+          end if
+        end do
+      end do
+
+      !$omp parallel do collapse(3) schedule(dynamic) default(shared) &
+      !$omp private(kp,kq,kr,ks,ii,jj,mm,nn,ll,bp,bq,br,bs,bl,w)
+      do kp=1,N_cell; do kq=1,N_cell; do kr=1,N_cell
+        ks=ktab(kp,kq,kr)
+        do ii=1,nVir(kp); bp=kVir(ii,kp)
+        do jj=1,nVir(kq); bq=kVir(jj,kq)
+        do mm=1,nVir(kr); br=kVir(mm,kr)
+        do nn=1,nVir(ks); bs=kVir(nn,ks)
+          w=zero
+          do ll=1,nOcc(kq); bl=kOcc(ll,kq)
+            w=w+g(bl,bs,bp,br,kq,ks,kp)*dt1(bl,bq,kq)
+          end do
+          do ll=1,nOcc(kp); bl=kOcc(ll,kp)
+            w=w+g(bl,br,bq,bs,kp,kr,kq)*dt1(bl,bp,kp)
+          end do
+          g(bp,br,bq,bs,kp,kr,kq)=g(bp,br,bq,bs,kp,kr,kq)-w
+        end do; end do; end do; end do
+      end do; end do; end do
+      !$omp end parallel do
+
+end subroutine update_vvvv_in_g

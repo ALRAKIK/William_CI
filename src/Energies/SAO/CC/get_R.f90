@@ -1,23 +1,23 @@
 subroutine build_ccsd_residuals(blk,g,ktab,t1,t2,Foo,Fvv,Fov,Loo,Lvv, &
-                                 Woooo,Wvvvv,Wvoov,Wvovo,R1,R2)
+                                 Woooo,Wvoov,Wvovo,R1,R2)
       use constants_module, only: dp, dpc
       use unitcell_module , only: nfuc, N_cell
+      use cc_dims       , only: o_hi, v_lo
       use k_blocks        , only: K_block
       implicit none
       ! input !
       type(K_block), intent(in) :: blk(N_cell)
       complex(dpc) , intent(in) :: g(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
       complex(dpc) , intent(in) :: t1(nfuc,nfuc,N_cell)
-      complex(dpc) , intent(in) :: t2(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      complex(dpc) , intent(in) :: t2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell)
       complex(dpc) , intent(in) :: Foo(nfuc,nfuc,N_cell)
       complex(dpc) , intent(in) :: Fvv(nfuc,nfuc,N_cell)
       complex(dpc) , intent(in) :: Fov(nfuc,nfuc,N_cell)
       complex(dpc) , intent(in) :: Loo(nfuc,nfuc,N_cell)
       complex(dpc) , intent(in) :: Lvv(nfuc,nfuc,N_cell)
-      complex(dpc) , intent(in) :: Woooo(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
-      complex(dpc) , intent(in) :: Wvvvv(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
-      complex(dpc) , intent(in) :: Wvoov(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
-      complex(dpc) , intent(in) :: Wvovo(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      complex(dpc) , intent(in) :: Woooo(o_hi,o_hi,o_hi,o_hi,N_cell,N_cell,N_cell)
+      complex(dpc) , intent(in) :: Wvoov(v_lo:nfuc,o_hi,o_hi,v_lo:nfuc,N_cell,N_cell,N_cell)
+      complex(dpc) , intent(in) :: Wvovo(v_lo:nfuc,o_hi,v_lo:nfuc,o_hi,N_cell,N_cell,N_cell)
       integer      , intent(in) :: ktab(N_cell,N_cell,N_cell)
       ! local !
       integer      :: occ(nfuc*N_cell), vir(nfuc*N_cell)
@@ -34,7 +34,7 @@ subroutine build_ccsd_residuals(blk,g,ktab,t1,t2,Foo,Fvv,Fov,Loo,Lvv, &
       complex(dpc), parameter :: czero=(0.0_dp,0.0_dp)
       ! output !
       complex(dpc), intent(out) :: R1(nfuc,nfuc,N_cell)
-      complex(dpc), intent(out) :: R2(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      complex(dpc), intent(out) :: R2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell)
 
       ! ---- setup: lists, lookup tables ----
       nOcc=0; nVir=0
@@ -146,7 +146,7 @@ subroutine build_ccsd_residuals(blk,g,ktab,t1,t2,Foo,Fvv,Fov,Loo,Lvv, &
                           vd=kVir(dd,kd)
                           tau=t2(oi,oj,vc,vd,ki,kj,kc)
                           if (kc==ki) tau=tau+t1(oi,vc,ki)*t1(oj,vd,kj)
-                          v=v+Wvvvv(va,vb,vc,vd,ka,kb,kc)*tau
+                          v=v+g(va,vc,vb,vd,ka,kc,kb)*tau        ! = Wvvvv(a,b,c,d), kept in g
                         end do
                       end do
                     end do
@@ -198,8 +198,16 @@ subroutine build_ccsd_residuals(blk,g,ktab,t1,t2,Foo,Fvv,Fov,Loo,Lvv, &
         v=czero
         if (momA(p)==momA(q)) v=f(bandA(p),bandA(q),momA(p))
       end function
-      function w4(w,p,q,r,s) result(v)
-        complex(dpc), intent(in) :: w(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      function w4_voov(w,p,q,r,s) result(v)
+        complex(dpc), intent(in) :: w(v_lo:nfuc,o_hi,o_hi,v_lo:nfuc,N_cell,N_cell,N_cell)
+        integer, intent(in) :: p,q,r,s
+        complex(dpc) :: v
+        v=czero
+        if (momA(s)/=ktab(momA(p),momA(q),momA(r))) return
+        v=w(bandA(p),bandA(q),bandA(r),bandA(s),momA(p),momA(q),momA(r))
+      end function
+      function w4_vovo(w,p,q,r,s) result(v)
+        complex(dpc), intent(in) :: w(v_lo:nfuc,o_hi,v_lo:nfuc,o_hi,N_cell,N_cell,N_cell)
         integer, intent(in) :: p,q,r,s
         complex(dpc) :: v
         v=czero
@@ -231,13 +239,13 @@ subroutine build_ccsd_residuals(blk,g,ktab,t1,t2,Foo,Fvv,Fov,Loo,Lvv, &
           kc=ktab(mom(m),mom(j),mom(b))
           do ic=1,nVir(kc)
             c=(kc-1)*nfuc+kVir(ic,kc)
-            v=v+(2.0_dp*w4(Wvoov,a,m,i,c)-w4(Wvovo,a,m,c,i))*s2(m,j,c,b) &
-                 -w4(Wvoov,a,m,i,c)*s2(m,j,b,c)
+            v=v+(2.0_dp*w4_voov(Wvoov,a,m,i,c)-w4_vovo(Wvovo,a,m,c,i))*s2(m,j,c,b) &
+                 -w4_voov(Wvoov,a,m,i,c)*s2(m,j,b,c)
           end do
           kc=ktab(mom(m),mom(j),mom(a))
           do ic=1,nVir(kc)
             c=(kc-1)*nfuc+kVir(ic,kc)
-            v=v-w4(Wvovo,b,m,c,i)*s2(m,j,a,c)
+            v=v-w4_vovo(Wvovo,b,m,c,i)*s2(m,j,a,c)
           end do
         end do
       end function pair

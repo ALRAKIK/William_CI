@@ -10,6 +10,8 @@ program CI
       use precomputed_bessel
       use unitcell_module
       use k_blocks
+      use cc_dims , only : o_hi , v_lo , set_cc_dims
+      use omp_lib , only : omp_get_wtime
 
       implicit none
 
@@ -46,7 +48,9 @@ program CI
       double precision  ,allocatable  ::                coeff(:,:)
 
       complex(dpc)      ,allocatable  ::            coeff_SAO(:,:)
-      complex(dpc)      ,allocatable  ::    ERI_SAO(:,:,:,:,:,:,:)
+      integer           ,allocatable  ::                occ_tab(:,:)
+      integer                         ::     p_lo , p_hi , q_lo , q_hi
+      double precision                ::          w_start , w_end
       complex(dpc)      ,allocatable  ::    ERI_kMO(:,:,:,:,:,:,:)
       type(K_block)     ,allocatable  ::                    blk(:)
 
@@ -272,7 +276,11 @@ program CI
       !          Classify the atomic orbitals and print them            !
       ! --------------------------------------------------------------- !
 
-      if (any(calculation_type == ["Tori1D","Tori2D","Tori3D"])) N_cell = nBas / nfuc
+      if (any(calculation_type == ["Tori1D","Tori2D","Tori3D"])) then
+        N_cell = nBas / nfuc
+      else
+        N_cell = 1
+      end if
            
       call classification    (n_atoms,nBas,geometry,atoms,AO)
             
@@ -307,6 +315,12 @@ program CI
 
 
       ! --------------------------------------------------------------- !
+
+      ! --------------------------------------------------------------- !
+      !        Memory estimate of every step (before allocating)        !
+      ! --------------------------------------------------------------- !
+
+      call memory_report(calculation_type,nBas,nfuc,N_cell,nO)
 
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       !               ---------------------------------                 !
@@ -477,23 +491,15 @@ program CI
 
       if (transformation) then 
 
-        allocate(ERI_MO(nBas,nBas,nBas,nBas))
-
-        call cpu_time(start)
-          if (c_physicist) then 
-            call AO_to_MO_ERI_physicist(nBas,coeff,ERI,ERI_MO)
-          else 
-            call AO_to_MO_ERI_chemist(nBas,coeff,ERI,ERI_MO)
-          end if
-        call cpu_time(end)
-
-        deallocate(ERI)
+        ! in place: the AO array becomes the MO array (no second N^4 array)
+        w_start = omp_get_wtime()
+          call AO_to_MO_ERI_inplace(nBas,coeff,ERI,c_physicist)
+          call move_alloc(ERI, ERI_MO)
+        w_end = omp_get_wtime()
 
         !call print_MO_file(nBas,ERI_MO)
 
-        time = end - start
-
-        write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for AO to MO transformation = ',time,' seconds'
+        write(outfile,'(A65,1X,F9.3,A8)') 'Wall time for AO to MO transformation = ',w_end-w_start,' seconds'
         write(outfile,*)
 
       end if
@@ -506,25 +512,34 @@ program CI
 
         if (c_SAO) then 
 
-          ! memory allocation ! 
-          
-          allocate(ERI_SAO(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell))
-          allocate(ERI_KMO(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell))
+          ! occupied / virtual band ranges of the k blocks (module cc_dims)
+          allocate(occ_tab(nfuc,N_cell))
+          do i = 1 , N_cell
+            occ_tab(:,i) = blk(i)%occupation(1:nfuc)
+          end do
+          call set_cc_dims(nfuc, N_cell, occ_tab)
+          deallocate(occ_tab)
 
-          call cpu_time(start)
-            call transform_ERI_AO_to_SAO(nBas, ERI, ERI_SAO)
-            call transform_ERI_SAO_to_kMO(nBas,coeff_SAO,ERI_SAO,ERI_kMO)
-          call cpu_time(end)
+          ! real-space AO -> k-space MO in one pass (no ERI_SAO stored)
+          !   with CCSD(T): all (pq|rs)      ,  MP2 alone: only (ov|ov)
+          if (c_ccsdt) then
+            p_lo = 1    ; p_hi = nfuc ; q_lo = 1    ; q_hi = nfuc
+          else
+            p_lo = 1    ; p_hi = o_hi ; q_lo = v_lo ; q_hi = nfuc
+          end if
+          allocate(ERI_kMO(p_lo:p_hi,q_lo:q_hi,p_lo:p_hi,q_lo:q_hi,N_cell,N_cell,N_cell))
 
-          time = end - start
+          w_start = omp_get_wtime()
+            call transform_ERI_AO_to_kMO(nBas, ERI, coeff_SAO, p_lo, p_hi, q_lo, q_hi, ERI_kMO)
+            deallocate(ERI)                  ! the real-space ERI is not needed any more
+          w_end = omp_get_wtime()
 
-          write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for AO to MO transformation = ',time,' seconds'
+          write(outfile,'(A65,1X,F9.3,A8)') 'Wall time for AO to k-MO transformation = ',w_end-w_start,' seconds'
           write(outfile,*)
 
-          deallocate(ERI,ERI_SAO)
 
           call cpu_time(start)
-            call kMP2_calc(N_cell, blk, ERI_kMO, E_nuc, EHF,E_MP2)
+            call kMP2_calc(N_cell, blk, p_lo, p_hi, q_lo, q_hi, ERI_kMO, E_nuc, EHF,E_MP2)
           call cpu_time(end)
 
           time = end - start

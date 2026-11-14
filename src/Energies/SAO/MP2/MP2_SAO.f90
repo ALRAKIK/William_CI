@@ -1,4 +1,9 @@
-subroutine kMP2_calc(N_cell, blk, ERI_kMO, ENuc, EHF,EcMP2)
+!---------------------------------------------------------------------!
+! k-MP2. ERI_kMO may be the full array (p,q = 1..nfuc, before CCSD)   !
+! or only its (ov|ov) block (p = 1..o_hi occupied, q = v_lo..nfuc     !
+! virtual, MP2 alone): only (i a | j b) elements are read.            !
+!---------------------------------------------------------------------!
+subroutine kMP2_calc(N_cell, blk, p_lo, p_hi, q_lo, q_hi, ERI_kMO, ENuc, EHF,EcMP2)
 
       use files
       use constants_module, only: dp, dpc
@@ -9,7 +14,8 @@ subroutine kMP2_calc(N_cell, blk, ERI_kMO, ENuc, EHF,EcMP2)
       ! Inputs
       integer         , intent(in)   :: N_cell
       type(K_block)   , intent(in)   :: blk(N_cell)
-      complex(dpc)    , intent(in)   :: ERI_kMO(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      integer         , intent(in)   :: p_lo, p_hi, q_lo, q_hi
+      complex(dpc)    , intent(in)   :: ERI_kMO(p_lo:p_hi,q_lo:q_hi,p_lo:p_hi,q_lo:q_hi,N_cell,N_cell,N_cell)
       real(dp)        , intent(in)   :: ENuc, EHF
 
       ! Local variables

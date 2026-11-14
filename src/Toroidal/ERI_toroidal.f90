@@ -12,7 +12,7 @@
 !   4) loop over shell quartets (bra shell SI in the unit cell),      !
 !      ERI_shell_block_toroidal, keep i<=nfuc, i<=j, k<=l, i<=k and   !
 !      store with the 8-fold symmetry (chemist or physicist)          !
-!   5) symmetry_of_integrals_ERI (or SAO storage)                     !
+!   5) normal path: rows i > nfuc by translation, in place            !
 !                                                                     !
 !   AO must be the SAME normalized list used for S, T and V.          !
 !=====================================================================!
@@ -43,7 +43,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       ! - local - !
 
       double precision, parameter    :: schwarz_thresh = 1.0d-13
-      double precision,allocatable   :: two_electron(:,:,:,:), Q_schwarz(:,:), Qsh(:,:), blk(:,:,:,:)
+      double precision,allocatable   :: Q_schwarz(:,:), Qsh(:,:), blk(:,:,:,:)
       integer, allocatable           :: sh_first(:), sh_n(:), ip_I(:), ip_J(:)
       integer                        :: i, j, k, l, a, b, c, d, nsh, lxyz(3), lt, ncomp, lmax, ncap, npair, ip
       integer                        :: SI, SJ, SK, SL
@@ -52,7 +52,6 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
 
       !-----------------------------------------------------------------!
 
-      if (.not. c_SAO) allocate(two_electron(nfuc,nBas,nBas,nBas))
 
       ! ---- t-table: largest Bessel order needed by any pair ---- !
       call init_clifford()
@@ -134,11 +133,10 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
         end do
       end do
 
-      if (c_SAO) then
-        two_electron_integrals = 0.d0
-      else
-        two_electron = 0.d0
-      end if
+      ! rows i <= nfuc are computed here, directly in the output array.
+      ! SAO : the output IS (nfuc,nBas,nBas,nBas) ; normal : the rows
+      ! i > nfuc are filled afterwards by translation (in place).
+      two_electron_integrals = 0.d0
 
       !$omp parallel do default(shared) private(ip,SI,SJ,SK,SL,blk,a,b,c,d,i,j,k,l,val) schedule(dynamic,1)
       do ip = 1 , npair
@@ -160,46 +158,24 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
                 if (i > nfuc .or. j < i .or. l < k .or. i > k) cycle
                 if (Q_schwarz(i,j)*Q_schwarz(k,l) < schwarz_thresh) cycle
                 val = blk(a,b,c,d)
-                if (c_SAO) then
-                  if (c_physicist) then
-                    if (i <= nfuc) two_electron_integrals(i,k,j,l) = val
-                    if (j <= nfuc) two_electron_integrals(j,k,i,l) = val
-                    if (i <= nfuc) two_electron_integrals(i,l,j,k) = val
-                    if (j <= nfuc) two_electron_integrals(j,l,i,k) = val
-                    if (k <= nfuc) two_electron_integrals(k,i,l,j) = val
-                    if (l <= nfuc) two_electron_integrals(l,i,k,j) = val
-                    if (k <= nfuc) two_electron_integrals(k,j,l,i) = val
-                    if (l <= nfuc) two_electron_integrals(l,j,k,i) = val
-                  else
-                    if (i <= nfuc) two_electron_integrals(i,j,k,l) = val
-                    if (j <= nfuc) two_electron_integrals(j,i,k,l) = val
-                    if (i <= nfuc) two_electron_integrals(i,j,l,k) = val
-                    if (j <= nfuc) two_electron_integrals(j,i,l,k) = val
-                    if (k <= nfuc) two_electron_integrals(k,l,i,j) = val
-                    if (l <= nfuc) two_electron_integrals(l,k,i,j) = val
-                    if (k <= nfuc) two_electron_integrals(k,l,j,i) = val
-                    if (l <= nfuc) two_electron_integrals(l,k,j,i) = val
-                  end if
+                if (c_physicist) then
+                  if (i <= nfuc) two_electron_integrals(i,k,j,l) = val
+                  if (j <= nfuc) two_electron_integrals(j,k,i,l) = val
+                  if (i <= nfuc) two_electron_integrals(i,l,j,k) = val
+                  if (j <= nfuc) two_electron_integrals(j,l,i,k) = val
+                  if (k <= nfuc) two_electron_integrals(k,i,l,j) = val
+                  if (l <= nfuc) two_electron_integrals(l,i,k,j) = val
+                  if (k <= nfuc) two_electron_integrals(k,j,l,i) = val
+                  if (l <= nfuc) two_electron_integrals(l,j,k,i) = val
                 else
-                  if (c_physicist) then
-                    if (i <= nfuc) two_electron(i,k,j,l) = val
-                    if (j <= nfuc) two_electron(j,k,i,l) = val
-                    if (i <= nfuc) two_electron(i,l,j,k) = val
-                    if (j <= nfuc) two_electron(j,l,i,k) = val
-                    if (k <= nfuc) two_electron(k,i,l,j) = val
-                    if (l <= nfuc) two_electron(l,i,k,j) = val
-                    if (k <= nfuc) two_electron(k,j,l,i) = val
-                    if (l <= nfuc) two_electron(l,j,k,i) = val
-                  else
-                    if (i <= nfuc) two_electron(i,j,k,l) = val
-                    if (j <= nfuc) two_electron(j,i,k,l) = val
-                    if (i <= nfuc) two_electron(i,j,l,k) = val
-                    if (j <= nfuc) two_electron(j,i,l,k) = val
-                    if (k <= nfuc) two_electron(k,l,i,j) = val
-                    if (l <= nfuc) two_electron(l,k,i,j) = val
-                    if (k <= nfuc) two_electron(k,l,j,i) = val
-                    if (l <= nfuc) two_electron(l,k,j,i) = val
-                  end if
+                  if (i <= nfuc) two_electron_integrals(i,j,k,l) = val
+                  if (j <= nfuc) two_electron_integrals(j,i,k,l) = val
+                  if (i <= nfuc) two_electron_integrals(i,j,l,k) = val
+                  if (j <= nfuc) two_electron_integrals(j,i,l,k) = val
+                  if (k <= nfuc) two_electron_integrals(k,l,i,j) = val
+                  if (l <= nfuc) two_electron_integrals(l,k,i,j) = val
+                  if (k <= nfuc) two_electron_integrals(k,l,j,i) = val
+                  if (l <= nfuc) two_electron_integrals(l,k,j,i) = val
                 end if
                end do
               end do
@@ -216,10 +192,9 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       write(outfile,'(6x,a,i8,a,i8)') 'shells: ', nsh, '   bra shell pairs: ', npair
       flush(outfile)
 
-      if (c_debug .and. .not. c_SAO) call check_eri_symmetry(nBas, two_electron, outfile)
       if (.not. c_SAO) then
-        call symmetry_of_integrals_ERI(nBas,nfuc,two_electron,two_electron_integrals)
-        deallocate(two_electron)
+        call symmetry_of_integrals_ERI(nBas,nfuc,two_electron_integrals)        ! rows i > nfuc, in place
+        if (c_debug) call check_eri_symmetry(nBas, two_electron_integrals, outfile)
       end if
 
       deallocate(sh_first, sh_n, Q_schwarz, Qsh, ip_I, ip_J)

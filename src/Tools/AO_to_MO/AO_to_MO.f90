@@ -1,222 +1,111 @@
-subroutine AO_to_MO_ERI_chemist(nBas,c,ERI_AO,ERI_MO)
+!=====================================================================!
+!                                                                     !
+!        AO -> MO transformation of the two-electron integrals        !
+!                         IN PLACE (one N^4 array)                    !
+!                                                                     !
+!   chemist   : ERI(p,q,r,s) = sum C(mu,p) C(nu,q) C(la,r) C(si,s)    !
+!                                   ERI(mu,nu,la,si)                  !
+!   physicist : the same transformation of the stored array, then    !
+!               indices 2 and 3 swapped:  ERI_MO(p,q,r,s) = X(p,r,q,s)!
+!               (exactly what the former AO_to_MO_ERI_physicist did)  !
+!                                                                     !
+!   step A : indices 1,2 slice by slice   ERI(:,:,la,si) = C^T M C    !
+!   step B : indices 3,4 on blocks of p   T(p,la,si) -> T(p,r,s)      !
+!   step C : (physicist only) swap of indices 2 and 3, in place      !
+!                                                                     !
+!   Extra memory: per thread 2 N^2 (step A) and 2 pb N^2 (step B),    !
+!   pb = block of p (<= 32). The O(N^5) work is done with matmul.     !
+!=====================================================================!
 
-      ! Expression of bi-electronic integrals in the MO basis set
-
-      use files 
-      use keywords
-
-      implicit none
-
-      ! Input variables
-      
-      integer,intent(in)            :: nBas
-      double precision,intent(in)   :: c(nBas,nBas)
-      double precision,intent(in)   :: ERI_AO(nBas,nBas,nBas,nBas)
-      
-      ! Local variables
-      
-      integer                       :: mu,nu,la,si
-      integer                       :: p,q,r,s
-      double precision,allocatable  :: scr(:,:,:,:)
-
-      ! Output variables
-
-      double precision,intent(out)  :: ERI_MO(nBas,nBas,nBas,nBas)
-
-      ! Memory allocation
-
-      allocate(scr(nBas,nBas,nBas,nBas))
-
-  
-      !--------------------------------------
-      ! AO to MO transformation starts here !
-      !--------------------------------------
-
-      ! Transform 4th index
-
-      scr(:,:,:,:) = 0d0
-
-      do mu=1,nBas
-         do nu=1,nBas
-           do la=1,nBas
-             do si=1,nBas
-            
-               do s=1,nBas
-              
-                 scr(mu,nu,la,s) = scr(mu,nu,la,s) + c(si,s)*ERI_AO(mu,nu,la,si)
-              
-               enddo    
-             
-             enddo
-          enddo
-        enddo
-      enddo
-
-      ! Transform 3rd index
-
-      ERI_MO(:,:,:,:) = 0d0
-
-      do mu=1,nBas
-        do nu=1,nBas
-          do la=1,nBas
-          
-            do r=1,nBas
-              do s=1,nBas
-              
-                ERI_MO(mu,nu,r,s) = ERI_MO(mu,nu,r,s) + c(la,r)*scr(mu,nu,la,s)
-              
-              enddo
-            enddo    
-          
-          enddo
-        enddo
-      enddo
-
-      ! Transform 2nd index
-
-      scr(:,:,:,:) = 0d0
-
-      do mu=1,nBas
-        do nu=1,nBas
-        
-          do q=1,nBas
-            do r=1,nBas
-              do s=1,nBas
-              
-                scr(mu,q,r,s) = scr(mu,q,r,s) + c(nu,q)*ERI_MO(mu,nu,r,s)
-              
-              enddo
-            enddo
-          enddo    
-        
-        enddo
-      enddo
-
-      ! Transform 1st (and last) index
-
-      ERI_MO(:,:,:,:) = 0d0
-
-      do mu=1,nBas
-      
-        do p=1,nBas
-          do q=1,nBas
-            do r=1,nBas
-              do s=1,nBas
-              
-                ERI_MO(p,q,r,s) = ERI_MO(p,q,r,s) + c(mu,p)*scr(mu,q,r,s)
-              
-              enddo
-            enddo
-          enddo
-        enddo
-      
-      enddo
-
-end subroutine AO_to_MO_ERI_chemist
-
-
-subroutine AO_to_MO_ERI_physicist(nBas,c,ERI_AO,ERI_MO)
-
-      ! AO -> MO transformation for physicist-notation ERIs
-      ! Input  : ERI_AO(mu,nu,la,si) = (mu nu | la si) in chemist notation
-      ! Output : ERI_MO(p,q,r,s)     = <p q | r s> = (p r | q s)
-
-      use files
-      use keywords
+subroutine AO_to_MO_ERI_inplace(nBas, c, ERI, physicist)
 
       implicit none
 
-      ! Input variables
-      integer,intent(in)            :: nBas
-      double precision,intent(in)   :: c(nBas,nBas)
-      double precision,intent(in)   :: ERI_AO(nBas,nBas,nBas,nBas)
+      ! - input - !
 
-      ! Output variables
-      double precision,intent(out)  :: ERI_MO(nBas,nBas,nBas,nBas)
+      integer          , intent(in)    :: nBas
+      double precision , intent(in)    :: c(nBas,nBas)
+      logical          , intent(in)    :: physicist
 
-      ! Local variables
-      integer                       :: mu,nu,la,si
-      integer                       :: p,q,r,s
-      double precision,allocatable  :: scr(:,:,:,:)
+      ! - input / output - !
 
-      allocate(scr(nBas,nBas,nBas,nBas))
+      double precision , intent(inout) :: ERI(nBas,nBas,nBas,nBas)
 
-      !-------------------------------------------------
-      ! Transform 4th AO index: si -> s
-      ! scr(mu,nu,la,s) = sum_si C(si,s) ERI_AO(mu,nu,la,si)
-      !-------------------------------------------------
-      scr(:,:,:,:) = 0d0
+      ! - local - !
 
-      do mu=1,nBas
-        do nu=1,nBas
-          do la=1,nBas
-            do s=1,nBas
-              do si=1,nBas
-                scr(mu,nu,la,s) = scr(mu,nu,la,s) &
-                                + c(si,s)*ERI_AO(mu,nu,la,si)
-              enddo
-            enddo
-          enddo
-        enddo
-      enddo
+      integer          , parameter     :: pb_max = 32
+      integer                          :: n, la, si, q, r, s, ib, nblk, p1, p2, m
+      double precision , allocatable   :: ct(:,:), W(:,:), T(:,:,:), U(:,:,:), tmp(:)
 
-      !-------------------------------------------------
-      ! Transform 3rd AO index: la -> q
-      ! ERI_MO(mu,nu,q,s) = sum_la C(la,q) scr(mu,nu,la,s)
-      !-------------------------------------------------
-      ERI_MO(:,:,:,:) = 0d0
+      !-----------------------------------------------------------------!
 
-      do mu=1,nBas
-        do nu=1,nBas
-          do q=1,nBas
-            do s=1,nBas
-              do la=1,nBas
-                ERI_MO(mu,nu,q,s) = ERI_MO(mu,nu,q,s) &
-                                  + c(la,q)*scr(mu,nu,la,s)
-              enddo
-            enddo
-          enddo
-        enddo
-      enddo
+      n  = nBas
+      allocate(ct(n,n))
+      ct = transpose(c)
+      nblk = (n + pb_max - 1) / pb_max
 
-      !-------------------------------------------------
-      ! Transform 2nd AO index: nu -> r
-      ! scr(mu,r,q,s) = sum_nu C(nu,r) ERI_MO(mu,nu,q,s)
-      !-------------------------------------------------
-      scr(:,:,:,:) = 0d0
+      !$omp parallel default(shared) private(la,si,q,r,s,ib,p1,p2,m,W,T,U,tmp)
 
-      do mu=1,nBas
-        do r=1,nBas
-          do q=1,nBas
-            do s=1,nBas
-              do nu=1,nBas
-                scr(mu,r,q,s) = scr(mu,r,q,s) &
-                              + c(nu,r)*ERI_MO(mu,nu,q,s)
-              enddo
-            enddo
-          enddo
-        enddo
-      enddo
+      ! ---- step A : (mu nu | la si) -> (p q | la si) ---- !
+      allocate(W(n,n))
+      !$omp do collapse(2) schedule(static)
+      do si = 1 , n
+        do la = 1 , n
+          W = matmul(ct, ERI(:,:,la,si))
+          ERI(:,:,la,si) = matmul(W, c)
+        end do
+      end do
+      !$omp end do
+      deallocate(W)
 
-      !-------------------------------------------------
-      ! Transform 1st AO index: mu -> p
-      ! ERI_MO(p,q,r,s) = sum_mu C(mu,p) scr(mu,r,q,s)
-      !-------------------------------------------------
-      ERI_MO(:,:,:,:) = 0d0
+      ! ---- step B : (p q | la si) -> (p q | r s), blocks of p for fixed q ---- !
+      !$omp do collapse(2) schedule(dynamic)
+      do q = 1 , n
+        do ib = 1 , nblk
+          p1 = (ib-1)*pb_max + 1
+          p2 = min(n, ib*pb_max)
+          m  = p2 - p1 + 1
+          allocate(T(m,n,n), U(m,n,n))
+          T(:,:,:) = ERI(p1:p2,q,:,:)
+          do si = 1 , n
+            U(:,:,si) = matmul(T(:,:,si), c)            ! la -> r
+          end do
+          call mat_times(m*n, n, n, U, c, T)            ! si -> s
+          ERI(p1:p2,q,:,:) = T(:,:,:)
+          deallocate(T, U)
+        end do
+      end do
+      !$omp end do
 
-      do p=1,nBas
-        do q=1,nBas
-          do r=1,nBas
-            do s=1,nBas
-              do mu=1,nBas
-                ERI_MO(p,q,r,s) = ERI_MO(p,q,r,s) &
-                                + c(mu,p)*scr(mu,r,q,s)
-              enddo
-            enddo
-          enddo
-        enddo
-      enddo
+      ! ---- step C : physicist order, swap indices 2 and 3 ---- !
+      if (physicist) then
+        allocate(tmp(n))
+        !$omp do schedule(dynamic)
+        do s = 1 , n
+          do r = 2 , n
+            do q = 1 , r - 1
+              tmp(:)        = ERI(:,q,r,s)
+              ERI(:,q,r,s)  = ERI(:,r,q,s)
+              ERI(:,r,q,s)  = tmp(:)
+            end do
+          end do
+        end do
+        !$omp end do
+        deallocate(tmp)
+      end if
 
-      deallocate(scr)
+      !$omp end parallel
 
-end subroutine AO_to_MO_ERI_physicist
+      deallocate(ct)
+
+contains
+
+      ! C(m,n) = A(m,k) B(k,n) on explicit-shape views (no copies)
+      subroutine mat_times(m, k, nn, A, B, Cm)
+        integer          , intent(in)  :: m, k, nn
+        double precision , intent(in)  :: A(m,k), B(k,nn)
+        double precision , intent(out) :: Cm(m,nn)
+        Cm = matmul(A, B)
+      end subroutine mat_times
+
+end subroutine AO_to_MO_ERI_inplace

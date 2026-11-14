@@ -7,6 +7,7 @@ subroutine get_t_term(blk,g,ktab,t2)
 
       use constants_module, only: dp, dpc
       use unitcell_module , only: nfuc, N_cell
+      use cc_dims       , only: o_hi, v_lo
       use k_blocks        , only: K_block
 
       implicit none 
@@ -27,7 +28,7 @@ subroutine get_t_term(blk,g,ktab,t2)
 
       ! output ! 
 
-      complex(dpc), intent(out)  :: t2(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      complex(dpc), intent(out)  :: t2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell)
 
       nocc = 0
       do k=1,N_cell

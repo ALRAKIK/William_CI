@@ -62,6 +62,7 @@ MODULES_IN_ORDER = constants_module \
                    lib_int \
                    debug    \
                    K_blocks \
+                   cc_dims \
                    HF_constant \
 # =================================================== #
 

@@ -3,6 +3,7 @@ subroutine solve_kccsd(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_tol,r
       use files
       use constants_module, only: dp, dpc
       use unitcell_module , only: nfuc, N_cell
+      use cc_dims       , only: o_hi, v_lo
       use k_blocks        , only: K_block
 
       implicit none 
@@ -10,7 +11,7 @@ subroutine solve_kccsd(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_tol,r
       ! input ! 
 
       type(K_block), intent(in)      :: blk(N_cell)
-      complex(dpc) , intent(in)      :: g(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      complex(dpc) , intent(inout)   :: g(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)   ! vvvv block holds Wvvvv during CCSD
       integer      , intent(in)      :: max_iter,ndiis
       real(dp)     , intent(in)      :: damping,energy_tol,residual_tol
       integer      , intent(in)      :: ktab(N_cell,N_cell,N_cell)
@@ -18,7 +19,7 @@ subroutine solve_kccsd(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_tol,r
       ! output ! 
 
       complex(dpc) , intent(inout)   :: t1(nfuc,nfuc,N_cell)
-      complex(dpc) , intent(inout)   :: t2(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      complex(dpc) , intent(inout)   :: t2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell)
       real(dp)     , intent(out)     :: ecorr
 
       ! local ! 
@@ -27,7 +28,7 @@ subroutine solve_kccsd(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_tol,r
       logical, intent(out)           :: converged
       
       complex(dpc), allocatable      :: wo(:,:,:,:,:,:,:)
-      complex(dpc), allocatable      :: wv(:,:,:,:,:,:,:)
+      complex(dpc), allocatable      :: t1_old(:,:,:), dt1(:,:,:)
       complex(dpc), allocatable      :: wx(:,:,:,:,:,:,:)
       complex(dpc), allocatable      :: wy(:,:,:,:,:,:,:)
       complex(dpc), allocatable      :: r1(:,:,:)
@@ -135,9 +136,13 @@ subroutine solve_kccsd(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_tol,r
 
       if (minval(abs(denom))<1.0e-10_dp) error stop 'CCSD near-zero denominator'
 
-      allocate(r1,mold=t1); allocate(r2,mold=t2)
-      allocate(wo,mold=t2); allocate(wv,mold=t2)
-      allocate(wx,mold=t2); allocate(wy,mold=t2)
+      allocate(r1,mold=t1)
+      allocate(r2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell))                 ! like t2
+      allocate(wo(o_hi,o_hi,o_hi,o_hi,N_cell,N_cell,N_cell))                           ! Woooo
+      allocate(t1_old(nfuc,nfuc,N_cell), dt1(nfuc,nfuc,N_cell))                        ! Wvvvv lives in g
+      t1_old = cmplx(0.0_dp,0.0_dp,kind=dpc)
+      allocate(wx(v_lo:nfuc,o_hi,o_hi,v_lo:nfuc,N_cell,N_cell,N_cell))                 ! Wvoov
+      allocate(wy(v_lo:nfuc,o_hi,v_lo:nfuc,o_hi,N_cell,N_cell,N_cell))                 ! Wvovo
       allocate(hx(n,max(1,ndiis)),he(n,max(1,ndiis)),coef(max(1,ndiis)))
 
       nh=0
@@ -178,8 +183,11 @@ subroutine solve_kccsd(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_tol,r
 
         call build_ccsd_f(blk,g,ktab,t1,t2,fo,fv,fx)
         call build_ccsd_l(blk,g,t1,fo,fv,lo,lv)
-        call build_ccsd_w(blk,g,ktab,t1,t2,wo,wv,wx,wy)
-        call build_ccsd_residuals(blk,g,ktab,t1,t2,fo,fv,fx,lo,lv,wo,wv,wx,wy,r1,r2)
+        dt1 = t1 - t1_old                                   ! Wvvvv(t1) inside g
+        call update_vvvv_in_g(blk,g,ktab,dt1)
+        t1_old = t1
+        call build_ccsd_w(blk,g,ktab,t1,t2,wo,wx,wy)
+        call build_ccsd_residuals(blk,g,ktab,t1,t2,fo,fv,fx,lo,lv,wo,wx,wy,r1,r2)
         call pack(r1,r2,err)
 
         max1=maxval(abs(err(:n1)))
@@ -278,14 +286,18 @@ subroutine solve_kccsd(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_tol,r
         write(*,'(A)')
       end if
 
-      deallocate(ix,jx,denom,x,err,trial,hx,he,coef,r1,r2,wo,wv,wx,wy)
+      ! restore the original vvvv integrals in g
+      dt1 = -t1_old
+      call update_vvvv_in_g(blk,g,ktab,dt1)
+
+      deallocate(ix,jx,denom,x,err,trial,hx,he,coef,r1,r2,wo,wx,wy,t1_old,dt1)
     
 contains
 
 subroutine pack(a1,a2,v)
 
       complex(dpc), intent(in)  :: a1(nfuc,nfuc,N_cell)
-      complex(dpc), intent(in)  :: a2(nfuc,nfuc,nfuc,nfuc,N_cell,N_cell,N_cell)
+      complex(dpc), intent(in)  :: a2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell)
       complex(dpc), intent(out) :: v(n)
 
       do p=1,n1
