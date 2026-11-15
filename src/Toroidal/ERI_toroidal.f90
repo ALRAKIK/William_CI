@@ -47,7 +47,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       integer, allocatable           :: sh_first(:), sh_n(:), ip_I(:), ip_J(:)
       integer                        :: i, j, k, l, a, b, c, d, nsh, lxyz(3), lt, ncomp, lmax, ncap, npair, ip
       integer                        :: SI, SJ, SK, SL
-      double precision               :: emax, amin, a_dir(3), start_time, end_time, val
+      double precision               :: emax, amin, a_dir(3), val
       logical                        :: same
 
       !-----------------------------------------------------------------!
@@ -86,8 +86,6 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
         sh_first(nsh) = i ; sh_n(nsh) = ncomp
         i = i + ncomp
       end do
-
-      start_time = omp_get_wtime()
 
       ! ---- Schwarz: diagonal shell-pair blocks ---- !
       allocate(Q_schwarz(nBas,nBas), Qsh(nsh,nsh))
@@ -186,11 +184,6 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
         end do
       end do
       !$omp end parallel do
-
-      end_time = omp_get_wtime()
-      write(outfile,'(A65,5X,F12.3,a)') '2 el-integrals wall time = ', end_time - start_time, " s"
-      write(outfile,'(6x,a,i8,a,i8)') 'shells: ', nsh, '   bra shell pairs: ', npair
-      flush(outfile)
 
       if (.not. c_SAO) then
         call symmetry_of_integrals_ERI(nBas,nfuc,two_electron_integrals)        ! rows i > nfuc, in place

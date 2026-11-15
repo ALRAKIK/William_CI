@@ -84,13 +84,15 @@ subroutine symmetry_of_integrals_ERI(nf, fpuc, eri)
 
       
       ! Precompute cell and function indices
+      ! [Nov 2026] cells with x FASTEST (then y, then z), same order as
+      ! super_molecule, fill_with_symmetry and the SAO code (was: z fastest)
       do idx = 1, nf
         func_idx(idx) = mod(idx - 1, fpuc) + 1
         ii = (idx - 1) / fpuc
-        kcell(idx) = mod(ii, nz)
-        ii = ii / nz
+        icell(idx) = mod(ii, nx)
+        ii = ii / nx
         jcell(idx) = mod(ii, ny)
-        icell(idx) = ii / ny
+        kcell(idx) = ii / ny
       end do
     
       
@@ -101,7 +103,7 @@ subroutine symmetry_of_integrals_ERI(nf, fpuc, eri)
           m = modulo(icell(j) - icell(i), nx)
           n = modulo(jcell(j) - jcell(i), ny)
           p = modulo(kcell(j) - kcell(i), nz)
-          equiv(i,j) = m * ny * nz * fpuc + n * nz * fpuc + p * fpuc + func_idx(j)
+          equiv(i,j) = (p * nx * ny + n * nx + m) * fpuc + func_idx(j)   ! [Nov 2026] x fastest
         end do
       end do
 

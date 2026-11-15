@@ -5,6 +5,7 @@ subroutine molecule(n_atoms,number_of_functions,atoms,geometry,OV,K,NA,ERI)
       use atom_basis
       use keywords
       use libcint_integrals
+      use omp_lib
 
       implicit none
 
@@ -17,7 +18,12 @@ subroutine molecule(n_atoms,number_of_functions,atoms,geometry,OV,K,NA,ERI)
 
       ! - local - !
 
-      double precision               :: start,end,time
+      ! ----------------------    Time     ---------------------------- !
+      integer                         :: days, hours, minutes, seconds 
+      integer                         :: time 
+      double precision                :: start,end
+      double precision                :: w0 , w1
+      !-----------------------------------------------------------------!
 
       ! - output - ! 
 
@@ -39,6 +45,7 @@ subroutine molecule(n_atoms,number_of_functions,atoms,geometry,OV,K,NA,ERI)
       call header_under(" Calculate the integerals ",-1)
 
       call cpu_time(start)
+      w0 = omp_get_wtime()
 
       call build_libcint_tables(n_atoms, geometry, atoms, natm, nbas, dim, atm, bas, env, offset)
 
@@ -98,11 +105,20 @@ subroutine molecule(n_atoms,number_of_functions,atoms,geometry,OV,K,NA,ERI)
       print*, "ERI done"
 
       call cpu_time(end)
+      w1 = omp_get_wtime()
 
-      time = end - start
+      write(outfile,*) ""
+      time = int(end - start)
+      days = (time/86400)
+      hours=mod(time,86400)/3600
+      minutes=mod(mod(time,86400),3600)/60
+      seconds=mod(mod(mod(time,86400),3600),60)
 
-      write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for integrals = ',time,' seconds'
+      write(outfile,'(A65,5X,I0,a,I0,a,I0,a,I0,4x,a)') 'Total CPU time for integrals = ',days,":",hours,":",minutes,":",seconds, "days:hour:min:sec"
       write(outfile,*)
+      write(outfile,'(A65,5X,F12.3,a)') 'Wall time for integrals = ', w1 - w0, " s"
+      write(outfile,*)
+      flush(outfile)
 
       call system("rm torus_parameters.inp")
 

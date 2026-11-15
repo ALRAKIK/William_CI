@@ -10,7 +10,7 @@ program CI
       use precomputed_bessel
       use unitcell_module
       use k_blocks
-      use cc_dims , only : o_hi , v_lo , set_cc_dims
+      use cc_dims , only : o_hi , v_lo , set_cc_dims , set_gslots , nslot , use_ksym   ! [Nov 2026] compact g
       use omp_lib , only : omp_get_wtime
 
       implicit none
@@ -52,6 +52,7 @@ program CI
       integer                         ::     p_lo , p_hi , q_lo , q_hi
       double precision                ::          w_start , w_end
       complex(dpc)      ,allocatable  ::    ERI_kMO(:,:,:,:,:,:,:)
+      complex(dpc)      ,allocatable  ::    ERI_kMO_h(:,:,:,:,:)     ! [Nov 2026] fast_ccsdt compact g
       type(K_block)     ,allocatable  ::                    blk(:)
 
       double precision                ::               E_nuc , EHF
@@ -531,6 +532,41 @@ program CI
           call set_cc_dims(nfuc, N_cell, occ_tab)
           deallocate(occ_tab)
 
+          ! [Nov 2026] keyword fast_ccsdt: COMPACT k-space integrals
+          !   g(p,q,r,s,islot), one block of every pair {K,-K} (k <-> -k symmetry,
+          !   ~half the memory of ERI_kMO), then the fast k-CCSD(T).
+          !   (ccsdt / MP2 alone: unchanged path below)
+          if (c_fast_ccsdt) then
+            call set_gslots(N_cell)
+            write(outfile,'(a,i8,a,i8,a,f8.2,a,l2,a)') '  [fast_ccsdt] k-space integrals: ', nslot, &
+                 ' of ', N_cell**3, ' k-blocks stored (', 16.d0*dble(nfuc)**4*dble(nslot)/1024.d0**3, &
+                 ' GB, k<->-k symmetry =', use_ksym, ')'
+            allocate(ERI_kMO_h(nfuc,nfuc,nfuc,nfuc,nslot))
+
+            w_start = omp_get_wtime()
+              call transform_ERI_AO_to_kMO_half(nBas, ERI, coeff_SAO, 1, nfuc, 1, nfuc, ERI_kMO_h)
+              deallocate(ERI)                  ! the real-space ERI is not needed any more
+            w_end = omp_get_wtime()
+            write(outfile,'(A65,1X,F9.3,A8)') 'Wall time for AO to k-MO transformation = ',w_end-w_start,' seconds'
+            write(outfile,*)
+
+            call cpu_time(start)
+              call kMP2_calc_half(N_cell, blk, ERI_kMO_h, E_nuc, EHF, E_MP2)
+            call cpu_time(end)
+            time = end - start
+            write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for K-MP2 calculation = ',time,' seconds'
+            write(outfile,*)
+
+            call cpu_time(start)
+              call k_ccsd_T_fast(blk,ERI_kMO_h,EHF,E_nuc,E_MP2)
+            call cpu_time(end)
+            time = end - start
+            write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for K-CCSD(T) calculation = ',time,' seconds'
+            write(outfile,*)
+            deallocate(ERI_kMO_h)
+
+          else
+
           ! real-space AO -> k-space MO in one pass (no ERI_SAO stored)
           !   with CCSD(T): all (pq|rs)      ,  MP2 alone: only (ov|ov)
           if (c_ccsdt) then
@@ -566,6 +602,8 @@ program CI
             write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for K-CCSD(T) calculation = ',time,' seconds'
             write(outfile,*)
           end if 
+
+          end if   ! [Nov 2026] c_fast_ccsdt
 
         else 
 

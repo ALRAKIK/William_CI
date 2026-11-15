@@ -20,8 +20,46 @@ module cc_dims
 
       integer, save :: o_hi = 0
       integer, save :: v_lo = 1
+      ! [Nov 2026] fast_ccsdt: .true. when the orbitals are in the time-reversal
+      ! gauge (C(-k) = C(k)^*, see ksym_gauge.f90), so that every k-space array
+      ! satisfies X(-k1,-k2,-k3) = X(k1,k2,k3)^* and half of the k blocks can be skipped
+      logical, save :: use_ksym = .false.
+
+      ! [Nov 2026] fast_ccsdt: compact storage of the k-space integrals
+      !   g(p,q,r,s,k1,k2,k3) is stored as gh(p,q,r,s,islot) with
+      !   gidx(k1,k2,k3) =  islot : block stored in gh(:,:,:,:,islot)
+      !                  = -islot : block = conjg(gh(:,:,:,:,islot))   (k <-> -k)
+      !   With use_ksym only one (k1,k2,k3) of every pair {K,-K} is stored
+      !   (the lexicographically smaller one): ~half the memory of g.
+      !   Without use_ksym every block has its own slot (nslot = N_cell^3).
+      integer, save              :: nslot = 0
+      integer, save, allocatable :: gidx(:,:,:)
 
 contains
+
+      ! [Nov 2026] slots of the compact g (see gidx above); fourth_k(1,1,k) = -k
+      subroutine set_gslots(N_cell)
+        integer, intent(in) :: N_cell
+        integer :: k1, k2, k3, m1, m2, m3
+        integer :: fourth_k
+        if (allocated(gidx)) deallocate(gidx)
+        allocate(gidx(N_cell,N_cell,N_cell))
+        gidx  = 0
+        nslot = 0
+        do k3 = 1, N_cell
+          do k2 = 1, N_cell
+            do k1 = 1, N_cell
+              if (gidx(k1,k2,k3) /= 0) cycle
+              nslot = nslot + 1
+              gidx(k1,k2,k3) = nslot
+              if (use_ksym) then
+                m1 = fourth_k(1,1,k1); m2 = fourth_k(1,1,k2); m3 = fourth_k(1,1,k3)
+                if (gidx(m1,m2,m3) == 0) gidx(m1,m2,m3) = -nslot
+              end if
+            end do
+          end do
+        end do
+      end subroutine set_gslots
 
       subroutine set_cc_dims(nfuc, N_cell, occupation)
 

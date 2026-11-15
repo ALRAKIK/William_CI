@@ -42,6 +42,7 @@ subroutine memory_report(calculation_type, nBas, nfuc_in, N_cell_in, nO)
       use keywords
       use HF_parameter , only : max_diis
       use omp_lib      , only : omp_get_max_threads
+      use unitcell_module , only : nx, ny, nz          ! [Nov 2026] k-grid for the compact g estimate
 
       implicit none
 
@@ -64,6 +65,8 @@ subroutine memory_report(calculation_type, nBas, nfuc_in, N_cell_in, nO)
       double precision              :: N , f , C , N2 , N4 , B3
       double precision              :: o , v , n1 , n2cc , ncc , thr , nb , out , slabs
       double precision              :: mat , peak , phys
+      double precision              :: xfast           ! [Nov 2026] fast_ccsdt extra memory
+      double precision              :: gB, sk          ! [Nov 2026] bytes of g (full or compact)
       character(len=40)             :: lab
 
       !-----------------------------------------------------------------!
@@ -97,8 +100,16 @@ subroutine memory_report(calculation_type, nBas, nfuc_in, N_cell_in, nO)
           v    = max(f - o, 0.d0)
           thr  = dble(omp_get_max_threads())
           nb   = min(C, max(1.d0, dble(ceiling(4.d0*thr/(C*C)))))   ! k4 batch (AO_to_MO_SAO.f90)
+          ! [Nov 2026] fast_ccsdt stores g compactly: one k-block of every pair {K,-K}
+          !   slots = (C^3 + S^3)/2, S = number of self-conjugate k points
+          !   (estimate assumes the time-reversal gauge succeeds, see ksym_gauge.f90)
+          gB = z*B3
+          if (c_fast_ccsdt) then
+            sk = dble(merge(2,1,mod(nx,2)==0)*merge(2,1,mod(ny,2)==0)*merge(2,1,mod(nz,2)==0))
+            gB = z*f**4*0.5d0*(C**3 + sk**3)
+          end if
           if (c_ccsdt) then
-            out   = z*B3                                                  ! all (pq|rs)
+            out   = gB                                                    ! all (pq|rs)
             slabs = thr*z*(4.d0*f**4)
           else
             out   = z*o*o*v*v*C**3                                        ! (ov|ov) only
@@ -112,11 +123,28 @@ subroutine memory_report(calculation_type, nBas, nfuc_in, N_cell_in, nO)
             n1   = C*o*v
             n2cc = C**3 * o*o * v*v
             ncc  = n1 + n2cc
-            call add("k-CCSD", "g + t2,r2,W (occ/vir blocks) + DIIS", &
-                     z*B3 + 4.d0*z*n2cc + z*o**4*C**3 + (3.d0*z + d + 2.d0*z*ndiis_cc)*ncc &
-                     + 12.d0*n1 + 28.d0*n2cc)
-            call add("(T)", "g + t2 + triples tables", &
-                     z*B3 + z*n2cc + 20.d0*dble(nO)**3*C + 18.d0*z*dble(nO)**3)
+            ! [Nov 2026] keyword fast_ccsdt: extra work arrays of the zgemm residual
+            !   ring_gemm: Z (t2 size) + B1,B2,RZ + A1,A2 ; ladder_pp_gemm: TAUm,RWm + Gm (<= 256 MB)
+            if (c_fast_ccsdt) then
+              xfast = z*n2cc + 3.d0*z*o*o*v*v*C + 2.d0*z*o*o*v*v + 2.d0*z*o*o*v*v*C &
+                      + min(z*v**4, 256.d0*1024.d0**2)                              &
+                      + thr*z*(o*o*v*v*C*C + 3.d0*o*o*v*v*C)       ! get_W_fast buffers per thread
+              call add("k-CCSD (fast_ccsdt)", "compact g + t2,r2,W + DIIS + zgemm work", &
+                       gB + 4.d0*z*n2cc + z*o**4*C**3 + (3.d0*z + d + 2.d0*z*ndiis_cc)*ncc &
+                       + 12.d0*n1 + 28.d0*n2cc + xfast)
+            else
+              call add("k-CCSD", "g + t2,r2,W (occ/vir blocks) + DIIS", &
+                       z*B3 + 4.d0*z*n2cc + z*o**4*C**3 + (3.d0*z + d + 2.d0*z*ndiis_cc)*ncc &
+                       + 12.d0*n1 + 28.d0*n2cc)
+            end if
+            if (c_fast_ccsdt) then
+              ! [Nov 2026] pert_T_fast: per thread W,H blocks (<= 256 MB) + zgemm buffers
+              call add("(T) (fast_ccsdt)", "compact g + t2 + W,H k-blocks per thread", &
+                       gB + z*n2cc + thr*1.25d0*min(256.d0*1024.d0**2, 12.d0*z*v**3*o**3))
+            else
+              call add("(T)", "g + t2 + triples tables", &
+                       z*B3 + z*n2cc + 20.d0*dble(nO)**3*C + 18.d0*z*dble(nO)**3)
+            end if
           end if
         end if
 
@@ -164,6 +192,7 @@ subroutine memory_report(calculation_type, nBas, nfuc_in, N_cell_in, nO)
 
       write(outfile,'(6x,a,i10,a,i10,a,i10,a,i8)') "nBas = ", nBas, "    nfuc = ", nfuc_in, &
                                                   "    N_cell = ", max(N_cell_in,1), "    nO = ", nO
+      write(outfile,'(a)')""
       if (c_SAO) then
         write(outfile,'(6x,a)') "path : SAO  (ERI stored as ERI(nfuc,nBas,nBas,nBas))"
       else

@@ -14,6 +14,7 @@ module keywords
       public  :: c_nquad_128
       public  :: c_physicist
       public  :: c_ccsdt
+      public  :: c_fast_ccsdt     ! [Nov 2026] zgemm version of the k-CCSD residual
       public  :: c_debug
 
 
@@ -36,6 +37,7 @@ module keywords
       logical :: c_nquad_128
       logical :: c_physicist
       logical :: c_ccsdt
+      logical :: c_fast_ccsdt     ! [Nov 2026]
       logical :: c_debug
 
 

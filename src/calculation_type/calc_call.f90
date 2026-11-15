@@ -22,21 +22,19 @@ subroutine calculation_type_select(calculation_type,n_atoms,nBas,atoms,geometry,
       double precision   , intent(out)  ::                   V(nBas,nBas)
       double precision   , intent(out)  ::   ERI(ERI_size,nBas,nBas,nBas)
 
-
-      if (c_nquad_128) then 
-        write(*,'(A)') '$ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $'
-        write(*,'(A)') 'The Numerical integrals will be calculated using 128 point quadrature'
-        write(*,'(A)') '$ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $'
-        nquad_point = 128 
-      else 
-        write(*,'(A)') '$ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $'
-        write(*,'(A)') 'The Numerical integrals will be calculated using 64 point quadrature'
-        write(*,'(A)') '$ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $'
-        nquad_point = 64
-      end if
-
- 
-      
+      if (trim(calculation_type) .ne. "OBC") then 
+        if (c_nquad_128) then 
+          write(*,'(A)') '$ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $'
+          write(*,'(A)') 'The Numerical integrals will be calculated using 128 point quadrature'
+          write(*,'(A)') '$ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $'
+          nquad_point = 128 
+        else 
+          write(*,'(A)') '$ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $'
+          write(*,'(A)') 'The Numerical integrals will be calculated using 64 point quadrature'
+          write(*,'(A)') '$ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $'
+          nquad_point = 64
+        end if
+      end if 
 
       select case (trim(calculation_type))
         case ("OBC", "Ring", "OBC2D")

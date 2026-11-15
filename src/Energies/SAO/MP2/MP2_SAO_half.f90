@@ -1,0 +1,150 @@
+!---------------------------------------------------------------------!
+! [Nov 2026] fast_ccsdt: copy of kMP2_calc (MP2_SAO.f90) for the      !
+! COMPACT k-space integrals ERI_kMO(p,q,r,s,islot) (module cc_dims).  !
+!---------------------------------------------------------------------!
+!---------------------------------------------------------------------!
+! k-MP2. ERI_kMO may be the full array (p,q = 1..nfuc, before CCSD)   !
+! or only its (ov|ov) block (p = 1..o_hi occupied, q = v_lo..nfuc     !
+! virtual, MP2 alone): only (i a | j b) elements are read.            !
+!---------------------------------------------------------------------!
+subroutine kMP2_calc_half(N_cell, blk, ERI_kMO, ENuc, EHF,EcMP2)
+
+      use files
+      use constants_module, only: dp, dpc
+      use unitcell_module, only: nfuc, nx, ny, nz
+      use k_blocks
+      use cc_dims , only: gidx, nslot      ! [Nov 2026] compact g
+      implicit none
+
+      ! Inputs
+      integer         , intent(in)   :: N_cell
+      type(K_block)   , intent(in)   :: blk(N_cell)
+      complex(dpc)    , intent(in)   :: ERI_kMO(nfuc,nfuc,nfuc,nfuc,nslot)   ! [Nov 2026] compact g
+      real(dp)        , intent(in)   :: ENuc, EHF
+
+      ! Local variables
+      integer                        :: ki, ka, kj, kb
+      integer                        :: i, a, j, b
+      integer                        :: kbx, kby, kbz, idx, ix, iy, iz
+      integer, allocatable           :: coord(:,:)
+      
+      real(dp)                       :: Dijab
+      real(dp)                       :: E2d, E2x
+      complex(dpc)                   :: g_direct, g_exch
+
+      real(dp)       , intent(out)   :: EcMP2
+
+      ! Build coordinate lookup for momentum conservation
+
+
+      write(*,'(a)') ""
+      write(*,'(a)') "╔───────────────────────────────────────────────╗"
+      write(*,'(a)') "│                  MP2 Started                  │"
+      write(*,'(a)') "╚───────────────────────────────────────────────╝"
+      flush(6)
+      write(*,'(a)') ""
+      
+
+      allocate(coord(3, N_cell))
+      do iz = 0, nz-1
+        do iy = 0, ny-1
+          do ix = 0, nx-1
+            idx = iz*nx*ny + iy*nx + ix + 1
+            coord(:,idx) = [ix, iy, iz]
+          end do
+        end do
+      end do
+
+      E2d = 0.0_dp
+      E2x = 0.0_dp
+
+      ! Loop over independent momentum vectors
+      do ki = 1, N_cell
+        do kj = 1, N_cell
+          do ka = 1, N_cell
+
+            ! Momentum conservation: kb = ki - ka + kj  (mod lattice)
+            kbx = modulo(coord(1,ki) - coord(1,ka) + coord(1,kj), nx)
+            kby = modulo(coord(2,ki) - coord(2,ka) + coord(2,kj), ny)
+            kbz = modulo(coord(3,ki) - coord(3,ka) + coord(3,kj), nz)
+            kb  = kbz*nx*ny + kby*nx + kbx + 1
+
+            ! Loop over orbitals within each block
+            do i = 1, blk(ki)%dim
+              if (blk(ki)%occupation(i) /= 2) cycle  ! Occupied only
+
+              do j = 1, blk(kj)%dim
+                if (blk(kj)%occupation(j) /= 2) cycle  ! Occupied only
+
+                do a = 1, blk(ka)%dim
+                  if (blk(ka)%occupation(a) /= 0) cycle  ! Virtual only
+
+                  do b = 1, blk(kb)%dim
+                    if (blk(kb)%occupation(b) /= 0) cycle  ! Virtual only
+
+                    ! Denominator: e_a(ka) + e_b(kb) - e_i(ki) - e_j(kj)
+                    Dijab = blk(ka)%energy(a) + blk(kb)%energy(b) &
+                          - blk(ki)%energy(i) - blk(kj)%energy(j)
+
+                    ! Direct: (i ki, a ka | j kj, b kb)
+                    g_direct = gq(i, a, j, b, ki, ka, kj)
+
+                    ! Exchange: (i ki, b kb | j kj, a ka)
+                    g_exch   = gq(i, b, j, a, ki, kb, kj)
+
+                    ! Direct sum: |g_direct|^2 / Dijab
+                    E2d = E2d - real(g_direct * conjg(g_direct), dp) / Dijab
+
+                    ! Exchange sum: Re(g_direct * conjg(g_exch)) / Dijab
+                    E2x = E2x - real(g_direct * conjg(g_exch), dp) / Dijab
+
+                  end do
+                end do
+
+              end do
+            end do
+
+          end do
+        end do
+      end do
+
+      EcMP2  = 2.0_dp * E2d - E2x
+
+
+      write(*,*)
+      write(*,'(A)')          '*-----------------------------------*'
+      write(*,'(A,f16.12,A)') '*-*   E-MP2 = ', EcMP2, '    *-*'
+      write(*,'(A)')          '*-----------------------------------*'
+      write(*,*)
+      Flush(6)
+    
+      write(outfile,*)
+      write(outfile,'(A32)')           '--------------------------'
+      write(outfile,'(A32)')           ' K-MP2 calculation        '
+      write(outfile,'(A32)')           '--------------------------'
+      write(outfile,'(A32,1X,F24.16)') ' MP2 correlation energy = ',EcMP2
+      write(outfile,'(A32,1X,F24.16)') ' Direct part            = ',2d0*E2d
+      write(outfile,'(A32,1X,F24.16)') ' Exchange part          = ',-E2x
+      write(outfile,'(A32)')           '--------------------------'
+      write(outfile,'(A32,1X,F24.16)') ' Hartree Fock    energy = ',EHF + ENuc
+      write(outfile,'(A32,1X,F24.16)') ' MP2 electronic  energy = ',EcMP2
+      write(outfile,'(A32,1X,F24.16)') ' MP2 total       energy = ',ENuc + EHF + EcMP2
+      write(outfile,'(A32)')           '--------------------------'
+      write(outfile,*)
+
+      deallocate(coord)
+
+contains
+      ! [Nov 2026] compact g: block (k1,k2,k3) = ERI_kMO(:,:,:,:,|gidx|), conjugated if gidx < 0
+      complex(dpc) function gq(p_,q_,r_,s_,k1_,k2_,k3_)
+        integer, intent(in) :: p_,q_,r_,s_,k1_,k2_,k3_
+        integer :: ic_
+        ic_ = gidx(k1_,k2_,k3_)
+        if (ic_ > 0) then
+          gq = ERI_kMO(p_,q_,r_,s_,ic_)
+        else
+          gq = conjg(ERI_kMO(p_,q_,r_,s_,-ic_))
+        end if
+      end function gq
+
+end subroutine kMP2_calc_half

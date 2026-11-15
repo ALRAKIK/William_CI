@@ -9,6 +9,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       use k_blocks
       use debug_tools
       use HF_parameter
+      use cc_dims , only : use_ksym      ! [Nov 2026]
 
       implicit none
 
@@ -42,6 +43,8 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       double precision,allocatable  ::               error(:,:)
       double precision,allocatable  ::             error_o(:,:)   ! [Nov 2026] X^T error X
       logical                       ::               converged     ! [Nov 2026]
+      logical                       ::               ksym_ok       ! [Nov 2026] fast_ccsdt gauge
+      integer                       ::               fourth_k      ! [Nov 2026]
       integer                       ::        kb , b1 , b2 , nf    ! [Nov 2026] k-block bounds
       double precision,external     ::             trace_matrix
 
@@ -426,7 +429,23 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
 
       call print_band_structure(nBas, nfuc, N_cell, e, 'band_structure.dat')
 
+      ! [Nov 2026] fast_ccsdt: time-reversal gauge C(-k) = C(k)^* (ksym_gauge.f90)
+      !            (same density and energy; lets the fast CCSD(T) skip half of the k blocks)
+      ksym_ok = .false.
+      if (c_fast_ccsdt) call ksym_gauge(nBas, nfuc, N_cell, S_SAO, F_SAO, coeff_SAO, e, ksym_ok)
+
       call build_k_blocks(nBas,nO, N_cell, coeff_SAO, e, blk)
+
+      ! [Nov 2026] the symmetry also needs the same occupations at k and -k
+      use_ksym = .false.
+      if (c_fast_ccsdt .and. ksym_ok) then
+        use_ksym = .true.
+        do kb = 1, N_cell
+          if (any(blk(kb)%occupation /= blk(fourth_k(1,1,kb))%occupation)) use_ksym = .false.
+        end do
+        if (.not. use_ksym) write(outfile,'(a)') &
+          '  [fast_ccsdt] WARNING: occupations differ at k and -k, k <-> -k symmetry not used'
+      end if
       
       !------------------------------------------------------------------------
       ! End of SCF loop

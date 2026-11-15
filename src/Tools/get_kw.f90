@@ -30,6 +30,11 @@ subroutine  get_keywords(keyword)
       c_physicist   = any(keyword == 'physicist')
       c_ccsdt       = any(keyword == 'ccsdt'    )
       c_debug       = any(keyword == 'debug'    )     ! 25 
+      c_fast_ccsdt  = any(keyword == 'fast_ccsdt')    ! [Nov 2026]
+
+      ! [Nov 2026] fast_ccsdt = ccsdt with the zgemm residual (get_R_fast.f90)
+      ! the default (keyword ccsdt alone) is still the old get_R.f90
+      if (c_fast_ccsdt) c_ccsdt = .true.
 
       ! [Nov 2026] ONE rule for the order in which the AO two-electron
       ! integrals are stored (used by libcint, Tori integrals, J/K, AO->MO):

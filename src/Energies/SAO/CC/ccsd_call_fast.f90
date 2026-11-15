@@ -1,0 +1,131 @@
+!---------------------------------------------------------------------!
+! [Nov 2026] fast_ccsdt: copy of k_ccsd_T (ccsd_call.f90) for the     !
+! COMPACT k-space integrals ERI_kMO(p,q,r,s,islot) (module cc_dims):   !
+! get_t_term_h, solve_kccsd_fast, build_ccsd_t_fast, thresholds 1e-7.  !
+!---------------------------------------------------------------------!
+subroutine k_ccsd_T_fast(blk,ERI_kMO,EHF,Enuc,EMP2)
+
+      use files
+      use constants_module, only: dp, dpc
+      use unitcell_module , only: nfuc, N_cell
+      use k_blocks        , only: K_block
+      use cc_dims         , only: o_hi, v_lo, set_cc_dims, nslot   ! [Nov 2026] nslot
+      use omp_lib
+
+      implicit none 
+
+      ! input !
+
+      type(K_block), intent(in) :: blk(N_cell)
+      complex(dpc) , intent(inout) :: ERI_kMO(nfuc,nfuc,nfuc,nfuc,nslot)   ! [Nov 2026] compact g; vvvv block used as Wvvvv during CCSD, restored
+      real(dp)     , intent(in) :: EHF , Enuc , EMP2
+
+      ! local ! 
+
+      integer ,parameter        :: max_iter      = 100
+      real(dp),parameter        :: damping       = 0.7_dp
+      real(dp),parameter        :: energy_tol    = 1.0e-7_dp    ! [Nov 2026] fast_ccsdt (ccsdt: 1e-10)
+      real(dp),parameter        :: residual_tol  = 1.0e-7_dp    ! [Nov 2026] fast_ccsdt (ccsdt: 1e-9)
+      integer ,parameter        :: ndiis         = 6
+
+      integer                   :: k1 , k2 , k3
+      integer                   :: fourth_k
+      integer,allocatable       :: ktab(:,:,:)
+      integer,allocatable       :: occ_tab(:,:)
+
+      
+      complex(dpc),allocatable  :: t1(:,:,:)
+      complex(dpc),allocatable  :: t2(:,:,:,:,:,:,:)
+
+      logical                   :: cc_converged
+
+      ! output ! 
+
+      real(dp)                  :: E_corr , E_corrt
+      real(dp)                  :: time1_ccsd  , time2_ccsd
+      real(dp)                  :: time1_ccsdt , time2_ccsdt 
+
+      ! $ ! $ ! $ ! $ ! $ ! $ ! $ $ ! $ ! $ ! $ ! $ ! $ ! $ $ ! $ ! $ ! $
+      ! $ ! $ ! $ ! $ ! $ ! $ ! $ $ ! $ ! $ ! $ ! $ ! $ ! $ $ ! $ ! $ ! $
+      ! $ ! $ ! $ ! $ ! $ ! $ ! $ $ ! $ ! $ ! $ ! $ ! $ ! $ $ ! $ ! $ ! $    
+
+      time1_ccsd  = 0.d0  ; time2_ccsd  = 0.d0 
+      time1_ccsdt = 0.d0  ; time2_ccsdt = 0.d0  
+
+
+
+      write(*,'(a)') ""
+      write(*,'(a)') "╔───────────────────────────────────────────────╗"
+      write(*,'(a)') "│               CCSD(T) Started                 │"
+      write(*,'(a)') "╚───────────────────────────────────────────────╝"
+      flush(6)
+      write(*,'(a)') ""
+
+
+      ! compact ranges of occupied / virtual bands (module cc_dims)
+      allocate(occ_tab(nfuc,N_cell))
+      do k1 = 1, N_cell
+        occ_tab(:,k1) = blk(k1)%occupation(1:nfuc)
+      end do
+      call set_cc_dims(nfuc, N_cell, occ_tab)
+      deallocate(occ_tab)
+
+      allocate(t1(nfuc,nfuc,N_cell))
+      allocate(t2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell))   ! occ,occ,vir,vir only
+      allocate(ktab(N_cell,N_cell,N_cell))
+
+      do k1=1,N_cell
+        do k2=1,N_cell
+          do k3=1,N_cell
+            ktab(k1,k2,k3)=fourth_k(k1,k2,k3)   ! fill once, no more modulo calls in loops
+          end do
+        end do
+      end do
+
+      t1 = cmplx(0.0_dp,0.0_dp,kind=dpc)
+
+      call get_t_term_h(blk,ERI_kMO,ktab,t2)
+
+      
+      time1_ccsd = omp_get_wtime()
+        call solve_kccsd_fast(blk, ERI_kMO,ktab,t1, t2, cc_converged, max_iter, damping, energy_tol, residual_tol, ndiis,E_corr)
+      time2_ccsd = omp_get_wtime()
+
+
+      if (cc_converged) then
+        time1_ccsdt = omp_get_wtime()
+          call build_ccsd_t_fast(blk, ERI_kMO,ktab, t1, t2,E_corrt)      ! [Nov 2026] zgemm (T)
+        time2_ccsdt = omp_get_wtime()
+      end if
+      
+
+      write(outfile,*)
+      write(outfile,'(4x,A32)')        '------------------------------'
+      write(outfile,'(4x,A32)')           ' K-CCSD(T) calculation        '
+      write(outfile,'(4x,A32)')           '------------------------------'
+      write(outfile,'(4x,A32,1X,F24.16)') ' Hartree Fock       energy = ',EHF + ENuc
+      write(outfile,'(4x,A32,1X,F24.16)') ' MP2 correlation    energy = ',EMP2
+      write(outfile,'(4x,A32)')           '------------------------------'
+      write(outfile,'(4x,A32,1X,F24.16)') ' CCSD electronic    energy = ',E_corr
+      write(outfile,'(4x,A32,1X,F24.16)') ' HF + CCSD          energy = ',ENuc + EHF + E_corr
+      write(outfile,'(4x,A32,1X,F24.16)') ' CCSD(T) electronic energy = ',E_corrt
+      write(outfile,'(4x,A32,1X,F24.16)') ' HF + CCSD(T)       energy = ',ENuc + EHF + E_corr + E_corrt
+      write(outfile,'(4x,A32)')           '------------------------------'
+      write(outfile,*)
+
+
+      write(outfile,'(A65,1X,F9.3,A8)') 'Wall time for K-CCSD calculation = ',time2_ccsd-time1_ccsd,' seconds'
+      write(outfile,*)
+
+      write(outfile,'(A65,1X,F9.3,A8)') 'Wall time for T part calculation = ',time2_ccsdt-time1_ccsdt,' seconds'
+      write(outfile,*)
+
+
+      write(*,'(a)') ""
+      write(*,'(a)') "╔───────────────────────────────────────────────╗"
+      write(*,'(a)') "│               CCSD(T) completed               │"
+      write(*,'(a)') "╚───────────────────────────────────────────────╝"
+      flush(6)
+      write(*,'(a)') ""
+
+end subroutine k_ccsd_T_fast
