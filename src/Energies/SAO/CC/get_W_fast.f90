@@ -8,6 +8,8 @@ subroutine build_ccsd_w_fast(blk,g,ktab,t1,t2,Woooo,Wvoov,Wvovo)
       use omp_lib
 
       implicit none
+      integer :: ne_, ie_
+      logical :: esw_(4), ecj_(4), rok_
 
       ! input !
       type(K_block), intent(in) :: blk(N_cell)
@@ -54,79 +56,36 @@ subroutine build_ccsd_w_fast(blk,g,ktab,t1,t2,Woooo,Wvoov,Wvovo)
       !=================================================================!
       ! 1) cheap part: same loops as get_W.f90 without the t2 terms     !
       !=================================================================!
-      !$omp parallel default(shared) &
-      !$omp private(kp,kq,kr,ks,ii,jj,mm,nn,ll,bp,bq,br,bs,bl,bd,w)
-
-      !$omp do collapse(3) schedule(dynamic)
-      do kp=1,N_cell; do kq=1,N_cell; do kr=1,N_cell
-        ks=ktab(kp,kq,kr)
-        if (use_ksym) then                     ! [Nov 2026] filled below from (-k)
-          if (.not.canon2(kp,kq)) cycle
-        end if
-        Woooo(:,:,:,:,kp,kq,kr)=zero
-        do ii=1,nOcc(kp); bp=kOcc(ii,kp)
-        do jj=1,nOcc(kq); bq=kOcc(jj,kq)
-        do mm=1,nOcc(kr); br=kOcc(mm,kr)
-        do nn=1,nOcc(ks); bs=kOcc(nn,ks)
-          w=gq(bp,br,bq,bs,kp,kr,kq)
-          do ll=1,nVir(ks); bd=kVir(ll,ks)
-            w=w+gq(bq,bd,bp,br,kq,ks,kp)*t1(bs,bd,ks)
-          end do
-          do ll=1,nVir(kr); bd=kVir(ll,kr)
-            w=w+gq(bp,bd,bq,bs,kp,kr,kq)*t1(br,bd,kr)
-          end do
-          Woooo(bp,bq,br,bs,kp,kq,kr)=w
-        end do; end do; end do; end do
-      end do; end do; end do
-      !$omp end do nowait
-
-      !$omp do collapse(3) schedule(dynamic)
-      do kp=1,N_cell; do kq=1,N_cell; do kr=1,N_cell
-        ks=ktab(kp,kq,kr)
-        if (use_ksym) then                     ! [Nov 2026] filled below from (-k)
-          if (.not.canon2(kp,kr)) cycle
-        end if
-        Wvoov(:,:,:,:,kp,kq,kr)=zero
-        do ii=1,nVir(kp); bp=kVir(ii,kp)
-        do jj=1,nOcc(kq); bq=kOcc(jj,kq)
-        do mm=1,nOcc(kr); br=kOcc(mm,kr)
-        do nn=1,nVir(ks); bs=kVir(nn,ks)
-          w=gq(bq,bs,bp,br,kq,ks,kp)
-          do ll=1,nVir(kr); bd=kVir(ll,kr)
-            w=w+gq(bq,bs,bp,bd,kq,ks,kp)*t1(br,bd,kr)
-          end do
-          do ll=1,nOcc(kp); bl=kOcc(ll,kp)
-            w=w-gq(bq,bs,bl,br,kq,ks,kp)*t1(bl,bp,kp)
-          end do
-          Wvoov(bp,bq,br,bs,kp,kq,kr)=w
-        end do; end do; end do; end do
-      end do; end do; end do
-      !$omp end do nowait
-
-      !$omp do collapse(3) schedule(dynamic)
-      do kp=1,N_cell; do kq=1,N_cell; do kr=1,N_cell
-        ks=ktab(kp,kq,kr)
-        if (use_ksym) then                     ! [Nov 2026] filled below from (-k)
-          if (.not.canon2(kp,ks)) cycle
-        end if
-        Wvovo(:,:,:,:,kp,kq,kr)=zero
-        do ii=1,nVir(kp); bp=kVir(ii,kp)
-        do jj=1,nOcc(kq); bq=kOcc(jj,kq)
-        do mm=1,nVir(kr); br=kVir(mm,kr)
-        do nn=1,nOcc(ks); bs=kOcc(nn,ks)
-          w=gq(bq,bs,bp,br,kq,ks,kp)
-          do ll=1,nVir(ks); bd=kVir(ll,ks)
-            w=w+gq(bq,bd,bp,br,kq,ks,kp)*t1(bs,bd,ks)
-          end do
-          do ll=1,nOcc(kp); bl=kOcc(ll,kp)
-            w=w-gq(bl,br,bq,bs,kp,kr,kq)*t1(bl,bp,kp)
-          end do
-          Wvovo(bp,bq,br,bs,kp,kq,kr)=w
-        end do; end do; end do; end do
-      end do; end do; end do
-      !$omp end do
-
-      !$omp end parallel
+      ! [Nov 2026] one task = one (type, kp,kq,kr) block; gathers + zgemm
+      !   type 1: Woooo(p,q,r,s) = g(p,r,q,s) + sum_e g(q,e,p,r) t1(s,e) + sum_e g(p,e,q,s) t1(r,e)
+      !   type 2: Wvoov(a,m,i,e) = g(m,e,a,i) + sum_d g(m,e,a,d) t1(i,d) - sum_l g(m,e,l,i) t1(l,a)
+      !   type 3: Wvovo(a,m,e,i) = g(m,i,a,e) + sum_d g(m,d,a,e) t1(i,d) - sum_l g(l,e,m,i) t1(l,a)
+      ! [Nov 2026] few k blocks: serial loop, threaded BLAS inside
+      !$omp parallel do if(3*N_cell**3 >= omp_get_max_threads()) schedule(dynamic) default(shared) private(ii,kp,kq,kr,ks)
+      do ii=0,3*N_cell**3-1
+        kp = mod(ii,N_cell)+1
+        kq = mod(ii/N_cell,N_cell)+1
+        kr = mod(ii/(N_cell*N_cell),N_cell)+1
+        ks = ktab(kp,kq,kr)
+        select case (ii/(N_cell**3))
+        case (0)
+          if (use_ksym) then
+            if (.not.canon2(kp,kq)) cycle
+          end if
+          call cheap_oooo(kp,kq,kr,ks)
+        case (1)
+          if (use_ksym) then
+            if (.not.canon2(kp,kr)) cycle
+          end if
+          call cheap_voov(kp,kq,kr,ks)
+        case default
+          if (use_ksym) then
+            if (.not.canon2(kp,ks)) cycle
+          end if
+          call cheap_vovo(kp,kq,kr,ks)
+        end select
+      end do
+      !$omp end parallel do
 
       ! [Nov 2026] k <-> -k symmetry: X(-kp,-kq,-kr) = X(kp,kq,kr)^*
       if (use_ksym) then
@@ -148,13 +107,13 @@ subroutine build_ccsd_w_fast(blk,g,ktab,t1,t2,Woooo,Wvoov,Wvovo)
       !    tau = t2(r,s,e,d;kr,ks,ke) + t1(r,e,kr) t1(s,d,ks) [ke==kr]   !
       !=================================================================!
       !$omp parallel do if(outer) collapse(2) schedule(dynamic) default(shared) &
-      !$omp private(kp,kq,kr,ks,ke,kd,p,q,r,s,e,d,Aoo,Too,Coo,partner,mkp,mkq,mkr)
+      !$omp private(kp,kq,kr,ks,ke,kd,p,q,r,s,e,d,Aoo,Too,Coo,partner,mkp,mkq,mkr,ne_,esw_,ecj_,rok_,ie_)
       do kp=1,N_cell
         do kq=1,N_cell
-          if (use_ksym) then                   ! [Nov 2026] block (-kp,-kq) added as conjugate
-            if (.not.canon2(kp,kq)) cycle
-          end if
-          partner = use_ksym .and. .not.(ktab(1,1,kp)==kp .and. ktab(1,1,kq)==kq)
+          ! [Nov 2026] pair symmetry W(p,q,r,s;kp,kq,kr) = W(q,p,s,r;kq,kp,ks) and
+          ! k -> -k: only the orbit representative of (kp,kq) is computed
+          call orbit2(kp, kq, ne_, esw_, ecj_, rok_)
+          if (.not.rok_) cycle
           mkp=ktab(1,1,kp); mkq=ktab(1,1,kq)
           allocate(Aoo(no,no,v_lo:nfuc,v_lo:nfuc,N_cell), Too(no,no,N_cell,v_lo:nfuc,v_lo:nfuc,N_cell))
           allocate(Coo(no,no,no,no,N_cell))
@@ -189,9 +148,17 @@ subroutine build_ccsd_w_fast(blk,g,ktab,t1,t2,Woooo,Wvoov,Wvovo)
             do r=1,no; if (.not.isO(r,kr)) cycle
             do q=1,no; if (.not.isO(q,kq)) cycle
             do p=1,no; if (.not.isO(p,kp)) cycle
-              Woooo(p,q,r,s,kp,kq,kr)=Woooo(p,q,r,s,kp,kq,kr)+Coo(p,q,r,s,kr)
-              if (partner) Woooo(p,q,r,s,mkp,mkq,ktab(1,1,kr)) = &
-                           Woooo(p,q,r,s,mkp,mkq,ktab(1,1,kr)) + conjg(Coo(p,q,r,s,kr))
+              do ie_=1,ne_
+                if (.not.esw_(ie_) .and. .not.ecj_(ie_)) then
+                  Woooo(p,q,r,s,kp,kq,kr)=Woooo(p,q,r,s,kp,kq,kr)+Coo(p,q,r,s,kr)
+                else if (esw_(ie_) .and. .not.ecj_(ie_)) then
+                  Woooo(q,p,s,r,kq,kp,ks)=Woooo(q,p,s,r,kq,kp,ks)+Coo(p,q,r,s,kr)
+                else if (.not.esw_(ie_)) then
+                  Woooo(p,q,r,s,mkp,mkq,ktab(1,1,kr))=Woooo(p,q,r,s,mkp,mkq,ktab(1,1,kr))+conjg(Coo(p,q,r,s,kr))
+                else
+                  Woooo(q,p,s,r,mkq,mkp,ktab(1,1,ks))=Woooo(q,p,s,r,mkq,mkp,ktab(1,1,ks))+conjg(Coo(p,q,r,s,kr))
+                end if
+              end do
             end do; end do; end do; end do
           end do
           deallocate(Aoo,Too,Coo)
@@ -325,6 +292,154 @@ subroutine build_ccsd_w_fast(blk,g,ktab,t1,t2,Woooo,Wvoov,Wvovo)
       !$omp end parallel do
 
 contains
+      ! [Nov 2026] orbit of (k1,k2) under pair swap (and k -> -k with use_ksym);
+      ! rok = (k1,k2) is the lexicographically smallest member; distinct members
+      ! as (swap, conj) flags relative to (k1,k2)
+      subroutine orbit2(k1, k2, ne, eswap, econj, rok)
+        integer, intent(in)  :: k1, k2
+        integer, intent(out) :: ne
+        logical, intent(out) :: eswap(4), econj(4), rok
+        integer :: m(2,4), nm, r, q
+        logical :: sw(4), cj(4), dup
+        nm = 2
+        m(:,1) = [k1,k2]; sw(1) = .false.; cj(1) = .false.
+        m(:,2) = [k2,k1]; sw(2) = .true. ; cj(2) = .false.
+        if (use_ksym) then
+          nm = 4
+          m(:,3) = [ktab(1,1,k1),ktab(1,1,k2)]; sw(3) = .false.; cj(3) = .true.
+          m(:,4) = [ktab(1,1,k2),ktab(1,1,k1)]; sw(4) = .true. ; cj(4) = .true.
+        end if
+        rok = .true.
+        do r=2,nm
+          if (m(1,r) < k1 .or. (m(1,r)==k1 .and. m(2,r) < k2)) rok = .false.
+        end do
+        ne = 0
+        do r=1,nm
+          dup = .false.
+          do q=1,r-1
+            if (all(m(:,q)==m(:,r))) dup = .true.
+          end do
+          if (dup) cycle
+          ne = ne+1; eswap(ne) = sw(r); econj(ne) = cj(r)
+        end do
+      end subroutine orbit2
+      ! ---------- masked t1 block t(o, v_lo:nfuc) at k ----------
+      subroutine t1_block(k_, tb)
+        integer, intent(in) :: k_
+        complex(dpc), intent(out) :: tb(no,v_lo:nfuc)
+        integer :: i_, a_
+        do a_=v_lo,nfuc; do i_=1,no
+          tb(i_,a_)=zero
+          if (isO(i_,k_).and.isV(a_,k_)) tb(i_,a_)=t1(i_,a_,k_)
+        end do; end do
+      end subroutine t1_block
+
+      subroutine cheap_oooo(kp_,kq_,kr_,ks_)
+        integer, intent(in) :: kp_,kq_,kr_,ks_
+        integer :: p_,q_,r_,s_,e_
+        complex(dpc), allocatable :: Wb(:,:,:,:), A(:,:,:,:), X(:,:,:,:), ts(:,:), tr(:,:)
+        allocate(Wb(no,no,no,no), A(v_lo:nfuc,no,no,no), X(no,no,no,no), ts(no,v_lo:nfuc), tr(no,v_lo:nfuc))
+        call t1_block(ks_, ts) ; call t1_block(kr_, tr)
+        ! base g(p,r,q,s; kp,kr,kq)
+        do s_=1,no; do r_=1,no; do q_=1,no
+          Wb(:,q_,r_,s_) = gv1(1,no,r_,q_,s_,kp_,kr_,kq_)
+        end do; end do; end do
+        ! + sum_e g(q,e,p,r; kq,ks,kp) t1(s,e)  : A(e,q,p,r) -> X(q,p,r,s)
+        do r_=1,no; do p_=1,no; do e_=v_lo,nfuc
+          A(e_,:,p_,r_) = gv1(1,no,e_,p_,r_,kq_,ks_,kp_)
+        end do; end do; end do
+        call zgemm('T','T', no*no*no, no, nv, one, A, nv, ts, no, zero, X, no*no*no)
+        do s_=1,no; do r_=1,no; do q_=1,no; do p_=1,no
+          Wb(p_,q_,r_,s_) = Wb(p_,q_,r_,s_) + X(q_,p_,r_,s_)
+        end do; end do; end do; end do
+        ! + sum_e g(p,e,q,s; kp,kr,kq) t1(r,e)  : A(e,p,q,s) -> X(p,q,s,r)
+        do s_=1,no; do q_=1,no; do e_=v_lo,nfuc
+          A(e_,:,q_,s_) = gv1(1,no,e_,q_,s_,kp_,kr_,kq_)
+        end do; end do; end do
+        call zgemm('T','T', no*no*no, no, nv, one, A, nv, tr, no, zero, X, no*no*no)
+        do s_=1,no; do r_=1,no; do q_=1,no; do p_=1,no
+          Wb(p_,q_,r_,s_) = Wb(p_,q_,r_,s_) + X(p_,q_,s_,r_)
+        end do; end do; end do; end do
+        ! store physical entries
+        do s_=1,no; do r_=1,no; do q_=1,no; do p_=1,no
+          Woooo(p_,q_,r_,s_,kp_,kq_,kr_) = zero
+          if (isO(p_,kp_).and.isO(q_,kq_).and.isO(r_,kr_).and.isO(s_,ks_)) &
+            Woooo(p_,q_,r_,s_,kp_,kq_,kr_) = Wb(p_,q_,r_,s_)
+        end do; end do; end do; end do
+        deallocate(Wb, A, X, ts, tr)
+      end subroutine cheap_oooo
+
+      subroutine cheap_voov(kp_,kq_,kr_,ks_)
+        integer, intent(in) :: kp_,kq_,kr_,ks_
+        integer :: a_,m_,i_,e_,d_,l_
+        complex(dpc), allocatable :: Wb(:,:,:,:), G(:,:,:,:), X(:,:,:,:), tr(:,:), tp(:,:)
+        allocate(Wb(no,v_lo:nfuc,v_lo:nfuc,no), G(no,v_lo:nfuc,v_lo:nfuc,v_lo:nfuc), &
+                 X(no,v_lo:nfuc,v_lo:nfuc,no), tr(no,v_lo:nfuc), tp(no,v_lo:nfuc))
+        call t1_block(kr_, tr) ; call t1_block(kp_, tp)
+        ! base g(m,e,a,i; kq,ks,kp) -> Wb(m,e,a,i)
+        do i_=1,no; do a_=v_lo,nfuc; do e_=v_lo,nfuc
+          Wb(:,e_,a_,i_) = gv1(1,no,e_,a_,i_,kq_,ks_,kp_)
+        end do; end do; end do
+        ! + sum_d g(m,e,a,d) t1(i,d) : G(m,e,a,d) -> X(m,e,a,i)
+        do d_=v_lo,nfuc; do a_=v_lo,nfuc; do e_=v_lo,nfuc
+          G(:,e_,a_,d_) = gv1(1,no,e_,a_,d_,kq_,ks_,kp_)
+        end do; end do; end do
+        call zgemm('N','T', no*nv*nv, no, nv, one, G, no*nv*nv, tr, no, one, Wb, no*nv*nv)
+        deallocate(G)
+        ! - sum_l g(m,e,l,i) t1(l,a) : G2(l,m,e,i) -> X((m,e,i),a)
+        allocate(G(no,no,v_lo:nfuc,no))
+        do i_=1,no; do l_=1,no; do e_=v_lo,nfuc
+          G(l_,:,e_,i_) = gv1(1,no,e_,l_,i_,kq_,ks_,kp_)
+        end do; end do; end do
+        deallocate(X); allocate(X(no,v_lo:nfuc,no,v_lo:nfuc))
+        call zgemm('T','N', no*nv*no, nv, no, one, G, no, tp, no, zero, X, no*nv*no)
+        do i_=1,no; do a_=v_lo,nfuc; do e_=v_lo,nfuc
+          Wb(:,e_,a_,i_) = Wb(:,e_,a_,i_) - X(:,e_,i_,a_)
+        end do; end do; end do
+        ! store Wvoov(a,m,i,e) physical
+        do e_=v_lo,nfuc; do i_=1,no; do m_=1,no; do a_=v_lo,nfuc
+          Wvoov(a_,m_,i_,e_,kp_,kq_,kr_) = zero
+          if (isV(a_,kp_).and.isO(m_,kq_).and.isO(i_,kr_).and.isV(e_,ks_)) &
+            Wvoov(a_,m_,i_,e_,kp_,kq_,kr_) = Wb(m_,e_,a_,i_)
+        end do; end do; end do; end do
+        deallocate(Wb, G, X, tr, tp)
+      end subroutine cheap_voov
+
+      subroutine cheap_vovo(kp_,kq_,kr_,ks_)
+        integer, intent(in) :: kp_,kq_,kr_,ks_
+        integer :: a_,m_,i_,e_,d_,l_
+        complex(dpc), allocatable :: Wb(:,:,:,:), G(:,:,:,:), X(:,:,:,:), ts(:,:), tp(:,:)
+        allocate(Wb(no,v_lo:nfuc,v_lo:nfuc,no), ts(no,v_lo:nfuc), tp(no,v_lo:nfuc))
+        call t1_block(ks_, ts) ; call t1_block(kp_, tp)
+        ! base g(m,i,a,e; kq,ks,kp) -> Wb(m,a,e,i)
+        do i_=1,no; do e_=v_lo,nfuc; do a_=v_lo,nfuc
+          Wb(:,a_,e_,i_) = gv1(1,no,i_,a_,e_,kq_,ks_,kp_)
+        end do; end do; end do
+        ! + sum_d g(m,d,a,e) t1(i,d) : G(d,m,a,e) -> X((m,a,e),i)
+        allocate(G(v_lo:nfuc,no,v_lo:nfuc,v_lo:nfuc), X(no,v_lo:nfuc,v_lo:nfuc,no))
+        do e_=v_lo,nfuc; do a_=v_lo,nfuc; do d_=v_lo,nfuc
+          G(d_,:,a_,e_) = gv1(1,no,d_,a_,e_,kq_,ks_,kp_)
+        end do; end do; end do
+        call zgemm('T','T', no*nv*nv, no, nv, one, G, nv, ts, no, one, Wb, no*nv*nv)
+        deallocate(G, X)
+        ! - sum_l g(l,e,m,i; kp,kr,kq) t1(l,a) : G(l,e,m,i) -> X((e,m,i),a)
+        allocate(G(no,v_lo:nfuc,no,no), X(v_lo:nfuc,no,no,v_lo:nfuc))
+        do i_=1,no; do m_=1,no; do e_=v_lo,nfuc
+          G(:,e_,m_,i_) = gv1(1,no,e_,m_,i_,kp_,kr_,kq_)
+        end do; end do; end do
+        call zgemm('T','N', nv*no*no, nv, no, one, G, no, tp, no, zero, X, nv*no*no)
+        do i_=1,no; do e_=v_lo,nfuc; do a_=v_lo,nfuc
+          Wb(:,a_,e_,i_) = Wb(:,a_,e_,i_) - X(e_,:,i_,a_)
+        end do; end do; end do
+        ! store Wvovo(a,m,e,i) physical
+        do i_=1,no; do e_=v_lo,nfuc; do m_=1,no; do a_=v_lo,nfuc
+          Wvovo(a_,m_,e_,i_,kp_,kq_,kr_) = zero
+          if (isV(a_,kp_).and.isO(m_,kq_).and.isV(e_,kr_).and.isO(i_,ks_)) &
+            Wvovo(a_,m_,e_,i_,kp_,kq_,kr_) = Wb(m_,a_,e_,i_)
+        end do; end do; end do; end do
+        deallocate(Wb, G, X, ts, tp)
+      end subroutine cheap_vovo
+
       ! [Nov 2026] (k1,k2) <= (-k1,-k2) in lexicographic order
       logical function canon2(k1,k2)
         integer, intent(in) :: k1,k2

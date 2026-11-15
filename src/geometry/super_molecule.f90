@@ -350,6 +350,7 @@ subroutine read_keywords(keyword)
         if (trim(line) == 'ccsdt'     )  keyword(23) = 'ccsdt'
 
         if (trim(line) == 'fast_ccsdt')  keyword(24) = 'fast_ccsdt'   ! [Nov 2026] zgemm k-CCSD residual
+        if (trim(line) == 'fast_ccsdt_real') keyword(26) = 'fcc_real' ! [Nov 2026] real-arithmetic fast_ccsdt (tag <= 10 chars)
 
 
         if (trim(line) == 'debug'     )  keyword(25) = 'debug'

@@ -56,6 +56,13 @@ subroutine solve_kccsd_fast(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_
 
       real(dp)                       :: previous,de,norm1,norm2,max1,max2
       logical                        :: ok
+      ! [Nov 2026] circular DIIS history + cached error overlaps (one new row per
+      ! iteration instead of nh^2 full-length dot products), OpenMP vector loops
+      integer     , allocatable      :: hslot(:)
+      real(dp)    , allocatable      :: Bd(:,:)
+      integer                        :: s_new
+      real(dp)                       :: ss1, ss2
+      logical                        :: t2_clean = .false.
 
       interface
         subroutine diis_coefficients(errors,c,done)
@@ -151,6 +158,8 @@ subroutine solve_kccsd_fast(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_
       allocate(wx(v_lo:nfuc,o_hi,o_hi,v_lo:nfuc,N_cell,N_cell,N_cell))                 ! Wvoov
       allocate(wy(v_lo:nfuc,o_hi,v_lo:nfuc,o_hi,N_cell,N_cell,N_cell))                 ! Wvovo
       allocate(hx(n,max(1,ndiis)),he(n,max(1,ndiis)),coef(max(1,ndiis)))
+      allocate(hslot(max(1,ndiis)), Bd(max(1,ndiis),max(1,ndiis))); hslot = 0; Bd = 0.0_dp
+      t2_clean = .false.
 
       nh=0
       converged=.false.
@@ -197,14 +206,23 @@ subroutine solve_kccsd_fast(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_
         call build_ccsd_residuals_fast(blk,g,ktab,t1,t2,fo,fv,fx,lo,lv,wo,wx,wy,r1,r2)   ! [Nov 2026] zgemm residual
         call pack(r1,r2,err)
 
-        max1=maxval(abs(err(:n1)))
-        max2=maxval(abs(err(n1+1:)))
-
-        norm1=sqrt(sum(abs(err(:n1))**2)/real(n1,dp))
-        norm2=sqrt(sum(abs(err(n1+1:))**2)/real(n2,dp))
+        max1=0.0_dp; max2=0.0_dp; ss1=0.0_dp; ss2=0.0_dp
+        !$omp parallel do reduction(max:max1) reduction(+:ss1)
+        do p=1,n1
+          max1=max(max1,abs(err(p))); ss1=ss1+abs(err(p))**2
+        end do
+        !$omp end parallel do
+        !$omp parallel do reduction(max:max2) reduction(+:ss2)
+        do p=n1+1,n
+          max2=max(max2,abs(err(p))); ss2=ss2+abs(err(p))**2
+        end do
+        !$omp end parallel do
+        norm1=sqrt(ss1/real(n1,dp))
+        norm2=sqrt(ss2/real(n2,dp))
 
         energy=cmplx(0.0_dp,0.0_dp,kind=dpc)
 
+        !$omp parallel do private(i,j,a,b,ki,kj,ka,kb,tau) reduction(+:energy)
         do q=1,n2
           i=jx(1,q); j=jx(2,q); a=jx(3,q); b=jx(4,q)
           ki=jx(5,q); kj=jx(6,q); ka=jx(7,q); kb=ktab(ki,kj,ka)
@@ -212,6 +230,7 @@ subroutine solve_kccsd_fast(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_
           if (ki==ka.and.kj==kb) tau=tau+t1(i,a,ki)*t1(j,b,kj)
           energy=energy+(2.0_dp*gq(i,a,j,b,ki,ka,kj)-gq(i,b,j,a,ki,kb,kj))*tau
         end do
+        !$omp end parallel do
 
         ecorr=real(energy,dp); eimag=aimag(energy)
 
@@ -250,28 +269,44 @@ subroutine solve_kccsd_fast(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_
       ! Extrapolate a Jacobi step from the mixed pair. With DIIS disabled
       ! this is exactly x_new=x+damping*R/D.
       if (ndiis>=2) then
+        ! [Nov 2026] circular history: the oldest vector's slot is reused
         if (nh==ndiis) then
-          hx(:,1:ndiis-1)=hx(:,2:ndiis); he(:,1:ndiis-1)=he(:,2:ndiis)
-          nh=ndiis-1
+          hslot(1:ndiis-1)=hslot(2:ndiis); nh=ndiis-1
         end if
-        nh=nh+1; hx(:,nh)=x; he(:,nh)=err
+        do s_new=1,ndiis
+          if (.not.any(hslot(1:nh)==s_new)) exit
+        end do
+        nh=nh+1; hslot(nh)=s_new
+        !$omp parallel do
+        do p=1,n
+          hx(p,s_new)=x(p); he(p,s_new)=err(p)
+        end do
+        !$omp end parallel do
+        do h=1,nh
+          Bd(s_new,hslot(h))=rdot(he(:,s_new),he(:,hslot(h)))
+          Bd(hslot(h),s_new)=Bd(s_new,hslot(h))
+        end do
         if (nh>=2.and.iter>=2) then
-          call diis_coefficients(he(:,1:nh),coef(1:nh),ok)
+          call diis_from_B(nh,coef(1:nh),ok)
           if (ok) then
-            trial=cmplx(0.0_dp,0.0_dp,kind=dpc)
-            do h=1,nh
-              trial=trial+coef(h)*(hx(:,h)+damping*he(:,h)/denom)
+            !$omp parallel do private(h)
+            do p=1,n
+              trial(p)=cmplx(0.0_dp,0.0_dp,kind=dpc)
+              do h=1,nh
+                trial(p)=trial(p)+coef(h)*(hx(p,hslot(h))+damping*he(p,hslot(h))/denom(p))
+              end do
             end do
+            !$omp end parallel do
           else
-            trial=x+damping*err/denom
-            nh=1; hx(:,1)=x; he(:,1)=err
+            call jacobi_step()
+            nh=1; hslot(1)=s_new
             write(*,'(A)') 'CCSD DIIS reset: ill-conditioned subspace'
           end if
         else
-          trial=x+damping*err/denom
+          call jacobi_step()
         end if
       else
-        trial=x+damping*err/denom
+        call jacobi_step()
       end if
 
       previous=ecorr
@@ -297,9 +332,73 @@ subroutine solve_kccsd_fast(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_
       dt1 = -t1_old
       call update_vvvv_in_g_h(blk,g,ktab,dt1)
 
-      deallocate(ix,jx,denom,x,err,trial,hx,he,coef,r1,r2,wo,wx,wy,t1_old,dt1)
+      deallocate(ix,jx,denom,x,err,trial,hx,he,coef,r1,r2,wo,wx,wy,t1_old,dt1,hslot,Bd)
     
 contains
+
+! [Nov 2026] trial = x + damping*err/denom (threaded)
+subroutine jacobi_step()
+      !$omp parallel do
+      do p=1,n
+        trial(p)=x(p)+damping*err(p)/denom(p)
+      end do
+      !$omp end parallel do
+end subroutine jacobi_step
+
+! [Nov 2026] real(sum(conjg(u)*v)) without a temporary, threaded
+real(dp) function rdot(u,v)
+      complex(dpc), intent(in) :: u(:), v(:)
+      integer  :: pp
+      real(dp) :: acc
+      acc=0.0_dp
+      !$omp parallel do reduction(+:acc)
+      do pp=1,size(u)
+        acc=acc+real(u(pp),dp)*real(v(pp),dp)+aimag(u(pp))*aimag(v(pp))
+      end do
+      !$omp end parallel do
+      rdot=acc
+end function rdot
+
+! [Nov 2026] same solver as diis_coefficients (cc_tools.f90) on the cached
+! overlaps mat(i,j) = Bd(hslot(i),hslot(j))
+subroutine diis_from_B(m,c,okk)
+      integer , intent(in)  :: m
+      real(dp), intent(out) :: c(m)
+      logical , intent(out) :: okk
+      real(dp) :: mat(m+1,m+1), rhs(m+1), row(m+1), factor, scale, tmp
+      integer  :: ii, jj, kk, pp
+      okk=.false.; c=0.0_dp; mat=0.0_dp; rhs=0.0_dp
+      do ii=1,m
+        do jj=1,m
+          mat(ii,jj)=Bd(hslot(ii),hslot(jj))
+        end do
+      end do
+      scale=maxval(abs(mat(:m,:m)))
+      if (scale<=tiny(1.0_dp)) return
+      mat(:m,:m)=mat(:m,:m)/scale
+      do ii=1,m
+        mat(ii,ii)=mat(ii,ii)+1.0e-12_dp
+      end do
+      mat(:m,m+1)=-1.0_dp
+      mat(m+1,:m)=-1.0_dp
+      rhs(m+1)   =-1.0_dp
+      do kk=1,m+1
+        pp=kk-1+maxloc(abs(mat(kk:m+1,kk)),dim=1)
+        if (abs(mat(pp,kk))<1.0e-14_dp) return
+        row=mat(kk,:); mat(kk,:)=mat(pp,:); mat(pp,:)=row
+        tmp=rhs(kk); rhs(kk)=rhs(pp); rhs(pp)=tmp
+        do ii=kk+1,m+1
+          factor=mat(ii,kk)/mat(kk,kk)
+          mat(ii,kk:m+1)=mat(ii,kk:m+1)-factor*mat(kk,kk:m+1)
+          rhs(ii)=rhs(ii)-factor*rhs(kk)
+        end do
+      end do
+      do ii=m+1,1,-1
+        rhs(ii)=(rhs(ii)-sum(mat(ii,ii+1:m+1)*rhs(ii+1:m+1)))/mat(ii,ii)
+      end do
+      c=rhs(:m)
+      okk=all(abs(c)<100.0_dp).and.abs(sum(c)-1.0_dp)<1.0e-8_dp
+end subroutine diis_from_B
 
 subroutine pack(a1,a2,v)
 
@@ -310,9 +409,11 @@ subroutine pack(a1,a2,v)
       do p=1,n1
         v(p)=a1(ix(1,p),ix(2,p),ix(3,p))
       end do
+      !$omp parallel do
       do q=1,n2
         v(n1+q)=a2(jx(1,q),jx(2,q),jx(3,q),jx(4,q),jx(5,q),jx(6,q),jx(7,q))
       end do
+      !$omp end parallel do
 
 end subroutine
 
@@ -322,14 +423,20 @@ subroutine unpack(v)
       complex(dpc), intent(in) :: v(n)
 
       t1=cmplx(0.0_dp,0.0_dp,kind=dpc)
-      t2=cmplx(0.0_dp,0.0_dp,kind=dpc)
+      ! [Nov 2026] non-physical t2 entries are zeroed once; afterwards only the
+      ! physical entries are written (nothing else writes t2 in the loop)
+      if (.not.t2_clean) then
+        t2=cmplx(0.0_dp,0.0_dp,kind=dpc); t2_clean=.true.
+      end if
 
       do p=1,n1
         t1(ix(1,p),ix(2,p),ix(3,p))=v(p)
       end do
+      !$omp parallel do
       do q=1,n2
         t2(jx(1,q),jx(2,q),jx(3,q),jx(4,q),jx(5,q),jx(6,q),jx(7,q))=v(n1+q)
       end do
+      !$omp end parallel do
 
 end subroutine
 

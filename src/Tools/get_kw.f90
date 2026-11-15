@@ -31,10 +31,15 @@ subroutine  get_keywords(keyword)
       c_ccsdt       = any(keyword == 'ccsdt'    )
       c_debug       = any(keyword == 'debug'    )     ! 25 
       c_fast_ccsdt  = any(keyword == 'fast_ccsdt')    ! [Nov 2026]
+      c_fast_real   = any(keyword == 'fcc_real'  )    ! [Nov 2026] input keyword fast_ccsdt_real
 
       ! [Nov 2026] fast_ccsdt = ccsdt with the zgemm residual (get_R_fast.f90)
       ! the default (keyword ccsdt alone) is still the old get_R.f90
       if (c_fast_ccsdt) c_ccsdt = .true.
+      ! [Nov 2026] fast_ccsdt_real = fast_ccsdt + real-arithmetic CC when every k is self-conjugate
+      if (c_fast_real) then
+        c_fast_ccsdt = .true. ; c_ccsdt = .true.
+      end if
 
       ! [Nov 2026] ONE rule for the order in which the AO two-electron
       ! integrals are stored (used by libcint, Tori integrals, J/K, AO->MO):

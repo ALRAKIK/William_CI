@@ -18,13 +18,18 @@ subroutine build_ccsd_t_fast(blk,g,ktab,t1,t2,et)
       real(dp)     , intent(out):: et
       ! local !
       integer, parameter :: sg(3,6) = reshape([1,2,3, 1,3,2, 2,1,3, 2,3,1, 3,1,2, 3,2,1],[3,6])
-      integer(8), parameter :: budget = 256_8*1024_8*1024_8
+      integer(8), parameter :: budget = 64_8*1024_8*1024_8   ! [Nov 2026] per-thread (T) buffers; 64 MB measured fastest
       logical  :: isO(nfuc,N_cell), isV(nfuc,N_cell)
-      integer  :: no, nv, na, nchunk, ntask, it, nthr, k, p
+      integer  :: no, nv, ntask, it, nthr, k, p
       integer  :: ka, kb, kc, ki, kj, kk, Kv, wk, cmpk
+      integer  :: nbk, i1, i2, i3, j2, j3, sz3(3), nb3(3), m3
+      integer(8) :: pmax, maxp
+      logical  :: rab, rbc
       integer, allocatable :: task(:,:)
       complex(dpc) :: energy
       logical  :: outer
+      integer(8) :: szS, szA, szB
+      complex(dpc), allocatable, target :: wW(:), wH(:), wc1(:), wc2(:), wa(:), wb(:)
 
       isO=.false.; isV=.false.
       do k=1,N_cell
@@ -39,17 +44,31 @@ subroutine build_ccsd_t_fast(blk,g,ktab,t1,t2,et)
       et = 0.0_dp
       if (no<=0 .or. nv<=0) return
 
-      ! a-chunk: W and H (6 orderings each) of size na*nv*nv*no^3
-      na = int(max(1_8, min(int(nv,8), budget/(12_8*16_8*int(nv,8)**2*int(no,8)**3))))
-      nchunk = (nv+na-1)/na
-
-      ! ---- task list: (ka<=kb<=kc) x (ki<=kj<=kk, same total k) x a-chunk ----
+      ! [Nov 2026] (T) blocking. Every task holds W and H for ranges of the three
+      ! virtual positions (sizes s1,s2,s3); the per-thread buffers are
+      ! 14*s1*s2*s3*no^3 complex numbers, kept below `budget` for any basis.
+      ! Positions with the same k (ka=kb, kb=kc) use equal blocks and only
+      ! the triangle iA<=iB(<=iC) is computed (multiplicities in the energy).
+      nthr  = omp_get_max_threads()
+      pmax  = max(1_8, budget/(14_8*16_8*int(no,8)**3))   ! max s1*s2*s3
+      nbk   = min(nv, max(4, (nv+7)/8))                  ! triangle block size
+      do
+      maxp = 0
       ntask = 0
       do it=1,2
-        if (it==2) allocate(task(8,ntask))
+        if (it==2) allocate(task(13,ntask))
         ntask = 0
         do ka=1,N_cell; do kb=ka,N_cell; do kc=kb,N_cell
           Kv = ktab(ktab(ka,kb,1),kc,1)
+          rab = (ka==kb); rbc = (kb==kc)
+          sz3 = nv
+          if (rab) sz3(1:2) = nbk
+          if (rbc) sz3(2:3) = nbk
+          do while (int(sz3(1),8)*sz3(2)*sz3(3) > pmax .and. maxval(sz3) > 1)
+            m3 = maxval(sz3)
+            where (sz3 == m3) sz3 = max(1, (m3+1)/2)
+          end do
+          nb3 = (nv+sz3-1)/sz3
           do ki=1,N_cell; do kj=ki,N_cell
             kk = ktab(Kv,1,ktab(ki,kj,1))
             if (kk < kj) cycle
@@ -61,23 +80,44 @@ subroutine build_ccsd_t_fast(blk,g,ktab,t1,t2,et)
               if (cmpk > 0) cycle
               if (cmpk < 0) wk = 2
             end if
-            do k=1,nchunk
-              ntask = ntask+1
-              if (it==2) task(:,ntask) = [ka,kb,kc,ki,kj,kk,k,wk]
+            do i1=1,nb3(1)
+              j2 = 1; if (rab) j2 = i1
+              do i2=j2,nb3(2)
+                j3 = 1; if (rbc) j3 = i2
+                do i3=j3,nb3(3)
+                  call add_task([rlo(i1,sz3(1)),rhi(i1,sz3(1)), rlo(i2,sz3(2)),rhi(i2,sz3(2)), &
+                                 rlo(i3,sz3(3)),rhi(i3,sz3(3))])
+                end do
+              end do
             end do
           end do; end do
         end do; end do; end do
       end do
+      ! small k meshes: shrink the blocks until there are >= 2 tasks per thread
+      ! (a task is single-threaded; few tasks would leave cores idle)
+      if (ntask >= 2*nthr .or. (nbk <= 1 .and. pmax <= 1)) exit
+      deallocate(task)
+      nbk  = max(1, nbk/2)
+      pmax = max(1_8, pmax/4)
+      end do
 
-      nthr  = omp_get_max_threads()
       outer = (ntask >= 2*nthr)
       energy = (0.0_dp,0.0_dp)
 
-      !$omp parallel do if(outer) schedule(dynamic,1) default(shared) private(it) reduction(+:energy)
+      ! [Nov 2026] work buffers allocated ONCE per thread and reused by every task
+      ! (allocating them per task/block cost page faults on hundreds of MB each time)
+      szS = maxp*int(no,8)**3
+      szA = max(int(no,8)*int(nv,8)**3, int(no,8)**3*int(nv,8), int(no,8)**2*int(nv,8)**2)
+      szB = max(int(no,8)**2*int(nv,8)**2, int(no,8)*int(nv,8))
+      !$omp parallel if(outer) default(shared) private(it,wW,wH,wc1,wc2,wa,wb) reduction(+:energy)
+      allocate(wW(6*szS), wH(6*szS), wc1(szS), wc2(szS), wa(szA), wb(szB))
+      !$omp do schedule(dynamic,1)
       do it=1,ntask
-        call t_task(task(:,it), energy)
+        call t_task(task(:,it), energy, wW, wH, wc1, wc2, wa, wb)
       end do
-      !$omp end parallel do
+      !$omp end do
+      deallocate(wW, wH, wc1, wc2, wa, wb)
+      !$omp end parallel
 
       energy = (2.0_dp/6.0_dp)*energy
       et = real(energy,dp)
@@ -91,18 +131,40 @@ subroutine build_ccsd_t_fast(blk,g,ktab,t1,t2,et)
 
 contains
 
+      ! [Nov 2026] virtual block i of size sz
+      integer function rlo(i,sz)
+        integer, intent(in) :: i, sz
+        rlo = v_lo + (i-1)*sz
+      end function rlo
+      integer function rhi(i,sz)
+        integer, intent(in) :: i, sz
+        rhi = min(nfuc, v_lo + i*sz - 1)
+      end function rhi
+      subroutine add_task(r6)
+        integer, intent(in) :: r6(6)
+        ntask = ntask+1
+        if (it==2) task(:,ntask) = [ka,kb,kc,ki,kj,kk,wk,r6]
+        maxp = max(maxp, int(r6(2)-r6(1)+1,8)*(r6(4)-r6(3)+1)*(r6(6)-r6(5)+1))
+      end subroutine add_task
+
       !-----------------------------------------------------------------!
       ! one task: virtual k-triple (sorted), occupied multiset, a-chunk !
       !-----------------------------------------------------------------!
-      subroutine t_task(tk, eacc)
-        integer     , intent(in)    :: tk(8)
+      subroutine t_task(tk, eacc, wW, wH, wc1, wc2, wa, wb)
+        integer     , intent(in)    :: tk(13)
         complex(dpc), intent(inout) :: eacc
-        integer :: kv3(3), ko(3,6), nord, io, s, q, a0, a1, nx
+        complex(dpc), intent(inout), target, contiguous :: wW(:), wH(:), wc1(:), wc2(:), wa(:), wb(:)
+        integer :: kv3(3), ko(3,6), nord, io, s, q, nx, n2, n3, RLo(3), RHi(3), rid(3), nw3(3)
+        integer :: ab, ac, bb, bc, cb
+        real(dp) :: fm
+        logical :: rab, rbc
         integer :: o_jki, o_kij, o_kji, o_ikj, o_jik, i, j, kq, a, b, c
+        logical :: wdone(6), hdone(6)
         integer :: wv, nkey, ikey, kkey(9), keys(9,36), use_key(6,6)
         real(dp) :: dijk, d
         complex(dpc) :: y, eloc
-        complex(dpc), allocatable :: Wf(:,:,:,:,:,:,:), Hf(:,:,:,:,:,:,:)
+        complex(dpc), pointer, contiguous :: Wf(:,:,:,:,:,:,:), Hf(:,:,:,:,:,:,:)
+        integer(8) :: nwh
         real(dp) :: eO(no,N_cell), eV(v_lo:nfuc,N_cell)
         integer :: kk1(3)
 
@@ -123,9 +185,18 @@ contains
             nord = nord+1; ko(:,nord) = kk1
           end if
         end do
-        a0 = v_lo + (tk(7)-1)*na
-        a1 = min(nfuc, a0+na-1)
-        nx = a1-a0+1
+        ! [Nov 2026] ranges of the three virtual positions; rid(q) = first position
+        ! with the same range (raw blocks are shared between equal ranges)
+        RLo = tk([8,10,12]); RHi = tk([9,11,13])
+        nw3 = RHi-RLo+1
+        nx = nw3(1); n2 = nw3(2); n3 = nw3(3)
+        do q=1,3
+          rid(q) = q
+          do s=q-1,1,-1
+            if (RLo(s)==RLo(q) .and. RHi(s)==RHi(q)) rid(q) = s
+          end do
+        end do
+        rab = (kv3(1)==kv3(2)); rbc = (kv3(2)==kv3(3))
 
         do kq=1,N_cell
           do i=1,no
@@ -138,8 +209,12 @@ contains
           end do
         end do
 
-        allocate(Wf(nx,nv,nv,no,no,no,nord), Hf(nx,nv,nv,no,no,no,nord))
-        Wf = (0.0_dp,0.0_dp); Hf = (0.0_dp,0.0_dp)
+        nwh = int(nx,8)*int(n2,8)*int(n3,8)*int(no,8)**3*int(nord,8)
+        Wf(1:nx,1:n2,1:n3,1:no,1:no,1:no,1:nord) => wW(1:nwh)
+        Hf(1:nx,1:n2,1:n3,1:no,1:no,1:no,1:nord) => wH(1:nwh)
+        ! [Nov 2026] no zeroing: the first block written into W(:,io) is assigned,
+        ! H(:,io) is zeroed only if a t1 (v) term goes there, else H = W at the end
+        wdone = .false. ; hdone = .false.
 
         ! each distinct raw block (slot momenta + slot band ranges) is computed
         ! once and added to every (ordering, permutation) where it appears
@@ -149,8 +224,7 @@ contains
             kkey(1:3) = [kv3(sg(1,s)), kv3(sg(2,s)), kv3(sg(3,s))]
             kkey(4:6) = [ko(sg(1,s),io), ko(sg(2,s),io), ko(sg(3,s),io)]
             do q=1,3
-              kkey(6+q) = 0                             ! one chunk: all slots full range
-              if (nchunk > 1 .and. sg(q,s)==1) kkey(6+q) = 1   ! slot that holds the a-chunk
+              kkey(6+q) = rid(sg(q,s))                  ! [Nov 2026] range of the W position of slot q
             end do
             ikey = 0
             do q=1,nkey
@@ -165,9 +239,15 @@ contains
           end do
         end do
         do q=1,nkey
-          call raw_block(keys(:,q), q, a0, a1, Wf, Hf, nord, use_key)
+          call raw_block(keys(:,q), q, RLo, RHi, nw3, Wf, Hf, nord, use_key, wdone, hdone, wc1, wc2, wa, wb)
         end do
-        Hf = Hf + Wf
+        do io=1,nord
+          if (hdone(io)) then
+            Hf(:,:,:,:,:,:,io) = Hf(:,:,:,:,:,:,io) + Wf(:,:,:,:,:,:,io)
+          else
+            Hf(:,:,:,:,:,:,io) = Wf(:,:,:,:,:,:,io)
+          end if
+        end do
 
         ! ---- energy ----
         eloc = (0.0_dp,0.0_dp)
@@ -181,19 +261,35 @@ contains
           do j=1,no;   if (.not.isO(j,ko(2,io))) cycle
           do i=1,no;   if (.not.isO(i,ko(1,io))) cycle
             dijk = eO(i,ko(1,io)) + eO(j,ko(2,io)) + eO(q,ko(3,io))
-            do c=1,nv;   if (.not.isV(v_lo-1+c,kv3(3))) cycle
-            do b=1,nv;   if (.not.isV(v_lo-1+b,kv3(2))) cycle
-            do a=1,nx;   if (.not.isV(a0-1+a,kv3(1))) cycle
-              d = dijk - eV(a0-1+a,kv3(1)) - eV(v_lo-1+b,kv3(2)) - eV(v_lo-1+c,kv3(3))
+            do c=1,n3;   cb = RLo(3)-1+c; if (.not.isV(cb,kv3(3))) cycle
+            do b=1,n2;   bb = RLo(2)-1+b; if (.not.isV(bb,kv3(2))) cycle
+            do a=1,nx;   ab = RLo(1)-1+a; if (.not.isV(ab,kv3(1))) cycle
+              ! [Nov 2026] multiplicity of (a,b,c) when virtual k are repeated
+              fm = 1.0_dp
+              if (rab .and. rbc) then
+                if (ab > bb .or. bb > cb) cycle
+                if (ab < bb .and. bb < cb) then
+                  fm = 6.0_dp
+                else if (ab < bb .or. bb < cb) then
+                  fm = 3.0_dp
+                end if
+              else if (rab) then
+                if (ab > bb) cycle
+                if (ab < bb) fm = 2.0_dp
+              else if (rbc) then
+                if (bb > cb) cycle
+                if (bb < cb) fm = 2.0_dp
+              end if
+              d = dijk - eV(ab,kv3(1)) - eV(bb,kv3(2)) - eV(cb,kv3(3))
               y =  4.0_dp*Hf(a,b,c,i,j,q,io) + Hf(a,b,c,j,q,i,o_jki) + Hf(a,b,c,q,i,j,o_kij) &
                  - 2.0_dp*Hf(a,b,c,q,j,i,o_kji) - 2.0_dp*Hf(a,b,c,i,q,j,o_ikj)              &
                  - 2.0_dp*Hf(a,b,c,j,i,q,o_jik)
-              eloc = eloc + Wf(a,b,c,i,j,q,io)*conjg(y)/d
+              eloc = eloc + fm*Wf(a,b,c,i,j,q,io)*conjg(y)/d
             end do; end do; end do
           end do; end do; end do
         end do
-        eacc = eacc + real(wv*tk(8),dp)*eloc        ! [Nov 2026] tk(8) = k <-> -k weight
-        deallocate(Wf,Hf)
+        eacc = eacc + real(wv*tk(7),dp)*eloc        ! [Nov 2026] tk(7) = k <-> -k weight
+        nullify(Wf, Hf)
       end subroutine t_task
 
       ! [Nov 2026] compare (sorted v-triple, sorted o-triple) with the same
@@ -242,33 +338,32 @@ contains
       ! (permutation s, ordering io) that uses this key: slot p goes to  !
       ! position s(p) of (a,b,c) and of (i,j,k)                          !
       !-----------------------------------------------------------------!
-      subroutine raw_block(key, ikey, a0, a1, W, H, nord, use_key)
-        integer, intent(in) :: key(9), ikey, a0, a1, nord, use_key(6,6)
-        complex(dpc), intent(inout) :: W(a1-a0+1,nv,nv,no,no,no,nord), H(a1-a0+1,nv,nv,no,no,no,nord)
+      subroutine raw_block(key, ikey, RLo, RHi, nw3, W, H, nord, use_key, wdone, hdone, wc1, wc2, wa, wb)
+        integer, intent(in) :: key(9), ikey, RLo(3), RHi(3), nw3(3), nord, use_key(6,6)
+        complex(dpc), intent(inout), target, contiguous :: wc1(:), wc2(:), wa(:), wb(:)
+        logical, intent(inout) :: wdone(6), hdone(6)
+        complex(dpc), intent(inout) :: W(nw3(1),nw3(2),nw3(3),no,no,no,nord), H(nw3(1),nw3(2),nw3(3),no,no,no,nord)
         integer :: kx,ky,kz,kl,km,kn,kf,kmp
         integer :: lo(3), hi(3), nn(3), x0,x1,y0,y1,z0,z1,nx,ny,nz
-        integer :: x,y,z,m,f,mp,p
-        integer :: ext(6), sc(6), nw(6)
-        complex(dpc), allocatable :: Am1(:,:,:,:), Cm1(:,:,:,:,:,:), Am2(:,:,:,:), Bm2(:,:,:,:), Cm2(:,:,:,:,:,:)
-        complex(dpc), allocatable :: Gv(:,:,:,:), Tv(:,:), Vb(:,:,:,:,:,:)
+        integer :: x,y,z,m,f,mp,p,io_
+        integer :: ext(6), sc(6), nw(6), ext1(6), sc1(6)
+        complex(dpc), pointer, contiguous :: Am1(:,:,:,:), Cm1(:,:,:,:,:,:), Am2(:,:,:,:), Bm2(:,:,:,:), Cm2(:,:,:,:,:,:)
+        complex(dpc), pointer, contiguous :: Gv(:,:,:,:), Tv(:,:), Vb(:,:,:,:,:,:)
         complex(dpc), parameter :: one=(1.0_dp,0.0_dp), zero=(0.0_dp,0.0_dp)
 
         kx=key(1); ky=key(2); kz=key(3); kl=key(4); km=key(5); kn=key(6)
         do p=1,3
-          if (key(6+p)==1) then
-            lo(p)=a0; hi(p)=a1
-          else
-            lo(p)=v_lo; hi(p)=nfuc
-          end if
+          lo(p)=RLo(key(6+p)); hi(p)=RHi(key(6+p))     ! [Nov 2026] general ranges
           nn(p)=hi(p)-lo(p)+1
         end do
         x0=lo(1); x1=hi(1); y0=lo(2); y1=hi(2); z0=lo(3); z1=hi(3)
         nx=nn(1); ny=nn(2); nz=nn(3)
-        nw = [a1-a0+1, nv, nv, no, no, no]
+        nw = [nw3(1), nw3(2), nw3(3), no, no, no]
 
         ! ---------------- term 1 : Cm1(l,x,y,n,m,z) ----------------
         kf = ktab(kx,ky,kl)
-        allocate(Am1(no,x0:x1,y0:y1,v_lo:nfuc), Cm1(no,x0:x1,y0:y1,no,no,z0:z1))
+        Am1(1:no,x0:x1,y0:y1,v_lo:nfuc) => wa(1:int(no,8)*nx*ny*nv)
+        Cm1(1:no,x0:x1,y0:y1,1:no,1:no,z0:z1) => wc1(1:int(no,8)**3*nx*ny*nz)
         do f=v_lo,nfuc
           if (isV(f,kf)) then
             do y=y0,y1; do x=x0,x1
@@ -280,16 +375,15 @@ contains
         end do
         call zgemm('N','T', no*nx*ny, no*no*nz, nv, one, Am1, no*nx*ny, &
                    t2(1,1,z0,v_lo,kn,km,kz), no*no*nv, zero, Cm1, no*nx*ny)
-        deallocate(Am1)
         ! index order of Cm1: l x y n m z  -> slot of each: occ1 vir1 vir2 occ3 occ2 vir3
-        ext = [no, nx, ny, no, no, nz]
-        sc  = [1, no, no*nx, no*nx*ny, no*nx*ny*no, no*nx*ny*no*no]
-        call scatter(Cm1, ext, sc, [4,1,2,6,5,3], one, W, ikey, use_key, nord, nw)
-        deallocate(Cm1)
+        ext1 = [no, nx, ny, no, no, nz]
+        sc1  = [1, no, no*nx, no*nx*ny, no*nx*ny*no, no*nx*ny*no*no]
 
         ! ---------------- term 2 : Cm2(l,x,m,n,y,z) ----------------
         kmp = ktab(kl,km,kx)
-        allocate(Am2(no,x0:x1,no,no), Bm2(no,no,y0:y1,z0:z1), Cm2(no,x0:x1,no,no,y0:y1,z0:z1))
+        Am2(1:no,x0:x1,1:no,1:no) => wa(1:int(no,8)**3*nx)
+        Bm2(1:no,1:no,y0:y1,z0:z1) => wb(1:int(no,8)**2*ny*nz)
+        Cm2(1:no,x0:x1,1:no,1:no,y0:y1,z0:z1) => wc2(1:int(no,8)**3*nx*ny*nz)
         do mp=1,no
           if (isO(mp,kmp)) then
             do m=1,no; do x=x0,x1
@@ -304,15 +398,16 @@ contains
         end do; end do
         call zgemm('N','N', no*nx*no, no*ny*nz, no, one, Am2, no*nx*no, &
                    Bm2, no, zero, Cm2, no*nx*no)
-        deallocate(Am2, Bm2)
         ext = [no, nx, no, no, ny, nz]
         sc  = [1, no, no*nx, no*nx*no, no*nx*no*no, no*nx*no*no*ny]
-        call scatter(Cm2, ext, sc, [4,1,5,6,2,3], -one, W, ikey, use_key, nord, nw)
-        deallocate(Cm2)
+        ! [Nov 2026] one fused pass: W += Cm1 - Cm2 (W read and written once)
+        call scatter2(Cm1, ext1, sc1, [4,1,2,6,5,3], Cm2, ext, sc, [4,1,5,6,2,3], W, ikey, use_key, nord, nw, wdone)
 
         ! ---------------- v term : Vb(l,x,m,y,n,z), only kn == kz ----------------
         if (kn==kz) then
-          allocate(Gv(no,x0:x1,no,y0:y1), Tv(no,z0:z1), Vb(no,x0:x1,no,y0:y1,no,z0:z1))
+          Gv(1:no,x0:x1,1:no,y0:y1) => wa(1:int(no,8)**2*nx*ny)
+          Tv(1:no,z0:z1) => wb(1:int(no,8)*nz)
+          Vb(1:no,x0:x1,1:no,y0:y1,1:no,z0:z1) => wc1(1:int(no,8)**3*nx*ny*nz)
           do y=y0,y1; do m=1,no; do x=x0,x1
             Gv(:,x,m,y) = conjg(gv1(1,no,x,m,y,kl,kx,km))
           end do; end do; end do
@@ -325,11 +420,106 @@ contains
           call zgemm('N','T', no*nx*no*ny, no*nz, 1, one, Gv, no*nx*no*ny, Tv, no*nz, zero, Vb, no*nx*no*ny)
           ext = [no, nx, no, ny, no, nz]
           sc  = [1, no, no*nx, no*nx*no, no*nx*no*ny, no*nx*no*ny*no]
+          do io_=1,nord
+            if (.not.hdone(io_) .and. any(use_key(:,io_)==ikey)) then
+              H(:,:,:,:,:,:,io_) = (0.0_dp,0.0_dp) ; hdone(io_) = .true.
+            end if
+          end do
           call scatter(Vb, ext, sc, [4,1,5,2,6,3], (0.5_dp,0.0_dp), H, ikey, use_key, nord, nw)
-          deallocate(Gv, Tv, Vb)
         end if
 
       end subroutine raw_block
+
+      !-----------------------------------------------------------------!
+      ! [Nov 2026] W(:,io) += A - B for every (s,io) using block ikey,    !
+      ! A and B hold the same 6 slots in different index orders (codes  !
+      ! as in scatter). One pass over W instead of two.                 !
+      !-----------------------------------------------------------------!
+      subroutine scatter2(Ain, exta, sca, codea, Bin, extb, scb, codeb, W, ikey, use_key, nord, nw, wdone)
+        complex(dpc), intent(in)    :: Ain(*), Bin(*)
+        integer     , intent(in)    :: exta(6), sca(6), codea(6), extb(6), scb(6), codeb(6)
+        integer     , intent(in)    :: ikey, nord, use_key(6,6), nw(6)
+        complex(dpc), intent(inout) :: W(*)
+        logical     , intent(inout) :: wdone(6)
+        integer :: s, io, ic, q, e6(6), sa6(6), sb6(6), sw6(6), qc, ordq(6), nq
+        integer(8) :: off
+        sw6(1) = 1
+        do q=2,6
+          sw6(q) = sw6(q-1)*nw(q-1)
+        end do
+        do io=1,nord
+          do s=1,6
+            if (use_key(s,io) /= ikey) cycle
+            do ic=1,6
+              q = slot_pos(codea(ic), s)
+              e6(q) = exta(ic) ; sa6(q) = sca(ic)
+              q = slot_pos(codeb(ic), s)
+              sb6(q) = scb(ic)
+            end do
+            off = int(io-1,8)*int(sw6(6),8)*int(nw(6),8)
+            qc = 1
+            do q=1,6
+              if (sa6(q)==1) qc = q
+            end do
+            ordq(1) = 1; nq = 1
+            if (qc /= 1) then
+              nq = 2; ordq(2) = qc
+            end if
+            do q=2,6
+              if (q /= qc) then
+                nq = nq+1; ordq(nq) = q
+              end if
+            end do
+            call padd2(W, off, Ain, Bin, e6(ordq), sw6(ordq), sa6(ordq), sb6(ordq), .not.wdone(io))
+            wdone(io) = .true.
+          end do
+        end do
+      end subroutine scatter2
+
+      integer function slot_pos(code, s)
+        integer, intent(in) :: code, s
+        if (code <= 3) then
+          slot_pos = sg(code,s)
+        else
+          slot_pos = 3 + sg(code-3,s)
+        end if
+      end function slot_pos
+
+      ! W(off + sum_q i_q*sw(q)) += A(sum i_q*sa(q)) - B(sum i_q*sb(q)), loop 1 innermost
+      subroutine padd2(W, off, Ain, Bin, e, sw, sa, sb, assign)
+        complex(dpc), intent(inout) :: W(*)
+        complex(dpc), intent(in)    :: Ain(*), Bin(*)
+        integer(8)  , intent(in)    :: off
+        integer     , intent(in)    :: e(6), sw(6), sa(6), sb(6)
+        logical     , intent(in)    :: assign
+        integer :: i1,i2,i3,i4,i5,i6
+        integer(8) :: w2,w3,w4,w5,w6
+        integer :: a2,a3,a4,a5,a6, b2,b3,b4,b5,b6
+        do i6=0,e(6)-1
+          w6 = off + int(i6,8)*sw(6); a6 = i6*sa(6); b6 = i6*sb(6)
+          do i5=0,e(5)-1
+            w5 = w6 + i5*sw(5); a5 = a6 + i5*sa(5); b5 = b6 + i5*sb(5)
+            do i4=0,e(4)-1
+              w4 = w5 + i4*sw(4); a4 = a5 + i4*sa(4); b4 = b5 + i4*sb(4)
+              do i3=0,e(3)-1
+                w3 = w4 + i3*sw(3); a3 = a4 + i3*sa(3); b3 = b4 + i3*sb(3)
+                do i2=0,e(2)-1
+                  w2 = w3 + i2*sw(2); a2 = a3 + i2*sa(2); b2 = b3 + i2*sb(2)
+                  if (assign) then
+                    do i1=0,e(1)-1
+                      W(w2+i1*sw(1)+1) = Ain(a2+i1*sa(1)+1) - Bin(b2+i1*sb(1)+1)
+                    end do
+                  else
+                    do i1=0,e(1)-1
+                      W(w2+i1*sw(1)+1) = W(w2+i1*sw(1)+1) + Ain(a2+i1*sa(1)+1) - Bin(b2+i1*sb(1)+1)
+                    end do
+                  end if
+                end do
+              end do
+            end do
+          end do
+        end do
+      end subroutine padd2
 
       !-----------------------------------------------------------------!
       ! add alpha*C to W(:,io) for every (s,io) using block ikey.        !

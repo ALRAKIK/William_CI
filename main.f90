@@ -53,6 +53,11 @@ program CI
       double precision                ::          w_start , w_end
       complex(dpc)      ,allocatable  ::    ERI_kMO(:,:,:,:,:,:,:)
       complex(dpc)      ,allocatable  ::    ERI_kMO_h(:,:,:,:,:)     ! [Nov 2026] fast_ccsdt compact g
+      real(dp)          ,allocatable  ::    ERI_kMO_r(:,:,:,:,:)     ! [Nov 2026] fast_ccsdt_real: real compact g
+      logical                         ::    real_path                ! [Nov 2026]
+      real(dp)                        ::    g_imax, g_rmax           ! [Nov 2026]
+      integer                         ::    k_r, fourth_k_r          ! [Nov 2026]
+      integer                         ::    fourth_k
       type(K_block)     ,allocatable  ::                    blk(:)
 
       double precision                ::               E_nuc , EHF
@@ -557,13 +562,49 @@ program CI
             write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for K-MP2 calculation = ',time,' seconds'
             write(outfile,*)
 
+            ! [Nov 2026] keyword fast_ccsdt_real: when every k is self-conjugate
+            ! (Gamma / zone edge: 1D N=1,2 ; 2x2 ; 2x2x2 ...) and the orbitals are in
+            ! the real time-reversal gauge, all integrals and amplitudes are real:
+            ! the CC runs in real arithmetic (dgemm, half the memory of g)
+            real_path = .false.
+            if (c_fast_real) then
+              real_path = use_ksym
+              do k_r = 1, N_cell
+                fourth_k_r = fourth_k(1,1,k_r)
+                if (fourth_k_r /= k_r) real_path = .false.
+              end do
+              if (.not. real_path) then
+                write(outfile,'(a)') '  [fast_ccsdt_real] WARNING: not every k is self-conjugate (or no real gauge):'
+                write(outfile,'(a)') '                    complex fast_ccsdt is used instead'
+              else
+                allocate(ERI_kMO_r(nfuc,nfuc,nfuc,nfuc,nslot))
+                call eri_to_real(size(ERI_kMO_h,kind=8), ERI_kMO_h, ERI_kMO_r, g_imax, g_rmax)
+                write(outfile,'(a,es10.2,a,es10.2)') '  [fast_ccsdt_real] max |Im g| =', g_imax, '   max |g| =', g_rmax
+                if (g_imax > 1.0d-8*max(1.0d0,g_rmax)) then
+                  write(outfile,'(a)') '  [fast_ccsdt_real] WARNING: integrals are not real, complex fast_ccsdt is used'
+                  deallocate(ERI_kMO_r)
+                  real_path = .false.
+                else
+                  deallocate(ERI_kMO_h)
+                  write(outfile,'(a,f8.2,a)') '  [fast_ccsdt_real] real arithmetic, k-space integrals: ', &
+                       8.d0*dble(nfuc)**4*dble(nslot)/1024.d0**3, ' GB'
+                end if
+              end if
+              flush(outfile)
+            end if
+
             call cpu_time(start)
+            if (real_path) then
+              call k_ccsd_T_fast_r(blk,ERI_kMO_r,EHF,E_nuc,E_MP2)
+            else
               call k_ccsd_T_fast(blk,ERI_kMO_h,EHF,E_nuc,E_MP2)
+            end if
             call cpu_time(end)
             time = end - start
             write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for K-CCSD(T) calculation = ',time,' seconds'
             write(outfile,*)
-            deallocate(ERI_kMO_h)
+            if (allocated(ERI_kMO_h)) deallocate(ERI_kMO_h)
+            if (allocated(ERI_kMO_r)) deallocate(ERI_kMO_r)
 
           else
 
