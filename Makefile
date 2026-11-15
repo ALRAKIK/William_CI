@@ -27,7 +27,10 @@ ifeq ($(BUILD),cluster)
     FC = gfortran
     FFLAGS = -Wall -Wno-unused -Wno-unused-dummy-argument -O3 -lblas -g -fimplicit-none -lm -ffree-line-length-none -fopenmp -ftree-vectorize -ffast-math -frecursive -march=native
     MODDIR = -J$(ODIR) -I$(ODIR) -I/usr/local/include
-    LIBS = -fopenmp src/lib/liblapack.a src/lib/librefblas.a -ltrexio \
+    LIBS = -fopenmp \
+       -L$(MKLROOT)/lib -L$(MKLROOT)/lib/intel64 -Wl,-rpath,$(MKLROOT)/lib -Wl,-rpath,$(MKLROOT)/lib/intel64 \
+       -Wl,--no-as-needed -lmkl_gf_lp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread -lm -ldl \
+       -ltrexio \
        -I/nfs/home/aalrakik/work/libcint/build/include \
        -L/nfs/home/aalrakik/work/libcint/build -lcint \
        -Wl,-rpath=/nfs/home/aalrakik/work/libcint/build
