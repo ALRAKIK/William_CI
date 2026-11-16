@@ -11,6 +11,8 @@ subroutine build_ccsd_t_fast_r(blk,g,ktab,t1,t2,et)
       use cc_dims         , only: o_hi, v_lo, use_ksym   ! [Nov 2026] use_ksym
       use k_blocks        , only: K_block
       use omp_lib
+      use files
+      use keywords        , only: c_checkpoint, c_restart, ckpt_dir, ckpt_orb_ok   ! [Nov 2026] restart files
 
       implicit none
       ! input !
@@ -29,6 +31,18 @@ subroutine build_ccsd_t_fast_r(blk,g,ktab,t1,t2,et)
       integer  :: ka, kb, kc, ki, kj, kk, Kv, wk, cmpk
       integer  :: nbk, i1, i2, i3, j2, j3, sz3(3), nb3(3), m3
       integer(8) :: pmax, maxp
+      ! [Nov 2026] (T) progress file (keywords checkpoint / restart)
+      integer, parameter :: ck_magic = 20261116
+      real(dp), parameter :: ck_interval = 1800.0_dp        ! seconds between two progress files
+      character(len=600) :: ck_file
+      logical  :: tfixed
+      logical , allocatable :: tdone(:)
+      real(dp), allocatable :: etask(:)
+      real(dp) :: e_it
+      real(dp) :: tsum, t_last
+      integer  :: hd(8), ntask_saved, nskip
+      integer(8) :: pmax_saved
+      real(dp) :: tsum_saved
       logical  :: rab, rbc
       integer, allocatable :: task(:,:)
       real(dp) :: energy
@@ -57,6 +71,14 @@ subroutine build_ccsd_t_fast_r(blk,g,ktab,t1,t2,et)
       nthr  = omp_get_max_threads()
       pmax  = max(1_8, budget/(14_8*16_8*int(no,8)**3))   ! max s1*s2*s3
       nbk   = min(nv, max(4, (nv+7)/8))                  ! triangle block size
+
+      ! [Nov 2026] restart: the saved progress is only valid for the same task
+      ! list (same blocks) and the same amplitudes (fingerprint tsum)
+      ck_file = trim(ckpt_dir)//'/triples_progress.bin'
+      tfixed = .false. ; ntask_saved = -1
+      tsum = 0.0_dp
+      if (c_checkpoint) tsum = sum(abs(t1)) + sum(abs(t2))
+      if (c_restart .and. ckpt_orb_ok) call read_T_header()
       do
       maxp = 0
       ntask = 0
@@ -100,7 +122,7 @@ subroutine build_ccsd_t_fast_r(blk,g,ktab,t1,t2,et)
       end do
       ! small k meshes: shrink the blocks until there are >= 2 tasks per thread
       ! (a task is single-threaded; few tasks would leave cores idle)
-      if (ntask >= 2*nthr .or. (nbk <= 1 .and. pmax <= 1)) exit
+      if (tfixed .or. ntask >= 2*nthr .or. (nbk <= 1 .and. pmax <= 1)) exit
       deallocate(task)
       nbk  = max(1, nbk/2)
       pmax = max(1_8, pmax/4)
@@ -109,20 +131,41 @@ subroutine build_ccsd_t_fast_r(blk,g,ktab,t1,t2,et)
       outer = (ntask >= 2*nthr)
       energy = 0.0_dp
 
+      ! [Nov 2026] energy of every task kept separately: restart skips the tasks
+      ! already done, and the final sum in task order is independent of threads
+      allocate(tdone(ntask), etask(ntask))
+      tdone = .false. ; etask = 0.0_dp
+      if (tfixed) call read_T_progress()
+      t_last = omp_get_wtime()
+
       ! [Nov 2026] work buffers allocated ONCE per thread and reused by every task
       ! (allocating them per task/block cost page faults on hundreds of MB each time)
       szS = maxp*int(no,8)**3
       szA = max(int(no,8)*int(nv,8)**3, int(no,8)**3*int(nv,8), int(no,8)**2*int(nv,8)**2)
       szB = max(int(no,8)**2*int(nv,8)**2, int(no,8)*int(nv,8))
-      !$omp parallel if(outer) default(shared) private(it,wW,wH,wc1,wc2,wa,wb) reduction(+:energy)
+      !$omp parallel if(outer) default(shared) private(it,wW,wH,wc1,wc2,wa,wb,e_it)
       allocate(wW(6*szS), wH(6*szS), wc1(szS), wc2(szS), wa(szA), wb(szB))
       !$omp do schedule(dynamic,1)
       do it=1,ntask
-        call t_task(task(:,it), energy, wW, wH, wc1, wc2, wa, wb)
+        if (tdone(it)) cycle
+        e_it = 0.0_dp
+        call t_task(task(:,it), e_it, wW, wH, wc1, wc2, wa, wb)
+        !$omp critical (t_progress)
+        etask(it) = e_it ; tdone(it) = .true.
+        if (c_checkpoint .and. omp_get_wtime()-t_last > ck_interval) then
+          call write_T_progress()
+          t_last = omp_get_wtime()
+        end if
+        !$omp end critical (t_progress)
       end do
       !$omp end do
       deallocate(wW, wH, wc1, wc2, wa, wb)
       !$omp end parallel
+      do it=1,ntask
+        energy = energy + etask(it)
+      end do
+      if (c_checkpoint) call write_T_progress()
+      deallocate(tdone, etask)
 
       energy = (2.0_dp/6.0_dp)*energy
       et = real(energy,dp)
@@ -135,6 +178,56 @@ subroutine build_ccsd_t_fast_r(blk,g,ktab,t1,t2,et)
       deallocate(task)
 
 contains
+
+      ! [Nov 2026] (T) progress file: header, task flags, task energies (binary)
+      subroutine write_T_progress()
+        integer :: u, st
+        open(newunit=u, file=trim(ck_file)//'.tmp', form='unformatted', access='stream', status='replace')
+        write(u) [ck_magic, storage_size(etask(1))/8, nfuc, N_cell, o_hi, v_lo, ntask, nbk]
+        write(u) pmax, tsum
+        write(u) tdone, etask
+        close(u)
+        call rename(trim(ck_file)//'.tmp', trim(ck_file), st)
+      end subroutine write_T_progress
+
+      subroutine read_T_header()
+        integer :: u, ios
+        logical :: ex
+        inquire(file=trim(ck_file), exist=ex)
+        if (.not. ex) return
+        open(newunit=u, file=trim(ck_file), form='unformatted', access='stream', status='old', iostat=ios)
+        read(u, iostat=ios) hd
+        if (ios == 0) read(u, iostat=ios) pmax_saved, tsum_saved
+        close(u)
+        if (ios /= 0) return
+        if (all(hd([1,3,4,5,6]) == [ck_magic, nfuc, N_cell, o_hi, v_lo]) .and. &
+            hd(2) == storage_size(e_it)/8 .and. abs(tsum-tsum_saved) <= 1.0e-10_dp*max(1.0_dp,tsum)) then
+          tfixed = .true. ; nbk = hd(8) ; pmax = pmax_saved ; ntask_saved = hd(7)
+        else
+          write(outfile,'(a)') '  [restart] WARNING: '//trim(ck_file)//' belongs to other amplitudes: (T) from the start'
+        end if
+      end subroutine read_T_header
+
+      subroutine read_T_progress()
+        integer :: u, ios
+        if (ntask /= ntask_saved) then
+          write(outfile,'(a)') '  [restart] WARNING: (T) task list differs: (T) from the start'
+          return
+        end if
+        open(newunit=u, file=trim(ck_file), form='unformatted', access='stream', status='old', iostat=ios)
+        read(u, iostat=ios) hd
+        if (ios == 0) read(u, iostat=ios) pmax_saved, tsum_saved
+        if (ios == 0) read(u, iostat=ios) tdone, etask
+        close(u)
+        if (ios /= 0) then
+          tdone = .false. ; etask = 0.0_dp
+          write(outfile,'(a)') '  [restart] WARNING: (T) progress file incomplete: (T) from the start'
+          return
+        end if
+        nskip = count(tdone)
+        write(outfile,'(a,i10,a,i10,a)') '  [restart] (T): ', nskip, ' of ', ntask, ' tasks already done'
+        flush(outfile)
+      end subroutine read_T_progress
 
       ! [Nov 2026] virtual block i of size sz
       integer function rlo(i,sz)

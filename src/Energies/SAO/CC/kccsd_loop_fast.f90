@@ -7,6 +7,7 @@
 subroutine solve_kccsd_fast(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_tol,residual_tol,ndiis,ecorr)
 
       use files
+      use keywords        , only: c_checkpoint, c_restart, ckpt_dir, ckpt_orb_ok   ! [Nov 2026] restart files
       use constants_module, only: dp, dpc
       use unitcell_module , only: nfuc, N_cell
       use cc_dims       , only: o_hi, v_lo
@@ -51,6 +52,8 @@ subroutine solve_kccsd_fast(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_
       complex(dpc)                   :: lo(nfuc,nfuc,N_cell),lv(nfuc,nfuc,N_cell)
       complex(dpc)                   :: energy,tau
       integer                        :: n1,n2,n,p,q,iter,h,nh
+      integer, parameter             :: ck_magic = 20261115                   ! [Nov 2026]
+      character(len=600)             :: ck_file                               ! [Nov 2026]
       integer                        :: i,j,a,b
       integer                        :: k,ki,kj,ka,kb
 
@@ -170,6 +173,11 @@ subroutine solve_kccsd_fast(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_
       call pack(t1,t2,x)
       call unpack(x)
 
+      ! [Nov 2026] keyword restart: start from the saved amplitudes (binary file
+      ! written after every iteration with the keyword checkpoint)
+      ck_file = trim(ckpt_dir)//'/ccsd_amplitudes.bin'
+      if (c_restart) call ckpt_read_amplitudes()
+
 
       ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - !
       ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ! 
@@ -259,7 +267,12 @@ subroutine solve_kccsd_fast(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_
           error stop 'CCSD nonfinite residual or energy'
 
         if (max(max1,max2)<residual_tol.and.(iter==0.or.abs(de)<energy_tol)) then
-          converged=.true.; exit
+          converged=.true.
+          if (c_checkpoint) then                                ! [Nov 2026] converged amplitudes
+            call pack(t1,t2,x)
+            call ckpt_write_amplitudes(x, 1)
+          end if
+          exit
         end if
 
       if (iter==max_iter) exit
@@ -311,6 +324,7 @@ subroutine solve_kccsd_fast(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_
 
       previous=ecorr
       call unpack(trial)
+      if (c_checkpoint) call ckpt_write_amplitudes(trial, 0)   ! [Nov 2026] amplitudes of the next iteration
 
       end do
 
@@ -335,6 +349,52 @@ subroutine solve_kccsd_fast(blk,g,ktab,t1,t2,converged, max_iter,damping,energy_
       deallocate(ix,jx,denom,x,err,trial,hx,he,coef,r1,r2,wo,wx,wy,t1_old,dt1,hslot,Bd)
     
 contains
+
+! [Nov 2026] binary restart file of the packed amplitudes (physical entries only)
+!   header: magic, bytes per number, nfuc, N_cell, o_hi, v_lo, n1, n2, iteration, converged
+!   then the vector. Written to *.tmp and renamed (an old file is never half-overwritten).
+subroutine ckpt_write_amplitudes(v, conv)
+      complex(dpc), intent(in) :: v(n)
+      integer     , intent(in) :: conv
+      integer :: u, st
+      open(newunit=u, file=trim(ck_file)//'.tmp', form='unformatted', access='stream', status='replace')
+      write(u) [ck_magic, storage_size(v(1))/8, nfuc, N_cell, o_hi, v_lo, n1, n2, iter, conv]
+      write(u) v
+      close(u)
+      call rename(trim(ck_file)//'.tmp', trim(ck_file), st)
+end subroutine ckpt_write_amplitudes
+
+subroutine ckpt_read_amplitudes()
+      integer :: u, ios, hd(10)
+      logical :: ex
+      if (.not. ckpt_orb_ok) then
+        write(outfile,'(a)') '  [restart] HF orbitals were not reused: CCSD starts from MP2 amplitudes'
+        return
+      end if
+      inquire(file=trim(ck_file), exist=ex)
+      if (.not. ex) then
+        write(outfile,'(a)') '  [restart] no file '//trim(ck_file)//': CCSD starts from MP2 amplitudes'
+        return
+      end if
+      open(newunit=u, file=trim(ck_file), form='unformatted', access='stream', status='old', iostat=ios)
+      read(u, iostat=ios) hd
+      if (ios /= 0 .or. any(hd(1:8) /= [ck_magic, storage_size(x(1))/8, nfuc, N_cell, o_hi, v_lo, n1, n2])) then
+        write(outfile,'(a)') '  [restart] WARNING: '//trim(ck_file)//' does not match this calculation'
+        write(outfile,'(a)') '            (sizes, frozen core or real/complex path differ): not used'
+        close(u); return
+      end if
+      read(u, iostat=ios) x
+      close(u)
+      if (ios /= 0) then
+        write(outfile,'(a)') '  [restart] WARNING: '//trim(ck_file)//' is incomplete: not used'
+        call pack(t1,t2,x)
+        return
+      end if
+      call unpack(x)
+      write(outfile,'(a,i4,a)') '  [restart] CCSD amplitudes read (saved after iteration', hd(9), &
+                                merge(', converged)', ')           ', hd(10)==1)
+      flush(outfile)
+end subroutine ckpt_read_amplitudes
 
 ! [Nov 2026] trial = x + damping*err/denom (threaded)
 subroutine jacobi_step()

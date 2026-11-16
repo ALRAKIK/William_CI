@@ -58,6 +58,16 @@ program CI
       real(dp)                        ::    g_imax, g_rmax           ! [Nov 2026]
       integer                         ::    k_r, fourth_k_r          ! [Nov 2026]
       integer                         ::    fourth_k
+      type(K_block)     ,allocatable  ::    blk_save(:)              ! [Nov 2026] frozen core: full bands
+      integer                         ::    n_fc, n_act, nfuc_save   ! [Nov 2026] frozen core
+      integer                         ::    n_core_orbitals          ! [Nov 2026]
+      interface                                                      ! [Nov 2026]
+        subroutine reduce_kmo_to_active(nf, nfc, ns, g)
+          use constants_module, only: dpc
+          integer     , intent(in)                 :: nf, nfc, ns
+          complex(dpc), allocatable, intent(inout) :: g(:,:,:,:,:)
+        end subroutine reduce_kmo_to_active
+      end interface
       type(K_block)     ,allocatable  ::                    blk(:)
 
       double precision                ::               E_nuc , EHF
@@ -445,6 +455,9 @@ program CI
       if (c_SAO) then 
         call cpu_time(start)
           call Hartree_Fock_SAO(nBas,nO,S,T,V,Hc,ERI,X,E_nuc,EHF,e,coeff,coeff_SAO,n_alpha,n_beta,blk,n_atoms,charge)
+          ! [Nov 2026] restart files: the CC amplitudes are only valid with the same
+          ! orbitals (phases), so the HF orbitals of the first run are saved and reused
+          if (c_checkpoint) call ckpt_orbitals(nBas, nO, coeff_SAO, e, blk)
         call cpu_time(end)
       else 
         call cpu_time(start)
@@ -562,6 +575,61 @@ program CI
             write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for K-MP2 calculation = ',time,' seconds'
             write(outfile,*)
 
+            ! [Nov 2026] keyword frozen_core: the n_fc lowest bands of every k
+            ! (1s of Li-Ne, 1s2s2p of Na-Ar, ...) are not correlated. The k-space
+            ! integrals and the bands are reduced to the active bands, nfuc is set
+            ! to the number of active bands during the CC, and the unchanged CC
+            ! code runs on the active space (Fock diagonal = HF orbital energies,
+            ! which already contain the core). MP2 is repeated with frozen core.
+            nfuc_save = nfuc
+            if (c_frozen_core) then
+              n_fc = 0
+              do i = 1, n_atoms
+                n_fc = n_fc + n_core_orbitals(charge(i))
+              end do
+              if (mod(n_fc, N_cell) /= 0) then
+                write(*,'(a)') ' ERROR frozen_core: core orbitals not the same in every cell'
+                stop
+              end if
+              n_fc = n_fc / N_cell
+              n_act = nfuc - n_fc
+              do i = 1, N_cell
+                if (count(blk(i)%occupation == 2) <= n_fc) then
+                  write(*,'(a)') ' ERROR frozen_core: no active occupied band left'
+                  stop
+                end if
+                if (any(blk(i)%occupation(1:n_fc) /= 2)) then
+                  write(*,'(a)') ' ERROR frozen_core: the lowest bands are not occupied'
+                  stop
+                end if
+              end do
+              write(outfile,'(a,i5,a,i5,a,i5,a)') '  [frozen_core] ', n_fc, ' core bands frozen per k, ', &
+                   n_act, ' of ', nfuc, ' bands active'
+              write(outfile,'(a,f14.6,a,f14.6)') '  [frozen_core] highest core band energy =', &
+                   maxval([(blk(i)%energy(n_fc), i=1,N_cell)]), '   lowest active band energy =', &
+                   minval([(blk(i)%energy(n_fc+1), i=1,N_cell)])
+              if (n_fc > 0) then
+                call reduce_kmo_to_active(nfuc, n_fc, nslot, ERI_kMO_h)
+                allocate(blk_save(N_cell))
+                do i = 1, N_cell
+                  blk_save(i) = blk(i)
+                end do
+                deallocate(blk)
+                allocate(blk(N_cell))
+                do i = 1, N_cell
+                  blk(i)%dim = n_act
+                  allocate(blk(i)%occupation(n_act), blk(i)%energy(n_act), blk(i)%Coeff(1,1))
+                  blk(i)%occupation = blk_save(i)%occupation(n_fc+1:nfuc)
+                  blk(i)%energy     = blk_save(i)%energy(n_fc+1:nfuc)
+                  blk(i)%Coeff      = (0.0d0,0.0d0)
+                end do
+                nfuc = n_act
+                write(outfile,'(a)') '  [frozen_core] k-MP2 with frozen core:'
+                call kMP2_calc_half(N_cell, blk, ERI_kMO_h, E_nuc, EHF, E_MP2)
+              end if
+              flush(outfile)
+            end if
+
             ! [Nov 2026] keyword fast_ccsdt_real: when every k is self-conjugate
             ! (Gamma / zone edge: 1D N=1,2 ; 2x2 ; 2x2x2 ...) and the orbitals are in
             ! the real time-reversal gauge, all integrals and amplitudes are real:
@@ -605,6 +673,18 @@ program CI
             write(outfile,*)
             if (allocated(ERI_kMO_h)) deallocate(ERI_kMO_h)
             if (allocated(ERI_kMO_r)) deallocate(ERI_kMO_r)
+            ! [Nov 2026] frozen core: back to the full bands
+            if (allocated(blk_save)) then
+              nfuc = nfuc_save
+              deallocate(blk)
+              call move_alloc(blk_save, blk)
+              allocate(occ_tab(nfuc,N_cell))
+              do i = 1, N_cell
+                occ_tab(:,i) = blk(i)%occupation(1:nfuc)
+              end do
+              call set_cc_dims(nfuc, N_cell, occ_tab)
+              deallocate(occ_tab)
+            end if
 
           else
 

@@ -14,8 +14,10 @@ module keywords
       public  :: c_nquad_128
       public  :: c_physicist
       public  :: c_ccsdt
-      public  :: c_fast_ccsdt     ! [Nov 2026] zgemm version of the k-CCSD residual
-      public  :: c_fast_real      ! [Nov 2026] fast_ccsdt in real arithmetic (all k = -k)
+      public  :: c_fast_ccsdt
+      public  :: c_fast_real      
+      public  :: c_frozen_core    
+      public  :: c_checkpoint, c_restart, ckpt_dir, ckpt_orb_ok
       public  :: c_debug
 
 
@@ -38,8 +40,12 @@ module keywords
       logical :: c_nquad_128
       logical :: c_physicist
       logical :: c_ccsdt
-      logical :: c_fast_ccsdt     ! [Nov 2026]
-      logical :: c_fast_real      ! [Nov 2026]
+      logical :: c_fast_ccsdt 
+      logical :: c_fast_real  
+      logical :: c_frozen_core
+      logical :: c_checkpoint = .false., c_restart = .false.
+      logical :: ckpt_orb_ok  = .false.
+      character(len=512) :: ckpt_dir = './checkpoint'
       logical :: c_debug
 
 

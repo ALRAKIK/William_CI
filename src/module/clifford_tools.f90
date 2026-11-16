@@ -1,42 +1,42 @@
-!=====================================================================!
-!                                                                     !
-!   module clifford_tools : shared tools for the Clifford-Gaussian    !
-!   integrals in 1D, 2D and 3D                                        !
-!                                                                     !
-!   ndp = number of periodic directions:                              !
-!     Tori1D : ndp = 1  (x periodic,   y,z real)                      !
-!     Tori2D : ndp = 2  (x,y periodic, z real)                        !
-!     Tori3D : ndp = 3  (x,y,z periodic)                              !
-!                                                                     !
-!   Contents                                                          !
-!   --------                                                          !
-!   init_clifford             binomials, double factorials and the    !
-!                             derivative table T (call once)          !
-!   clifford_bessel_ratios    R(e,nu) = exp(-A) I_nu(A) / A^e         !
-!   Icliff_from_R             exp(-A) Int sin^n cos^m exp(A cos) dx   !
-!   overlap_1D_clifford(_ext) 1D overlap factor, periodic direction   !
-!   kinetic_1D_clifford       1D Laplacian factor, periodic direction !
-!   overlap_1D_real           1D overlap factor, real direction       !
-!   kinetic_1D_real           1D Laplacian factor, real direction     !
-!   bessel_scaled_vector      exp(-A) I_n(A), n = 0..N (Miller)       !
-!   bessel_scaled_vector_fast same, start at N, no allocation (ERI)   !
-!   bessel_nmax_estimate      truncation order of exp(-A) I_n(A)      !
-!   fourier_sin_product       Fourier coefficients of sin^i sin^l     !
-!   setup_t_tables(ncap,ndp)  t nodes/weights + Bessel tables (NA,ERI)!
-!   bary_dir                  barycentre exponent/centre along d      !
-!   clifford_pair             bary_dir for d = 1..ndp                 !
-!   hermite_E_1D              McMurchie-Davidson E coefficients       !
-!   orbital_to_lxyz           'dxy' -> (1,1,0)                        !
-!                                                                     !
-!   t-tables (filled by setup_t_tables):                              !
-!     nq_t            number of t nodes (64 or 128)                   !
-!     t_node(k)       nodes   of  Int_0^inf f(t) dt                   !
-!     t_weight(k)     weights                                         !
-!     t_bessel(n,k,d) exp(-C) I_n(C),  C = 2 t_k^2 / a_d^2             !
-!     t_nmax(k,d)     last order kept (1e-16 relative)                !
-!     d = 1..ndp  (a_1 = ax, a_2 = ay, a_3 = az)                      !
-!                                                                     !
-!=====================================================================!
+      !===================================================================!
+      !                                                                   !
+      ! module clifford_tools : shared tools for the Clifford-Gaussian    !
+      ! integrals in 1D, 2D and 3D                                        !
+      !                                                                   !
+      ! ndp = number of periodic directions:                              !
+      !   Tori1D : ndp = 1  (x periodic,   y,z real)                      !
+      !   Tori2D : ndp = 2  (x,y periodic, z real)                        !
+      !   Tori3D : ndp = 3  (x,y,z periodic)                              !
+      !                                                                   !
+      ! Contents                                                          !
+      ! --------                                                          !
+      ! init_clifford             binomials, double factorials and the    !
+      !                           derivative table T (call once)          !
+      ! clifford_bessel_ratios    R(e,nu) = exp(-A) I_nu(A) / A^e         !
+      ! Icliff_from_R             exp(-A) Int sin^n cos^m exp(A cos) dx   !
+      ! overlap_1D_clifford(_ext) 1D overlap factor, periodic direction   !
+      ! kinetic_1D_clifford       1D Laplacian factor, periodic direction !
+      ! overlap_1D_real           1D overlap factor, real direction       !
+      ! kinetic_1D_real           1D Laplacian factor, real direction     !
+      ! bessel_scaled_vector      exp(-A) I_n(A), n = 0..N (Miller)       !
+      ! bessel_scaled_vector_fast same, start at N, no allocation (ERI)   !
+      ! bessel_nmax_estimate      truncation order of exp(-A) I_n(A)      !
+      ! fourier_sin_product       Fourier coefficients of sin^i sin^l     !
+      ! setup_t_tables(ncap,ndp)  t nodes/weights + Bessel tables (NA,ERI)!
+      ! bary_dir                  barycentre exponent/centre along d      !
+      ! clifford_pair             bary_dir for d = 1..ndp                 !
+      ! hermite_E_1D              McMurchie-Davidson E coefficients       !
+      ! orbital_to_lxyz           'dxy' -> (1,1,0)                        !
+      !                                                                   !
+      ! t-tables (filled by setup_t_tables):                              !
+      !   nq_t            number of t nodes (64 or 128)                   !
+      !   t_node(k)       nodes   of  Int_0^inf f(t) dt                   !
+      !   t_weight(k)     weights                                         !
+      !   t_bessel(n,k,d) exp(-C) I_n(C),  C = 2 t_k^2 / a_d^2            !
+      !   t_nmax(k,d)     last order kept (1e-16 relative)                !
+      !   d = 1..ndp  (a_1 = ax, a_2 = ay, a_3 = az)                      !
+      !                                                                   !
+      !===================================================================!
 
 module clifford_tools
 
@@ -75,7 +75,7 @@ contains
 !---------------------------------------------------------------------!
 subroutine init_clifford()
 
-      integer :: s, m, e, nu, n, k
+      integer          :: s, m, e, nu, n, k
       double precision :: Tcur(0:NM,0:NM), Tnew(0:NM,0:NM)
 
       if (initialized) return
@@ -621,7 +621,7 @@ subroutine orbital_to_lxyz(label, lxyz)
       character :: ch
 
       lxyz = 0
-      do c = 2, len_trim(label)              ! skip shell letter s,p,d,f,g
+      do c = 2, len_trim(label)
         ch = label(c:c)
         select case (ch)
         case ('x','X') ; lxyz(1) = lxyz(1) + 1

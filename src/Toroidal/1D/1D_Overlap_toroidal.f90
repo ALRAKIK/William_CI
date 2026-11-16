@@ -1,18 +1,84 @@
-!=====================================================================!
-!                                                                     !
-!                 1D toroidal : OVERLAP INTEGRALS                     !
-!                                                                     !
-!   x : Clifford Gaussian   g^i = [sin(a(x-A))/a]^i                   !
-!                                 exp(-2alpha/a^2 (1-cos a(x-A)))     !
-!   y,z : real Gaussians                                              !
-!                                                                     !
-!   S = sum_prim c_i c_j  kx Sx * ky Sy * kz Sz                        !
-!                                                                     !
-!   overlap_integral_toroidal_1D (l1,l2,r1,r2,AO1,AO2,S)  one pair    !
-!   overlap_matrix_toroidal_1D   (nBas,AO,overlap)        full matrix !
-!                                                                     !
-!   any l (s ... g); l1, l2 = (lx,ly,lz) from orbital_to_lxyz         !
-!=====================================================================!
+      !=====================================================================!
+      !                                                                     !
+      !                 1D toroidal : OVERLAP INTEGRALS                     !
+      !                                                                     !
+      !   x : Clifford Gaussian   g^i = [sin(a(x-A))/a]^i                   !
+      !                                 exp(-2alpha/a^2 (1-cos a(x-A)))     !
+      !   y,z : real Gaussians                                              !
+      !                                                                     !
+      !   S = sum_prim c_i c_j  kx Sx * ky Sy * kz Sz                       !
+      !                                                                     !
+      !   overlap_integral_toroidal_1D (l1,l2,r1,r2,AO1,AO2,S) one pair     !
+      !   overlap_matrix_toroidal_1D   (nBas,AO,overlap)       full matrix  !
+      !                                                                     !
+      !   any l (s ... g); l1, l2 = (lx,ly,lz) from orbital_to_lxyz         !
+      !=====================================================================!
+
+
+      !=================================================================!
+      !  Overlap matrix: rows i = 1..nfuc (unit cell), all columns j,   !
+      !  the rest from the translational symmetry (fill_with_symmetry)  !
+      !=================================================================!
+
+subroutine overlap_matrix_toroidal_1D(nBas,AO,overlap)
+
+      use files
+      use torus_init
+      use classification_ERI
+      use keywords
+      use unitcell_module
+      use clifford_tools, only : init_clifford, orbital_to_lxyz
+
+      implicit none
+
+      integer           ,intent(in)  :: nBas
+      type(ERI_function),intent(in)  :: AO(nBas)
+      double precision  ,intent(out) :: overlap(nBas,nBas)
+
+      integer                        :: i , j
+      integer                        :: lxyz(3,nBas)
+      double precision               :: r1(3) , r2(3)
+
+      !-----------------------------------------------------------------!
+
+      call init_clifford()
+
+      do i = 1 , nBas
+        call orbital_to_lxyz(AO(i)%orbital, lxyz(:,i))
+      end do
+
+      overlap(:,:) = 0.d0
+
+      do i = 1 , nfuc
+        r1 = (/ AO(i)%x , AO(i)%y , AO(i)%z /)
+        do j = 1 , nBas
+          r2 = (/ AO(j)%x , AO(j)%y , AO(j)%z /)
+          call overlap_integral_toroidal_1D(lxyz(:,i),lxyz(:,j),r1,r2,AO(i),AO(j),overlap(i,j))
+        end do
+      end do
+
+      do i = 1 , nfuc
+        do j = 1 , nBas
+          if (abs(overlap(i,j)) < 1e-14) overlap(i,j) = 0.d0
+        end do
+      end do
+
+      call fill_with_symmetry(nBas, overlap)
+
+      if (c_OV) then
+        write(outfile,'(a)') ""
+        write(outfile,'(a)') "------------------------------------"
+        write(outfile,'(a)') "The overlap matrix                  "
+        write(outfile,'(a)') "------------------------------------"
+        write(outfile,'(a)') ""
+        do i = 1 , nBas - 1
+          do j = i , nBas
+            write(outfile,'(i3,i3, 6x,1000(f16.12,2x))') i , j, overlap(i,j)
+          end do
+        end do
+      end if
+
+end subroutine overlap_matrix_toroidal_1D
 
 subroutine overlap_integral_toroidal_1D(l1,l2,r1,r2,AO1,AO2,S)
 
@@ -90,67 +156,3 @@ subroutine overlap_integral_toroidal_1D(l1,l2,r1,r2,AO1,AO2,S)
       end do
 
 end subroutine overlap_integral_toroidal_1D
-
-!=====================================================================!
-!  Overlap matrix: rows i = 1..nfuc (unit cell), all columns j,       !
-!  the rest from the translational symmetry (fill_with_symmetry)      !
-!=====================================================================!
-subroutine overlap_matrix_toroidal_1D(nBas,AO,overlap)
-
-      use files
-      use torus_init
-      use classification_ERI
-      use keywords
-      use unitcell_module
-      use clifford_tools, only : init_clifford, orbital_to_lxyz
-
-      implicit none
-
-      integer           ,intent(in)  :: nBas
-      type(ERI_function),intent(in)  :: AO(nBas)
-      double precision  ,intent(out) :: overlap(nBas,nBas)
-
-      integer                        :: i , j
-      integer                        :: lxyz(3,nBas)
-      double precision               :: r1(3) , r2(3)
-
-      !-----------------------------------------------------------------!
-
-      call init_clifford()
-
-      do i = 1 , nBas
-        call orbital_to_lxyz(AO(i)%orbital, lxyz(:,i))
-      end do
-
-      overlap(:,:) = 0.d0
-
-      do i = 1 , nfuc
-        r1 = (/ AO(i)%x , AO(i)%y , AO(i)%z /)
-        do j = 1 , nBas
-          r2 = (/ AO(j)%x , AO(j)%y , AO(j)%z /)
-          call overlap_integral_toroidal_1D(lxyz(:,i),lxyz(:,j),r1,r2,AO(i),AO(j),overlap(i,j))
-        end do
-      end do
-
-      do i = 1 , nfuc
-        do j = 1 , nBas
-          if (abs(overlap(i,j)) < 1e-14) overlap(i,j) = 0.d0
-        end do
-      end do
-
-      call fill_with_symmetry(nBas, overlap)
-
-      if (c_OV) then
-        write(outfile,'(a)') ""
-        write(outfile,'(a)') "------------------------------------"
-        write(outfile,'(a)') "The overlap matrix                  "
-        write(outfile,'(a)') "------------------------------------"
-        write(outfile,'(a)') ""
-        do i = 1 , nBas - 1
-          do j = i , nBas
-            write(outfile,'(i3,i3, 6x,1000(f16.12,2x))') i , j, overlap(i,j)
-          end do
-        end do
-      end if
-
-end subroutine overlap_matrix_toroidal_1D

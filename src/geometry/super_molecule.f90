@@ -111,12 +111,13 @@ subroutine build_super_molecule(keyword,num_atom_per_unitcell)
           &  type_of_calculation == 'Tori2D' .or. & 
           &  type_of_calculation == 'Tori3D')        then 
 
-        ! [Nov 2026] BUG FIX: cells are generated with x FASTEST (then y, then z),
+        ! BUG FIX: cells are generated with x FASTEST (then y, then z),
         ! the order used by fill_with_symmetry (S,T,V), SAO_Transfer, AO_to_MO_SAO,
         ! MP2_SAO and fourth_k. Before, z was fastest (loops i,j,k), so for 2D/3D
         ! cells with nx /= ny (e.g. 3x2) the first-cell rows were copied to the
         ! wrong cells -> wrong S,T,V (negative overlap eigenvalue) and wrong SAO.
         ! 1D (ny = nz = 1), nx = ny 2D cells and Ring are not affected.
+
         do k = 0 , nz - 1
           do j = 0, ny - 1
             do i = 0, nx - 1
@@ -351,6 +352,9 @@ subroutine read_keywords(keyword)
 
         if (trim(line) == 'fast_ccsdt')  keyword(24) = 'fast_ccsdt'   ! [Nov 2026] zgemm k-CCSD residual
         if (trim(line) == 'fast_ccsdt_real') keyword(26) = 'fcc_real' ! [Nov 2026] real-arithmetic fast_ccsdt (tag <= 10 chars)
+        if (trim(line) == 'frozen_core') keyword(27) = 'frozcore'     ! [Nov 2026] frozen core in fast k-CCSD(T)
+        if (trim(line) == 'checkpoint')  keyword(28) = 'checkpoint'   ! [Nov 2026] binary restart files
+        if (trim(line) == 'restart')     keyword(29) = 'restart'      ! [Nov 2026] restart from them
 
 
         if (trim(line) == 'debug'     )  keyword(25) = 'debug'
