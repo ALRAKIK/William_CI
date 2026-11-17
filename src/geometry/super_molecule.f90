@@ -355,6 +355,13 @@ subroutine read_keywords(keyword)
         if (trim(line) == 'frozen_core') keyword(27) = 'frozcore'     ! [Nov 2026] frozen core in fast k-CCSD(T)
         if (trim(line) == 'checkpoint')  keyword(28) = 'checkpoint'   ! [Nov 2026] binary restart files
         if (trim(line) == 'restart')     keyword(29) = 'restart'      ! [Nov 2026] restart from them
+        if (trim(line) == 'fast_quad')   keyword(30) = 'fast_quad'    ! [Nov 2026] mapped 32/40-point t quadrature
+        if (trim(line) == 'prim_screen') keyword(31) = 'primscreen'   ! [Nov 2026] primitive Schwarz screening (tag <= 10 chars)
+        if (trim(line) == 'cholesky')    keyword(32) = 'cholesky'     ! [Nov 2026] Cholesky ERIs in k-CCSD(T), tol 1e-6
+        if (trim(line) == 'cholesky_4')  keyword(33) = 'cholesky_4'   ! [Nov 2026] same, tol 1e-4
+        if (trim(line) == 'cholesky_8')  keyword(34) = 'cholesky_8'   ! [Nov 2026] same, tol 1e-8
+        if (trim(line) == 'CC_to_disk')  keyword(35) = 'cc_disk'      ! [Nov 2026] vvvv k-blocks on disk in fast k-CCSD(T)
+
 
 
         if (trim(line) == 'debug'     )  keyword(25) = 'debug'

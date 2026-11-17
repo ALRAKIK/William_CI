@@ -33,13 +33,13 @@ subroutine build_ccsd_residuals_fast_r(blk,g,ktab,t1,t2,Foo,Fvv,Fov,Loo,Lvv, &
                                      Woooo,Wvoov,Wvovo,R1,R2)
       use constants_module, only: dp, dpc
       use unitcell_module , only: nfuc, N_cell
-      use cc_dims         , only: o_hi, v_lo, use_ksym, gidx, nslot
+      use cc_dims         , only: o_hi, v_lo, use_ksym, gidx, nslot, g_n1
       use k_blocks        , only: K_block
       use omp_lib                                   ! [Nov 2026]
       implicit none
       ! input !
       type(K_block), intent(in) :: blk(N_cell)
-      real(dp) , intent(in) :: g(nfuc,nfuc,nfuc,nfuc,nslot)
+      real(dp) , intent(in) :: g(g_n1,nfuc,nfuc,nfuc,nslot)
       real(dp) , intent(in) :: t1(nfuc,nfuc,N_cell)
       real(dp) , intent(in) :: t2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell)
       real(dp) , intent(in) :: Foo(nfuc,nfuc,N_cell)

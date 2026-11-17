@@ -10,7 +10,9 @@ program CI
       use precomputed_bessel
       use unitcell_module
       use k_blocks
-      use cc_dims , only : o_hi , v_lo , set_cc_dims , set_gslots , nslot , use_ksym   ! [Nov 2026] compact g
+      use cc_dims , only : o_hi , v_lo , set_cc_dims , set_gslots , nslot , use_ksym , g_n1   ! [Nov 2026] compact g
+      use chol_store , only : chol_on , chol_build , chol_build_g , chol_reduce_active , chol_free , chol_bytes   ! [Nov 2026] keyword cholesky
+      use cc_disk    , only : disk_on , disk_open , disk_close , disk_bytes   ! [Nov 2026] keyword CC_to_disk
       use omp_lib , only : omp_get_wtime
 
       implicit none
@@ -67,6 +69,11 @@ program CI
           integer     , intent(in)                 :: nf, nfc, ns
           complex(dpc), allocatable, intent(inout) :: g(:,:,:,:,:)
         end subroutine reduce_kmo_to_active
+        subroutine reduce_go_active(n1, nf, nfc, ns, g)               ! [Nov 2026] CC_to_disk
+          use constants_module, only: dpc
+          integer, intent(in) :: n1, nf, nfc, ns
+          complex(dpc), allocatable, intent(inout) :: g(:,:,:,:,:)
+        end subroutine reduce_go_active
       end interface
       type(K_block)     ,allocatable  ::                    blk(:)
 
@@ -559,6 +566,40 @@ program CI
             write(outfile,'(a,i8,a,i8,a,f8.2,a,l2,a)') '  [fast_ccsdt] k-space integrals: ', nslot, &
                  ' of ', N_cell**3, ' k-blocks stored (', 16.d0*dble(nfuc)**4*dble(nslot)/1024.d0**3, &
                  ' GB, k<->-k symmetry =', use_ksym, ')'
+            g_n1 = nfuc
+            if (c_cholesky) then
+              ! [Nov 2026] keyword cholesky: pivoted Cholesky of the integrals per
+              ! momentum transfer K (from the AO integrals of the SCF), then only
+              ! g(i,q,r,s) with an occupied first index is stored; Wvvvv is built
+              ! from the Cholesky vectors inside the ladder.
+              if (c_physicist) error stop 'keyword cholesky needs chemist-ordered integrals (no physicist / MCDE)'
+              g_n1 = o_hi
+              w_start = omp_get_wtime()
+                call chol_build(nBas, ERI, coeff_SAO, cholesky_tol, outfile)
+                deallocate(ERI)                ! the real-space ERI is not needed any more
+                chol_on = .true.
+                write(outfile,'(a,f8.2,a,f8.2,a)') '  [cholesky] stored k-space integrals (occupied first index): ', &
+                     16.d0*dble(g_n1)*dble(nfuc)**3*dble(nslot)/1024.d0**3, ' GB instead of ', &
+                     16.d0*dble(nfuc)**4*dble(nslot)/1024.d0**3, ' GB'
+                allocate(ERI_kMO_h(g_n1,nfuc,nfuc,nfuc,nslot))
+                call chol_build_g(g_n1, ERI_kMO_h)
+              w_end = omp_get_wtime()
+              write(outfile,'(A65,1X,F9.3,A8)') 'Wall time for Cholesky + k-MO integrals = ',w_end-w_start,' seconds'
+            else if (c_cc_disk) then
+              ! [Nov 2026] keyword CC_to_disk: exact integrals; only g(i,q,r,s) with
+              ! an occupied first index in memory, the vvvv blocks on disk
+              g_n1 = o_hi
+              allocate(ERI_kMO_h(g_n1,nfuc,nfuc,nfuc,nslot))
+              w_start = omp_get_wtime()
+                call disk_open(v_lo, nfuc)
+                call transform_ERI_AO_to_kMO_disk(nBas, ERI, coeff_SAO, g_n1, ERI_kMO_h)
+                deallocate(ERI)                ! the real-space ERI is not needed any more
+              w_end = omp_get_wtime()
+              write(outfile,'(a,f8.2,a,f9.2,a,f8.2,a)') '  [CC_to_disk] in memory (occupied first index): ', &
+                   16.d0*dble(g_n1)*dble(nfuc)**3*dble(nslot)/1024.d0**3, ' GB , vvvv on disk: ', &
+                   disk_bytes()/1024.d0**3, ' GB  (all in memory: ', 16.d0*dble(nfuc)**4*dble(nslot)/1024.d0**3, ' GB)'
+              write(outfile,'(A65,1X,F9.3,A8)') 'Wall time for AO to k-MO transformation (disk) = ',w_end-w_start,' seconds'
+            else
             allocate(ERI_kMO_h(nfuc,nfuc,nfuc,nfuc,nslot))
 
             w_start = omp_get_wtime()
@@ -566,6 +607,7 @@ program CI
               deallocate(ERI)                  ! the real-space ERI is not needed any more
             w_end = omp_get_wtime()
             write(outfile,'(A65,1X,F9.3,A8)') 'Wall time for AO to k-MO transformation = ',w_end-w_start,' seconds'
+            end if
             write(outfile,*)
 
             call cpu_time(start)
@@ -609,7 +651,18 @@ program CI
                    maxval([(blk(i)%energy(n_fc), i=1,N_cell)]), '   lowest active band energy =', &
                    minval([(blk(i)%energy(n_fc+1), i=1,N_cell)])
               if (n_fc > 0) then
+                if (c_cholesky) then
+                  ! [Nov 2026] cholesky: drop the core bands from the vectors, g is rebuilt below
+                  call chol_reduce_active(n_fc)
+                  deallocate(ERI_kMO_h)
+                else if (c_cc_disk) then
+                  ! [Nov 2026] CC_to_disk: drop the core bands of the in-memory part
+                  ! (the virtual bands on disk are unchanged, only renumbered)
+                  call reduce_go_active(g_n1, nfuc, n_fc, nslot, ERI_kMO_h)
+                  g_n1 = g_n1 - n_fc
+                else
                 call reduce_kmo_to_active(nfuc, n_fc, nslot, ERI_kMO_h)
+                end if
                 allocate(blk_save(N_cell))
                 do i = 1, N_cell
                   blk_save(i) = blk(i)
@@ -624,6 +677,13 @@ program CI
                   blk(i)%Coeff      = (0.0d0,0.0d0)
                 end do
                 nfuc = n_act
+                if (c_cholesky) then
+                  g_n1 = g_n1 - n_fc
+                  allocate(ERI_kMO_h(g_n1,nfuc,nfuc,nfuc,nslot))
+                  call chol_build_g(g_n1, ERI_kMO_h)
+                else if (.not. c_cc_disk) then
+                  g_n1 = nfuc
+                end if
                 write(outfile,'(a)') '  [frozen_core] k-MP2 with frozen core:'
                 call kMP2_calc_half(N_cell, blk, ERI_kMO_h, E_nuc, EHF, E_MP2)
               end if
@@ -645,7 +705,7 @@ program CI
                 write(outfile,'(a)') '  [fast_ccsdt_real] WARNING: not every k is self-conjugate (or no real gauge):'
                 write(outfile,'(a)') '                    complex fast_ccsdt is used instead'
               else
-                allocate(ERI_kMO_r(nfuc,nfuc,nfuc,nfuc,nslot))
+                allocate(ERI_kMO_r(g_n1,nfuc,nfuc,nfuc,nslot))
                 call eri_to_real(size(ERI_kMO_h,kind=8), ERI_kMO_h, ERI_kMO_r, g_imax, g_rmax)
                 write(outfile,'(a,es10.2,a,es10.2)') '  [fast_ccsdt_real] max |Im g| =', g_imax, '   max |g| =', g_rmax
                 if (g_imax > 1.0d-8*max(1.0d0,g_rmax)) then
@@ -655,7 +715,7 @@ program CI
                 else
                   deallocate(ERI_kMO_h)
                   write(outfile,'(a,f8.2,a)') '  [fast_ccsdt_real] real arithmetic, k-space integrals: ', &
-                       8.d0*dble(nfuc)**4*dble(nslot)/1024.d0**3, ' GB'
+                       8.d0*dble(g_n1)*dble(nfuc)**3*dble(nslot)/1024.d0**3, ' GB'
                 end if
               end if
               flush(outfile)
@@ -673,6 +733,11 @@ program CI
             write(outfile,*)
             if (allocated(ERI_kMO_h)) deallocate(ERI_kMO_h)
             if (allocated(ERI_kMO_r)) deallocate(ERI_kMO_r)
+            if (chol_on) then                ! [Nov 2026] keyword cholesky
+              call chol_free()
+              chol_on = .false.
+            end if
+            if (disk_on) call disk_close()   ! [Nov 2026] CC_to_disk: scratch file deleted
             ! [Nov 2026] frozen core: back to the full bands
             if (allocated(blk_save)) then
               nfuc = nfuc_save

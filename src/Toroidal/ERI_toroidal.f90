@@ -14,6 +14,14 @@
 !      store with the 8-fold symmetry (chemist or physicist)          !
 !   5) normal path: rows i > nfuc by translation, in place            !
 !                                                                     !
+!   [Nov 2026] symmetry-unique quartets: a shell quartet is computed  !
+!   only if it is the smallest member of its orbit under the 8        !
+!   permutations x the lattice translations (cells x fastest, then y, !
+!   then z). Each value is scattered to all 8 permutations, shifted   !
+!   so that the first index lies in the unit cell. ~3.5x fewer kernel !
+!   calls. Falls back to the original loop if the shells are not the  !
+!   same in every cell.                                               !
+!                                                                     !
 !   AO must be the SAME normalized list used for S, T and V.          !
 !=====================================================================!
 
@@ -26,7 +34,8 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       use classification_ERI
       use unitcell_module
       use debug_tools
-      use clifford_tools, only : init_clifford, orbital_to_lxyz, setup_t_tables, bessel_nmax_estimate
+      use clifford_tools, only : init_clifford, orbital_to_lxyz, setup_t_tables, bessel_nmax_estimate, &
+                                 ps_on, ps_noscreen, ps_qp, ps_bra, ps_ket
 
       implicit none
 
@@ -49,6 +58,11 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       integer                        :: SI, SJ, SK, SL
       double precision               :: emax, amin, a_dir(3), val
       logical                        :: same
+      logical                        :: sym_ok
+      integer                        :: nshuc, q4(4), qc(4), pp(4), ii, iperm, ncl(3)
+      double precision               :: Qmax
+      integer                        :: mp, p1, p2, ab(4)
+      type(ERI_function), allocatable :: A1(:), B1(:)
 
       !-----------------------------------------------------------------!
 
@@ -112,6 +126,122 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
           Qsh(SI,SJ) = maxval(Q_schwarz(sh_first(SI):sh_first(SI)+sh_n(SI)-1, sh_first(SJ):sh_first(SJ)+sh_n(SJ)-1))
         end do
       end do
+
+      ! ---- symmetry-unique shell quartets (translation x 8-fold) ---- !
+      ncl = (/ max(nx,1), max(ny,1), max(nz,1) /)
+      nshuc = 0
+      do SI = 1 , nsh
+        if (sh_first(SI) <= nfuc) nshuc = nshuc + 1
+      end do
+      sym_ok = (nsh == nshuc*ncl(1)*ncl(2)*ncl(3)) .and. (nBas == nfuc*ncl(1)*ncl(2)*ncl(3))
+      if (sym_ok) then
+        do SI = 1 , nsh - nshuc               ! every cell repeats the shells of the unit cell
+          if (sh_n(SI+nshuc) /= sh_n(SI) .or. sh_first(SI+nshuc) /= sh_first(SI) + nfuc) sym_ok = .false.
+        end do
+      end if
+
+      if (sym_ok) then
+
+        Qmax = maxval(Qsh)
+
+        ! ---- keyword prim_screen: primitive-pair Schwarz table ---- !
+        ! built with the kernel's own prefactor screen switched off, so  !
+        ! that small diagonal integrals are not set to zero.             !
+        ps_on = .false.
+        if (c_prim_screen) then
+          mp = 0
+          do SI = 1 , nsh
+            mp = max(mp, size(AO(sh_first(SI))%exponent))
+          end do
+          allocate(ps_qp(mp,mp,nshuc,nsh)) ; ps_qp = 0.d0
+          ps_noscreen = .true.
+          !$omp parallel do default(shared) private(SI,SJ,p1,p2,A1,B1,blk,a,b) schedule(dynamic,1) collapse(2)
+          do SI = 1 , nshuc
+            do SJ = 1 , nsh
+              allocate(A1(sh_n(SI)), B1(sh_n(SJ)), blk(sh_n(SI),sh_n(SJ),sh_n(SI),sh_n(SJ)))
+              do p1 = 1 , size(AO(sh_first(SI))%exponent)
+                do p2 = 1 , size(AO(sh_first(SJ))%exponent)
+                  do a = 1 , sh_n(SI)
+                    A1(a) = AO(sh_first(SI)+a-1)
+                    A1(a)%exponent    = (/ AO(sh_first(SI)+a-1)%exponent(p1) /)
+                    A1(a)%coefficient = (/ AO(sh_first(SI)+a-1)%coefficient(p1) /)
+                  end do
+                  do b = 1 , sh_n(SJ)
+                    B1(b) = AO(sh_first(SJ)+b-1)
+                    B1(b)%exponent    = (/ AO(sh_first(SJ)+b-1)%exponent(p2) /)
+                    B1(b)%coefficient = (/ AO(sh_first(SJ)+b-1)%coefficient(p2) /)
+                  end do
+                  call ERI_shell_block_toroidal(ndp,sh_n(SI),A1,sh_n(SJ),B1,sh_n(SI),A1,sh_n(SJ),B1,blk)
+                  do a = 1 , sh_n(SI)
+                    do b = 1 , sh_n(SJ)
+                      ps_qp(p1,p2,SI,SJ) = max(ps_qp(p1,p2,SI,SJ), dsqrt(dabs(blk(a,b,a,b))))
+                    end do
+                  end do
+                end do
+              end do
+              deallocate(A1, B1, blk)
+            end do
+          end do
+          !$omp end parallel do
+          ps_noscreen = .false.
+          ps_on = .true.
+        end if
+        two_electron_integrals = 0.d0
+
+        !$omp parallel do default(shared) private(SI,SJ,SK,SL,blk,a,b,c,d,i,j,k,l,val,q4,qc,pp,ii,iperm,ab) &
+        !$omp schedule(dynamic,1) collapse(2)
+        do SI = 1 , nshuc
+          do SJ = 1 , nsh
+            if (mod(SJ-1,nshuc)+1 < SI) cycle                         ! canonical: SI is the smallest local index
+            if (Qsh(SI,SJ)*Qmax < schwarz_thresh) cycle
+            do SK = 1 , nsh
+              if (mod(SK-1,nshuc)+1 < SI) cycle
+              do SL = 1 , nsh
+                if (mod(SL-1,nshuc)+1 < SI) cycle
+                if (Qsh(SI,SJ)*Qsh(SK,SL) < schwarz_thresh) cycle
+                q4 = (/ SI, SJ, SK, SL /)
+                call canonical_quartet_toroidal(q4, nsh, nshuc, ncl, qc)
+                if (any(qc /= q4)) cycle
+                allocate(blk(sh_n(SI),sh_n(SJ),sh_n(SK),sh_n(SL)))
+                if (ps_on) then                                   ! primitive tables of the bra and ket pairs
+                  ps_bra => ps_qp(:,:,SI,SJ)
+                  ab = (/ SK, SL, SK, SK /)
+                  call translate_to_unit_cell(ab, nshuc, ncl)     ! (SK,SL) shifted so that SK is in the unit cell
+                  ps_ket => ps_qp(:,:,ab(1),ab(2))
+                end if
+                call ERI_shell_block_toroidal(ndp,sh_n(SI),AO(sh_first(SI):),sh_n(SJ),AO(sh_first(SJ):), &
+                                           sh_n(SK),AO(sh_first(SK):),sh_n(SL),AO(sh_first(SL):),blk)
+                do d = 1 , sh_n(SL)
+                 do c = 1 , sh_n(SK)
+                  do b = 1 , sh_n(SJ)
+                   do a = 1 , sh_n(SI)
+                    i = sh_first(SI)+a-1 ; j = sh_first(SJ)+b-1
+                    k = sh_first(SK)+c-1 ; l = sh_first(SL)+d-1
+                    if (Q_schwarz(i,j)*Q_schwarz(k,l) < schwarz_thresh) cycle   ! same screen as before
+                    val = blk(a,b,c,d)
+                    do iperm = 1 , 8
+                      call permute_quartet(iperm, (/ i, j, k, l /), pp)
+                      call translate_to_unit_cell(pp, nfuc, ncl)     ! (ij|kl) chemist, pp(1) in the unit cell
+                      if (c_physicist) then
+                        two_electron_integrals(pp(1),pp(3),pp(2),pp(4)) = val
+                      else
+                        two_electron_integrals(pp(1),pp(2),pp(3),pp(4)) = val
+                      end if
+                    end do
+                   end do
+                  end do
+                 end do
+                end do
+                deallocate(blk)
+              end do
+            end do
+          end do
+        end do
+        !$omp end parallel do
+        ps_on = .false.
+        if (allocated(ps_qp)) deallocate(ps_qp)
+
+      else
 
       ! ---- bra shell pairs (SI <= SJ, SI touching the unit cell) ---- !
       npair = 0
@@ -185,11 +315,87 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       end do
       !$omp end parallel do
 
+      deallocate(ip_I, ip_J)
+
+      end if   ! sym_ok
+
       if (.not. c_SAO) then
         call symmetry_of_integrals_ERI(nBas,nfuc,two_electron_integrals)        ! rows i > nfuc, in place
         if (c_debug) call check_eri_symmetry(nBas, two_electron_integrals, outfile)
       end if
 
-      deallocate(sh_first, sh_n, Q_schwarz, Qsh, ip_I, ip_J)
+      deallocate(sh_first, sh_n, Q_schwarz, Qsh)
 
 end subroutine ERI_integral_toroidal
+
+!---------------------------------------------------------------------!
+! 8 index permutations of a chemist quartet (ij|kl)                   !
+!---------------------------------------------------------------------!
+subroutine permute_quartet(iperm, q, p)
+
+      implicit none
+      integer, intent(in)  :: iperm, q(4)
+      integer, intent(out) :: p(4)
+
+      select case (iperm)
+      case (1) ; p = (/ q(1), q(2), q(3), q(4) /)
+      case (2) ; p = (/ q(2), q(1), q(3), q(4) /)
+      case (3) ; p = (/ q(1), q(2), q(4), q(3) /)
+      case (4) ; p = (/ q(2), q(1), q(4), q(3) /)
+      case (5) ; p = (/ q(3), q(4), q(1), q(2) /)
+      case (6) ; p = (/ q(4), q(3), q(1), q(2) /)
+      case (7) ; p = (/ q(3), q(4), q(2), q(1) /)
+      case default ; p = (/ q(4), q(3), q(2), q(1) /)
+      end select
+
+end subroutine permute_quartet
+
+!---------------------------------------------------------------------!
+! Shift the four indices (functions or shells, nblk per cell)     !
+! by the same lattice vector so that p(1) is in the unit cell.   !
+! Cells are numbered with x fastest, then y, then z (super_molecule). !
+!---------------------------------------------------------------------!
+subroutine translate_to_unit_cell(p, nblk, ncl)
+
+      implicit none
+      integer, intent(inout) :: p(4)
+      integer, intent(in)    :: nblk, ncl(3)
+      integer :: ii, c, loc, cx, cy, cz, tx, ty, tz
+
+      c  = (p(1)-1)/nblk
+      tx = mod(c, ncl(1)) ; ty = mod(c/ncl(1), ncl(2)) ; tz = c/(ncl(1)*ncl(2))
+      do ii = 1 , 4
+        c   = (p(ii)-1)/nblk
+        loc = mod(p(ii)-1, nblk)
+        cx  = modulo(mod(c, ncl(1))         - tx, ncl(1))
+        cy  = modulo(mod(c/ncl(1), ncl(2))  - ty, ncl(2))
+        cz  = modulo(c/(ncl(1)*ncl(2))      - tz, ncl(3))
+        p(ii) = (cx + ncl(1)*(cy + ncl(2)*cz))*nblk + loc + 1
+      end do
+
+end subroutine translate_to_unit_cell
+
+!---------------------------------------------------------------------!
+! Smallest member (lexicographic) of the orbit of a shell quartet     !
+! under the 8 permutations x lattice translations.                    !
+!---------------------------------------------------------------------!
+subroutine canonical_quartet_toroidal(q, nsh, nshuc, ncl, best)
+
+      implicit none
+      integer, intent(in)  :: q(4), nsh, nshuc, ncl(3)
+      integer, intent(out) :: best(4)
+      integer :: p(4), iperm, ii
+
+      best = huge(1)
+      do iperm = 1 , 8
+        call permute_quartet(iperm, q, p)
+        call translate_to_unit_cell(p, nshuc, ncl)
+        do ii = 1 , 4
+          if (p(ii) < best(ii)) then
+            best = p ; exit
+          end if
+          if (p(ii) > best(ii)) exit
+        end do
+      end do
+
+end subroutine canonical_quartet_toroidal

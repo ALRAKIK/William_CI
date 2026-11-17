@@ -188,7 +188,7 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
               bra_fac  = bra_fac * dexp(-mu*(rA(d)-rB(d))**2)
             end if
           end do
-          if (dabs(bra_fac)*cAmax*cBmax*ket_max <= screen_tol) cycle
+          if (.not. ps_noscreen .and. dabs(bra_fac)*cAmax*cBmax*ket_max <= screen_tol) cycle
 
           do d = 1 , 3
             if (d <= ndp) then
@@ -221,7 +221,10 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
             do l = 1 , n4
               kl = kl + 1
               fac = bra_fac * k_fac(kl)
-              if (dabs(fac)*cAmax*cBmax*maxval(abs(coC(k,:)))*maxval(abs(coD(l,:))) <= screen_tol) cycle
+              if (.not. ps_noscreen .and. dabs(fac)*cAmax*cBmax*maxval(abs(coC(k,:)))*maxval(abs(coD(l,:))) <= screen_tol) cycle
+              if (ps_on) then                                         ! keyword prim_screen
+                if (ps_bra(i,j)*ps_ket(k,l) < ps_tol) cycle
+              end if
               q = k_q(kl)
 
               !---- 1D factors for every power combination ----!

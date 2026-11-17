@@ -63,6 +63,8 @@ MODULES_IN_ORDER = constants_module \
                    debug    \
                    K_blocks \
                    cc_dims \
+                   chol_store \
+                   cc_disk \
                    HF_constant \
 # =================================================== #
 

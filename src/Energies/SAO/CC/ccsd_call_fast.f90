@@ -9,7 +9,7 @@ subroutine k_ccsd_T_fast(blk,ERI_kMO,EHF,Enuc,EMP2)
       use constants_module, only: dp, dpc
       use unitcell_module , only: nfuc, N_cell
       use k_blocks        , only: K_block
-      use cc_dims         , only: o_hi, v_lo, set_cc_dims, nslot   ! [Nov 2026] nslot
+      use cc_dims         , only: o_hi, v_lo, set_cc_dims, nslot, g_n1   ! [Nov 2026] nslot
       use omp_lib
 
       implicit none 
@@ -17,7 +17,7 @@ subroutine k_ccsd_T_fast(blk,ERI_kMO,EHF,Enuc,EMP2)
       ! input !
 
       type(K_block), intent(in) :: blk(N_cell)
-      complex(dpc) , intent(inout) :: ERI_kMO(nfuc,nfuc,nfuc,nfuc,nslot)   ! [Nov 2026] compact g; vvvv block used as Wvvvv during CCSD, restored
+      complex(dpc) , intent(inout) :: ERI_kMO(g_n1,nfuc,nfuc,nfuc,nslot)   ! [Nov 2026] compact g; vvvv block used as Wvvvv during CCSD, restored
       real(dp)     , intent(in) :: EHF , Enuc , EMP2
 
       ! local ! 

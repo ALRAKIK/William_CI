@@ -17,14 +17,14 @@ subroutine solve_kccsd_fast_r(blk,g,ktab,t1,t2,converged, max_iter,damping,energ
       use unitcell_module , only: nfuc, N_cell
       use cc_dims       , only: o_hi, v_lo
       use k_blocks        , only: K_block
-      use cc_dims         , only: nslot, gidx           ! [Nov 2026] compact g
+      use cc_dims         , only: nslot, g_n1, gidx           ! [Nov 2026] compact g
 
       implicit none 
 
       ! input ! 
 
       type(K_block), intent(in)      :: blk(N_cell)
-      real(dp) , intent(inout)   :: g(nfuc,nfuc,nfuc,nfuc,nslot)   ! [Nov 2026] compact g (cc_dims gidx); vvvv block holds Wvvvv during CCSD
+      real(dp) , intent(inout)   :: g(g_n1,nfuc,nfuc,nfuc,nslot)   ! [Nov 2026] compact g (cc_dims gidx); vvvv block holds Wvvvv during CCSD
       integer      , intent(in)      :: max_iter,ndiis
       real(dp)     , intent(in)      :: damping,energy_tol,residual_tol
       integer      , intent(in)      :: ktab(N_cell,N_cell,N_cell)

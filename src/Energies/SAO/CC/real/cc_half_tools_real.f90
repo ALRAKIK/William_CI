@@ -15,7 +15,7 @@
 subroutine get_t_term_h_r(blk,g,ktab,t2)
 
       use constants_module, only: dp, dpc
-      use cc_dims         , only: gidx, nslot      ! [Nov 2026] compact g
+      use cc_dims         , only: gidx, nslot, g_n1      ! [Nov 2026] compact g
       use unitcell_module , only: nfuc, N_cell
       use cc_dims       , only: o_hi, v_lo
       use k_blocks        , only: K_block
@@ -25,7 +25,7 @@ subroutine get_t_term_h_r(blk,g,ktab,t2)
       ! input ! 
 
       type(K_block), intent(in)  :: blk(N_cell)
-      real(dp) , intent(in)  :: g(nfuc,nfuc,nfuc,nfuc,nslot)   ! [Nov 2026] compact g (cc_dims gidx)
+      real(dp) , intent(in)  :: g(g_n1,nfuc,nfuc,nfuc,nslot)   ! [Nov 2026] compact g (cc_dims gidx)
       integer      , intent(in)  :: ktab(N_cell,N_cell,N_cell)
 
       ! local ! 
@@ -107,12 +107,12 @@ subroutine build_ccsd_f_h_r(blk,g,ktab,t1,t2,Foo,Fvv,Fov)
       ! partial sums per k pair (parallel), then summed in k order.
       use constants_module, only: dp, dpc
       use unitcell_module , only: nfuc, N_cell
-      use cc_dims         , only: o_hi, v_lo, gidx, nslot
+      use cc_dims         , only: o_hi, v_lo, gidx, nslot, g_n1
       use k_blocks        , only: K_block
       use omp_lib                                   ! [Nov 2026]
       implicit none
       type(K_block), intent(in) :: blk(N_cell)
-      real(dp) , intent(in) :: g(nfuc,nfuc,nfuc,nfuc,nslot)
+      real(dp) , intent(in) :: g(g_n1,nfuc,nfuc,nfuc,nslot)
       real(dp) , intent(in) :: t1(nfuc,nfuc,N_cell)
       real(dp) , intent(in) :: t2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell)
       integer      , intent(in) :: ktab(N_cell,N_cell,N_cell)
@@ -266,7 +266,7 @@ end subroutine build_ccsd_f_h_r
 subroutine build_ccsd_l_h_r(blk,g,t1,Foo,Fvv,Loo,Lvv)
       
       use constants_module, only: dp, dpc
-      use cc_dims         , only: gidx, nslot      ! [Nov 2026] compact g
+      use cc_dims         , only: gidx, nslot, g_n1      ! [Nov 2026] compact g
       use unitcell_module , only: nfuc, N_cell
       use k_blocks        , only: K_block
 
@@ -275,7 +275,7 @@ subroutine build_ccsd_l_h_r(blk,g,t1,Foo,Fvv,Loo,Lvv)
       ! input ! 
 
       type(K_block), intent(in) :: blk(N_cell)
-      real(dp) , intent(in) :: g(nfuc,nfuc,nfuc,nfuc,nslot)   ! [Nov 2026] compact g (cc_dims gidx)
+      real(dp) , intent(in) :: g(g_n1,nfuc,nfuc,nfuc,nslot)   ! [Nov 2026] compact g (cc_dims gidx)
       real(dp) , intent(in) :: t1(nfuc,nfuc,N_cell)
       real(dp) , intent(in) :: Foo(nfuc,nfuc,N_cell),Fvv(nfuc,nfuc,N_cell)
 
@@ -391,14 +391,16 @@ subroutine update_vvvv_in_g_h_r(blk,g,ktab,dt1)
       ! Same result as the former scalar O(o v^4) loop, which ran every iteration.
 
       use constants_module, only: dp, dpc
-      use cc_dims         , only: gidx, nslot, o_hi, v_lo
+      use cc_dims         , only: gidx, nslot, g_n1, o_hi, v_lo
       use unitcell_module , only: nfuc, N_cell
       use k_blocks        , only: K_block
+      use chol_store      , only: chol_on          ! [Nov 2026] keyword cholesky
+      use cc_disk         , only: disk_on          ! [Nov 2026] keyword CC_to_disk
 
       implicit none
 
       type(K_block), intent(in)    :: blk(N_cell)
-      real(dp) , intent(inout) :: g(nfuc,nfuc,nfuc,nfuc,nslot)
+      real(dp) , intent(inout) :: g(g_n1,nfuc,nfuc,nfuc,nslot)
       integer      , intent(in)    :: ktab(N_cell,N_cell,N_cell)
       real(dp) , intent(in)    :: dt1(nfuc,nfuc,N_cell)
 
@@ -408,6 +410,10 @@ subroutine update_vvvv_in_g_h_r(blk,g,ktab,dt1)
       real(dp), allocatable :: D(:,:,:), A1(:,:,:), A2(:,:,:), W(:,:,:)
       real(dp), parameter :: zero=0.0_dp, one=1.0_dp
 
+      ! [Nov 2026] keyword cholesky: Wvvvv is built from the Cholesky vectors
+      ! in the ladder (chol_vvvv_gm_r); g holds no vvvv block
+      ! (CC_to_disk: g holds no vvvv block either, Wvvvv is formed in the ladder)
+      if (chol_on .or. disk_on) return
       no = o_hi ; nv = nfuc - v_lo + 1
       if (no <= 0 .or. nv <= 0) return
       do k=1,N_cell

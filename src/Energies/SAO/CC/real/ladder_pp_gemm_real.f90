@@ -5,13 +5,15 @@
 !=====================================================================!
 subroutine ladder_pp_gemm_r(blk,g,ktab,t1,t2,R2)
   use constants_module, only: dp, dpc
-      use cc_dims         , only: gidx, nslot      ! [Nov 2026] compact g
+      use cc_dims         , only: gidx, nslot, g_n1      ! [Nov 2026] compact g
   use unitcell_module , only: nfuc, N_cell
   use cc_dims         , only: o_hi, v_lo, use_ksym   ! [Nov 2026] use_ksym
   use k_blocks        , only: K_block
+  use chol_store      , only: chol_on, chol_vvvv_gm_r   ! [Nov 2026] keyword cholesky
+  use cc_disk         , only: disk_on, disk_vvvv_gm_r   ! [Nov 2026] keyword CC_to_disk
   implicit none
   type(K_block), intent(in)    :: blk(N_cell)
-  real(dp) , intent(in)    :: g(nfuc,nfuc,nfuc,nfuc,nslot)   ! [Nov 2026] compact g (cc_dims gidx)
+  real(dp) , intent(in)    :: g(g_n1,nfuc,nfuc,nfuc,nslot)   ! [Nov 2026] compact g (cc_dims gidx)
   integer      , intent(in)    :: ktab(N_cell,N_cell,N_cell)
   real(dp) , intent(in)    :: t1(nfuc,nfuc,N_cell)
   real(dp) , intent(in)    :: t2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell)
@@ -79,6 +81,13 @@ subroutine ladder_pp_gemm_r(blk,g,ktab,t1,t2,R2)
           nb = b1 - b0 + 1
           ! Gm(c,d,a,b) = g(a,c,b,d; ka,kc,kb)
           ic = gidx(ka,kc,kb)                   ! [Nov 2026] compact g
+          if (chol_on) then
+            ! [Nov 2026] keyword cholesky: Wvvvv(t1) block from the Cholesky vectors
+            call chol_vvvv_gm_r(ka, kc, kb, b0, b1, o_hi, v_lo, occ, t1, Gm)
+          else if (disk_on) then
+            ! [Nov 2026] keyword CC_to_disk: vvvv block from the scratch file + t1 terms
+            call disk_vvvv_gm_r(ka, kc, kb, b0, b1, o_hi, v_lo, occ, t1, g, Gm)
+          else
           !$omp parallel do collapse(2) private(a,b)
           do b=b0,b1
             do a=v_lo,nfuc
@@ -90,6 +99,7 @@ subroutine ladder_pp_gemm_r(blk,g,ktab,t1,t2,R2)
             end do
           end do
           !$omp end parallel do
+          end if
           call dgemm('N','N', no2*N_cell, nv*nb, nv*nv, one, TAUm, no2*N_cell, &
                      Gm, nv*nv, one, RWm(1,1,1,v_lo,b0), no2*N_cell)
         end do

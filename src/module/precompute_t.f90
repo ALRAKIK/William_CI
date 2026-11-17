@@ -8,6 +8,10 @@ module precomputed_bessel
       double precision, allocatable :: t_val(:), w_val(:)
       integer                       :: nquad_point
       integer , parameter           :: Nmax_global = 100000
+      ! [Nov 2026] keyword fast_quad: Gauss-Legendre in u on [0,1) mapped by
+      ! t = fast_quad_scale * u / (1-u); nquad_point nodes (32, or 40 with nquad_128)
+      logical                       :: fast_quad = .false.
+      double precision, parameter   :: fast_quad_scale = 0.6d0
 
       type :: bessel_col
           double precision, allocatable :: I(:)   ! I(0:nmax)
@@ -483,6 +487,11 @@ module precomputed_bessel
 
       allocate (t_val(nquad_point), w_val(nquad_point))
 
+      if (fast_quad) then
+        call fast_quad_points(nquad_point, t_val, w_val)
+        return
+      end if
+
       if (nquad_point == 64) then 
 
       t_val = [   0.00034758605080146475d0,&
@@ -884,6 +893,53 @@ module precomputed_bessel
       end if
 
       end subroutine gauss_legendre_points
+
+      ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! -
+      ! [Nov 2026] keyword fast_quad                                     !
+      !   Int_0^inf f(t) dt = Int_0^1 f(t(u)) t'(u) du,                   !
+      !   t(u) = s u/(1-u),  t'(u) = s/(1-u)^2,  s = fast_quad_scale      !
+      !   with an n-point Gauss-Legendre rule on [0,1] (Newton on P_n).   !
+      !   32 nodes: ~1e-11 vs the old 128 rule (old 64 rule: ~1e-8);      !
+      !   40 nodes: ~1e-13 .. 2e-12.                                      !
+      ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! -
+
+      subroutine fast_quad_points(n, t, w)
+
+      implicit none
+
+      integer,          intent(in)  :: n
+      double precision, intent(out) :: t(n), w(n)
+
+      double precision, parameter   :: pi = 3.14159265358979323846d0
+      integer                       :: i, j, it
+      double precision              :: x, p0, p1, p2, dp, dx, u, wu
+
+      do i = 1, n
+        x = cos(pi*(dble(i)-0.25d0)/(dble(n)+0.5d0))      ! initial guess, root of P_n on [-1,1]
+        do it = 1, 100
+          p0 = 1.d0 ; p1 = x
+          do j = 2, n
+            p2 = ((2.d0*j-1.d0)*x*p1 - (j-1.d0)*p0)/dble(j)
+            p0 = p1 ; p1 = p2
+          end do
+          dp = dble(n)*(x*p1 - p0)/(x*x - 1.d0)
+          dx = p1/dp
+          x  = x - dx
+          if (abs(dx) < 1.d-15) exit
+        end do
+        p0 = 1.d0 ; p1 = x
+        do j = 2, n
+          p2 = ((2.d0*j-1.d0)*x*p1 - (j-1.d0)*p0)/dble(j)
+          p0 = p1 ; p1 = p2
+        end do
+        dp = dble(n)*(x*p1 - p0)/(x*x - 1.d0)
+        u  = 0.5d0*(1.d0 - x)                               ! ascending in u
+        wu = 1.d0/((1.d0 - x*x)*dp*dp)                      ! = (2/((1-x^2)P'^2))/2 on [0,1]
+        t(i) = fast_quad_scale*u/(1.d0 - u)
+        w(i) = wu*fast_quad_scale/(1.d0 - u)**2
+      end do
+
+      end subroutine fast_quad_points
 
       ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! -
       ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! - ! -

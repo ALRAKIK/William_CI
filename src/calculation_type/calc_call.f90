@@ -23,7 +23,18 @@ subroutine calculation_type_select(calculation_type,n_atoms,nBas,atoms,geometry,
       double precision   , intent(out)  ::   ERI(ERI_size,nBas,nBas,nBas)
 
       if (trim(calculation_type) .ne. "OBC") then 
-        if (c_nquad_128) then 
+        if (c_fast_quad) then
+          fast_quad = .true.
+          if (c_nquad_128) then
+            nquad_point = 40
+          else
+            nquad_point = 32
+          end if
+          write(*,'(A)') '$ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $'
+          write(*,'(A,I0,A)') 'fast_quad: the Numerical integrals will use ', nquad_point, &
+                              ' mapped Gauss-Legendre points, t = 0.6 u/(1-u)'
+          write(*,'(A)') '$ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $'
+        else if (c_nquad_128) then 
           write(*,'(A)') '$ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $'
           write(*,'(A)') 'The Numerical integrals will be calculated using 128 point quadrature'
           write(*,'(A)') '$ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $ - $'

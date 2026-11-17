@@ -13,13 +13,13 @@ subroutine kMP2_calc_half(N_cell, blk, ERI_kMO, ENuc, EHF,EcMP2)
       use constants_module, only: dp, dpc
       use unitcell_module, only: nfuc, nx, ny, nz
       use k_blocks
-      use cc_dims , only: gidx, nslot      ! [Nov 2026] compact g
+      use cc_dims , only: gidx, nslot, g_n1      ! [Nov 2026] compact g
       implicit none
 
       ! Inputs
       integer         , intent(in)   :: N_cell
       type(K_block)   , intent(in)   :: blk(N_cell)
-      complex(dpc)    , intent(in)   :: ERI_kMO(nfuc,nfuc,nfuc,nfuc,nslot)   ! [Nov 2026] compact g
+      complex(dpc)    , intent(in)   :: ERI_kMO(g_n1,nfuc,nfuc,nfuc,nslot)   ! [Nov 2026] compact g
       real(dp)        , intent(in)   :: ENuc, EHF
 
       ! Local variables

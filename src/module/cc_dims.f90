@@ -33,6 +33,10 @@ module cc_dims
       !   (the lexicographically smaller one): ~half the memory of g.
       !   Without use_ksym every block has its own slot (nslot = N_cell^3).
       integer, save              :: nslot = 0
+      ! [Nov 2026] keyword cholesky: first extent of the compact g. nfuc normally;
+      ! o_hi with cholesky (only g(i,q,r,s) with i occupied is stored: every
+      ! CC access has an occupied first index except Wvvvv, built from L)
+      integer, save              :: g_n1 = 0
       integer, save, allocatable :: gidx(:,:,:)
 
 contains

@@ -27,6 +27,8 @@ subroutine  get_keywords(keyword)
       c_DIIS        = any(keyword == 'DIIS'      )     
       c_MCDE        = any(keyword == 'MCDE'      )     ! 20
       c_nquad_128   = any(keyword == 'nquad_128' )
+      c_fast_quad   = any(keyword == 'fast_quad' )
+      c_prim_screen = any(keyword == 'primscreen')     ! input word: prim_screen
       c_physicist   = any(keyword == 'physicist' )
       c_ccsdt       = any(keyword == 'ccsdt'     )
       c_debug       = any(keyword == 'debug'     )     ! 25 
@@ -37,6 +39,20 @@ subroutine  get_keywords(keyword)
       c_restart     = any(keyword == 'restart'   )     ! 30
       if (c_restart) c_checkpoint = .true.
       if (c_checkpoint) call set_ckpt_dir()
+
+      ! [Nov 2026] keyword cholesky: Cholesky-decomposed integrals in fast k-CCSD(T)
+      c_cholesky    = any(keyword == 'cholesky' ) .or. any(keyword == 'cholesky_4') .or. any(keyword == 'cholesky_8')
+      cholesky_tol  = 1.0d-6
+      if (any(keyword == 'cholesky_4')) cholesky_tol = 1.0d-4
+      if (any(keyword == 'cholesky_8')) cholesky_tol = 1.0d-8
+      if (c_cholesky .and. .not. c_fast_real) c_fast_ccsdt = .true.
+      ! [Nov 2026] keyword CC_to_disk: vvvv k-blocks on disk, read by block in the ladder
+      c_cc_disk     = any(keyword == 'cc_disk'  )
+      if (c_cc_disk .and. c_cholesky) then
+        write(*,'(a)') ' WARNING: CC_to_disk and cholesky together: cholesky is used (no vvvv integrals to store)'
+        c_cc_disk = .false.
+      end if
+      if (c_cc_disk .and. .not. c_fast_real) c_fast_ccsdt = .true.
 
       if (c_fast_ccsdt) c_ccsdt = .true.
       if (c_fast_real) then

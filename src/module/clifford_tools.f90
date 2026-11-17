@@ -51,11 +51,22 @@ module clifford_tools
       public :: fourier_sin_product, hermite_E_1D, orbital_to_lxyz
       public :: setup_t_tables, nq_t, t_node, t_weight, t_bessel, t_nmax
       public :: bary_dir, clifford_pair
+      public :: ps_on, ps_noscreen, ps_tol, ps_qp, ps_bra, ps_ket
 
       ! ---- t-quadrature tables (nuclear attraction and ERIs) ---- !
       integer,          save              :: nq_t = 0
       double precision, save, allocatable :: t_node(:), t_weight(:), t_bessel(:,:,:)
       integer,          save, allocatable :: t_nmax(:,:)
+
+      ! ---- [Nov 2026] keyword prim_screen: primitive-pair Schwarz screening ---- !
+      ! ps_qp(i,j,SI,SJ) = max_comp sqrt|(ij|ij)| for primitives i,j of shells   !
+      ! SI (unit cell) and SJ; a primitive quartet is skipped in the ERI kernel !
+      ! when ps_bra(i,j)*ps_ket(k,l) < ps_tol. Off by default.                  !
+      logical,          save :: ps_on = .false., ps_noscreen = .false.
+      double precision, save :: ps_tol = 1.d-14
+      double precision, save, allocatable, target :: ps_qp(:,:,:,:)
+      double precision, pointer :: ps_bra(:,:) => null(), ps_ket(:,:) => null()
+      !$omp threadprivate(ps_bra, ps_ket)
 
       ! highest total power n+m of sin/cos handled (8 = g-g overlap,
       ! 10 = g-g kinetic). Raise if you need h, i functions.
@@ -486,7 +497,7 @@ subroutine setup_t_tables(ncap, ndp)
       double precision :: a(3)
 
       nq = nquad_point
-      if (nq /= 64 .and. nq /= 128) nq = 64
+      if (nq < 1) nq = 64          ! 64/128 (default tables) or 32/40 (keyword fast_quad)
 
       if (nq_t == nq .and. allocated(t_bessel)) then
         if (ubound(t_bessel,1) >= ncap .and. size(t_bessel,3) >= ndp) return
