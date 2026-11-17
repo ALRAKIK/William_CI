@@ -66,6 +66,8 @@ MODULES_IN_ORDER = constants_module \
                    chol_store \
                    cc_disk \
                    HF_constant \
+                   eri_direct \
+                   df_toroidal \
 # =================================================== #
 
 # Find all module files

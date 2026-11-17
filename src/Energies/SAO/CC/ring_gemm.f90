@@ -1,3 +1,26 @@
+! [Nov 2026] ring_gemm: with several threads and enough k pairs, the outer
+! (ki,ka) loops run in parallel (ring_gemm_outer, no inner parallel regions);
+! otherwise the original routine (ring_gemm_inner) is used. Same results.
+subroutine ring_gemm(blk,ktab,t2,Wvoov,Wvovo,R2)
+  use constants_module, only: dpc
+  use unitcell_module , only: nfuc, N_cell
+  use cc_dims         , only: o_hi, v_lo
+  use k_blocks        , only: K_block
+  use omp_lib         , only: omp_get_max_threads
+  implicit none
+  type(K_block), intent(in)    :: blk(N_cell)
+  integer      , intent(in)    :: ktab(N_cell,N_cell,N_cell)
+  complex(dpc) , intent(in)    :: t2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell)
+  complex(dpc) , intent(in)    :: Wvoov(v_lo:nfuc,o_hi,o_hi,v_lo:nfuc,N_cell,N_cell,N_cell)
+  complex(dpc) , intent(in)    :: Wvovo(v_lo:nfuc,o_hi,v_lo:nfuc,o_hi,N_cell,N_cell,N_cell)
+  complex(dpc) , intent(inout) :: R2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell)
+  if (omp_get_max_threads() > 1 .and. N_cell*N_cell >= 2*omp_get_max_threads()) then
+    call ring_gemm_outer(blk,ktab,t2,Wvoov,Wvovo,R2)
+  else
+    call ring_gemm_inner(blk,ktab,t2,Wvoov,Wvovo,R2)
+  end if
+end subroutine ring_gemm
+
 ! [Nov 2026] used only with the keyword fast_ccsdt (called from get_R_fast.f90)
 !---------------------------------------------------------------------!
 ! ring terms of R2 with zgemm                                         !
@@ -7,7 +30,7 @@
 !  R2(i,j,a,b) += Z(i,j,a,b) + Z(j,i,b,a)   (= pair(i,j,a,b) +         !
 !                                              pair(j,i,b,a) W parts)  !
 !---------------------------------------------------------------------!
-subroutine ring_gemm(blk,ktab,t2,Wvoov,Wvovo,R2)
+subroutine ring_gemm_inner(blk,ktab,t2,Wvoov,Wvovo,R2)
   use constants_module, only: dp, dpc
   use unitcell_module , only: nfuc, N_cell
   use cc_dims         , only: o_hi, v_lo, use_ksym   ! [Nov 2026] use_ksym
@@ -143,4 +166,145 @@ contains
     integer, intent(in) :: k1,k2
     canon2 = (k1<ktab(1,1,k1)) .or. (k1==ktab(1,1,k1) .and. k2<=ktab(1,1,k2))
   end function
-end subroutine ring_gemm
+end subroutine ring_gemm_inner
+
+! [Nov 2026] used only with the keyword fast_ccsdt (called from get_R_fast.f90)
+!---------------------------------------------------------------------!
+! ring terms of R2 with zgemm                                         !
+!  Z(i,j,a,b) = sum_{km,m,c} [ (2 Wvoov(a,m,i,c) - Wvovo(a,m,c,i))     !
+!                              t2(m,j,c,b) - Wvoov(a,m,i,c) t2(m,j,b,c)!
+!                             - Wvovo(b,m,c,i) t2(m,j,a,c) ]           !
+!  R2(i,j,a,b) += Z(i,j,a,b) + Z(j,i,b,a)   (= pair(i,j,a,b) +         !
+!                                              pair(j,i,b,a) W parts)  !
+!---------------------------------------------------------------------!
+subroutine ring_gemm_outer(blk,ktab,t2,Wvoov,Wvovo,R2)
+  use constants_module, only: dp, dpc
+  use unitcell_module , only: nfuc, N_cell
+  use cc_dims         , only: o_hi, v_lo, use_ksym   ! [Nov 2026] use_ksym
+  use k_blocks        , only: K_block
+  use omp_lib         , only: omp_get_max_threads   ! [Nov 2026] outer k loops
+  implicit none
+  type(K_block), intent(in)    :: blk(N_cell)
+  integer      , intent(in)    :: ktab(N_cell,N_cell,N_cell)
+  complex(dpc) , intent(in)    :: t2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell)
+  complex(dpc) , intent(in)    :: Wvoov(v_lo:nfuc,o_hi,o_hi,v_lo:nfuc,N_cell,N_cell,N_cell)
+  complex(dpc) , intent(in)    :: Wvovo(v_lo:nfuc,o_hi,v_lo:nfuc,o_hi,N_cell,N_cell,N_cell)
+  complex(dpc) , intent(inout) :: R2(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell)
+  integer :: nv, no, nmc, ki, ka, kb, kj, km, kc, i, j, a, b, m, c, k, p
+  logical :: occ(nfuc,N_cell), partner, outer
+  complex(dpc), allocatable :: Z(:,:,:,:,:,:,:), A1(:,:,:,:), A2(:,:,:,:), B1(:,:,:,:,:), B2(:,:,:,:,:), RZ(:,:,:,:,:)
+  complex(dpc), parameter :: one=(1.0_dp,0.0_dp), mone=(-1.0_dp,0.0_dp), zero=(0.0_dp,0.0_dp)
+  do k=1,N_cell; do p=1,nfuc; occ(p,k)=(blk(k)%occupation(p)==2); end do; end do
+  nv = nfuc - v_lo + 1 ; no = o_hi ; nmc = no*nv
+  allocate(Z(o_hi,o_hi,v_lo:nfuc,v_lo:nfuc,N_cell,N_cell,N_cell))
+  ! [Nov 2026] all gathers / accumulations below are threaded (only the zgemm
+  ! calls were before; on many cores the serial loops dominated)
+  !$omp parallel do collapse(2)
+  do ka=1,N_cell; do kj=1,N_cell
+    Z(:,:,:,:,:,kj,ka) = zero
+  end do; end do
+  !$omp end parallel do
+  allocate(A1(v_lo:nfuc,o_hi,o_hi,v_lo:nfuc), A2(v_lo:nfuc,o_hi,o_hi,v_lo:nfuc))
+  allocate(B1(o_hi,v_lo:nfuc,o_hi,v_lo:nfuc,N_cell), B2(o_hi,v_lo:nfuc,o_hi,v_lo:nfuc,N_cell))
+  allocate(RZ(v_lo:nfuc,o_hi,o_hi,v_lo:nfuc,N_cell))
+  ! ---- families 1,2 : result (a,i) x (j,b,kj), for fixed (ki,ka) ----
+  ! [Nov 2026] outer (ki,ka) pairs in parallel when there are enough of them;
+  ! each pair writes its own Z blocks, so results are unchanged. The inner
+  ! (this copy has no inner parallel regions)
+  !$omp parallel do collapse(2) schedule(dynamic) default(shared) &
+  !$omp private(ki,ka,kj,km,kc,kb,i,j,a,b,m,c,partner,A1,A2,B1,B2,RZ)
+  do ki=1,N_cell
+    do ka=1,N_cell
+      ! [Nov 2026] k <-> -k symmetry: block (-ki,-ka) = conjugate of block (ki,ka)
+      if (use_ksym) then
+        if (.not.canon2(ki,ka)) cycle
+      end if
+      partner = use_ksym .and. .not.(ktab(1,1,ki)==ki .and. ktab(1,1,ka)==ka)
+      do kj=1,N_cell
+        RZ(:,:,:,:,kj) = zero
+      end do
+      do km=1,N_cell
+        kc = ktab(ka,km,ki)
+        do c=v_lo,nfuc; do m=1,no; do i=1,no
+          A1(:,i,m,c) = 2.0_dp*Wvoov(:,m,i,c,ka,km,ki) - Wvovo(:,m,c,i,ka,km,kc)
+          A2(:,i,m,c) = Wvoov(:,m,i,c,ka,km,ki)
+        end do; end do; end do
+        do kj=1,N_cell
+          kb = ktab(ki,kj,ka)
+          do b=v_lo,nfuc; do j=1,no; do c=v_lo,nfuc
+            B1(:,c,j,b,kj) = t2(:,j,c,b,km,kj,kc)
+            B2(:,c,j,b,kj) = t2(:,j,b,c,km,kj,kb)
+          end do; end do; end do
+        end do
+        call zgemm('N','N', nv*no, nmc*N_cell, nmc, one , A1, nv*no, B1, nmc, one, RZ, nv*no)
+        call zgemm('N','N', nv*no, nmc*N_cell, nmc, mone, A2, nv*no, B2, nmc, one, RZ, nv*no)
+      end do
+      do kj=1,N_cell
+        do b=v_lo,nfuc; do j=1,no; do i=1,no; do a=v_lo,nfuc
+          Z(i,j,a,b,ki,kj,ka) = Z(i,j,a,b,ki,kj,ka) + RZ(a,i,j,b,kj)
+          if (partner) Z(i,j,a,b,ktab(1,1,ki),ktab(1,1,kj),ktab(1,1,ka)) = &
+                       Z(i,j,a,b,ktab(1,1,ki),ktab(1,1,kj),ktab(1,1,ka)) + conjg(RZ(a,i,j,b,kj))
+        end do; end do; end do; end do
+      end do
+    end do
+  end do
+  !$omp end parallel do
+  ! ---- family 3 : -Wvovo(b,m,c,i) t2(m,j,a,c), result (b,i) x (j,a,kj), fixed (ki,kb) ----
+  !$omp parallel do collapse(2) schedule(dynamic) default(shared) &
+  !$omp private(ki,kb,kj,km,kc,ka,i,j,a,b,m,c,partner,A1,A2,B1,B2,RZ)
+  do ki=1,N_cell
+    do kb=1,N_cell
+      if (use_ksym) then                                  ! [Nov 2026]
+        if (.not.canon2(ki,kb)) cycle
+      end if
+      partner = use_ksym .and. .not.(ktab(1,1,ki)==ki .and. ktab(1,1,kb)==kb)
+      do kj=1,N_cell
+        RZ(:,:,:,:,kj) = zero
+      end do
+      do km=1,N_cell
+        kc = ktab(kb,km,ki)
+        do c=v_lo,nfuc; do m=1,no; do i=1,no
+          A1(:,i,m,c) = Wvovo(:,m,c,i,kb,km,kc)
+        end do; end do; end do
+        do kj=1,N_cell
+          ka = ktab(ki,kj,kb)
+          do a=v_lo,nfuc; do j=1,no; do c=v_lo,nfuc
+            B1(:,c,j,a,kj) = t2(:,j,a,c,km,kj,ka)
+          end do; end do; end do
+        end do
+        call zgemm('N','N', nv*no, nmc*N_cell, nmc, mone, A1, nv*no, B1, nmc, one, RZ, nv*no)
+      end do
+      do kj=1,N_cell
+        ka = ktab(ki,kj,kb)
+        do a=v_lo,nfuc; do j=1,no; do i=1,no; do b=v_lo,nfuc
+          Z(i,j,a,b,ki,kj,ka) = Z(i,j,a,b,ki,kj,ka) + RZ(b,i,j,a,kj)
+          if (partner) Z(i,j,a,b,ktab(1,1,ki),ktab(1,1,kj),ktab(1,1,ka)) = &
+                       Z(i,j,a,b,ktab(1,1,ki),ktab(1,1,kj),ktab(1,1,ka)) + conjg(RZ(b,i,j,a,kj))
+        end do; end do; end do; end do
+      end do
+    end do
+  end do
+  !$omp end parallel do
+  ! ---- R2 += Z(i,j,a,b) + Z(j,i,b,a), physical entries only ----
+  !$omp parallel do collapse(3) private(kb,a,b,i,j)
+  do ka=1,N_cell; do kj=1,N_cell; do ki=1,N_cell
+    kb = ktab(ki,kj,ka)
+    do b=v_lo,nfuc; if (occ(b,kb)) cycle
+      do a=v_lo,nfuc; if (occ(a,ka)) cycle
+        do j=1,no; if (.not.occ(j,kj)) cycle
+          do i=1,no; if (.not.occ(i,ki)) cycle
+            R2(i,j,a,b,ki,kj,ka) = R2(i,j,a,b,ki,kj,ka) + Z(i,j,a,b,ki,kj,ka) + Z(j,i,b,a,kj,ki,kb)
+          end do
+        end do
+      end do
+    end do
+  end do; end do; end do
+  !$omp end parallel do
+  deallocate(Z, A1, A2, B1, B2, RZ)
+contains
+  ! [Nov 2026] (k1,k2) <= (-k1,-k2) in lexicographic order
+  logical function canon2(k1,k2)
+    integer, intent(in) :: k1,k2
+    canon2 = (k1<ktab(1,1,k1)) .or. (k1==ktab(1,1,k1) .and. k2<=ktab(1,1,k2))
+  end function
+end subroutine ring_gemm_outer

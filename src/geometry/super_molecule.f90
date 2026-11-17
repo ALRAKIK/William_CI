@@ -361,6 +361,9 @@ subroutine read_keywords(keyword)
         if (trim(line) == 'cholesky_4')  keyword(33) = 'cholesky_4'   ! [Nov 2026] same, tol 1e-4
         if (trim(line) == 'cholesky_8')  keyword(34) = 'cholesky_8'   ! [Nov 2026] same, tol 1e-8
         if (trim(line) == 'CC_to_disk')  keyword(35) = 'cc_disk'      ! [Nov 2026] vvvv k-blocks on disk in fast k-CCSD(T)
+        if (trim(line) == 'direct')      keyword(36) = 'direct'       ! [Nov 2026] integral-direct HF and MP2 (no stored ERIs)
+        if (trim(line) == 'density_fitting' .or. trim(line) == 'DF' .or. trim(line) == 'df') &
+                                         keyword(37) = 'df'           ! [Nov 2026] density fitting for HF and MP2 (file AuxBasis)
 
 
 

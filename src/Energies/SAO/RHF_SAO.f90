@@ -4,6 +4,8 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
 
       use files 
       use keywords
+      use eri_direct, only : direct_JK          ! [Nov 2026] keyword direct
+      use df_toroidal, only : df_JK             ! [Nov 2026] keyword density_fitting
       use constants_module
       use unitcell_module
       use k_blocks
@@ -215,7 +217,13 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
   
       !   [Nov 2026] Coulomb J and exchange K (rows mu <= nfuc) in one
       !   parallel pass (was: hartree_potential_SAO + exchange_potential_SAO)
+      if (c_df) then
+        call df_JK(nBas,P,J,K)                      ! [Nov 2026] keyword density_fitting: fitted J and K
+      else if (c_direct) then
+        call direct_JK(nBas,P,J,K)                  ! [Nov 2026] keyword direct: integrals recomputed
+      else
       call hartree_exchange_potential(nfuc,nBas,P,ERI,J,K)
+      end if
       ! ****************** !
 
       !   Build Fock operator

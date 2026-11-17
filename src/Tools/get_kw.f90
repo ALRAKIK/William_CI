@@ -53,6 +53,28 @@ subroutine  get_keywords(keyword)
         c_cc_disk = .false.
       end if
       if (c_cc_disk .and. .not. c_fast_real) c_fast_ccsdt = .true.
+      ! [Nov 2026] keyword direct: integral-direct RHF (SAO) and k-MP2, no stored ERIs
+      c_direct      = any(keyword == 'direct'   )
+      if (c_direct) then
+        if (.not. c_SAO) error stop 'keyword direct needs SAO (toroidal RHF)'
+        if (c_ccsdt .or. c_cholesky .or. c_cc_disk .or. c_MCDE .or. c_UHF) &
+          error stop 'keyword direct: only RHF (SAO) and MP2 (no ccsdt, fast_ccsdt, cholesky, CC_to_disk, MCDE, UHF)'
+      end if
+      ! [Nov 2026] keyword density_fitting: fitted J/K and (ov|ov), no 4-index ERIs stored
+      !            (uses the direct-mode plumbing: no ERI array, AO shells and Schwarz bounds)
+      c_df          = any(keyword == 'df'       )
+      if (c_df) then
+        if (.not. c_SAO) error stop 'keyword density_fitting needs SAO (toroidal RHF)'
+        if (c_cholesky .or. c_cc_disk .or. c_MCDE .or. c_UHF) &
+          error stop 'keyword density_fitting: not with cholesky, CC_to_disk, MCDE or UHF (DF replaces cholesky in the CC)'
+        ! [Nov 2026] with ccsdt / fast_ccsdt / fast_ccsdt_real: DF-CCSD(T), the DF vectors
+        ! take the place of the Cholesky vectors (same CC path as keyword cholesky)
+        if (c_ccsdt .or. c_fast_ccsdt .or. c_fast_real) then
+          c_cholesky = .true.
+          if (.not. c_fast_real) c_fast_ccsdt = .true.
+        end if
+        c_direct = .true.
+      end if
 
       if (c_fast_ccsdt) c_ccsdt = .true.
       if (c_fast_real) then

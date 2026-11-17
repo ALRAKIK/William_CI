@@ -40,6 +40,7 @@ module chol_store
       public :: chol_on, chol_tol, chol_nb, LK, kdiff, chol_rank_total
       public :: chol_build, chol_reduce_active, chol_build_g, chol_bytes
       public :: chol_vvvv_gm, chol_vvvv_gm_r, chol_free
+      public :: chol_init_ext                 ! [Nov 2026] vectors from density fitting
 
       type lk_t
         integer :: m = 0
@@ -341,6 +342,25 @@ contains
           if (allocated(LK(i)%x)) chol_bytes = chol_bytes + 16.d0*dble(size(LK(i)%x,kind=8))
         end do
       end function chol_bytes
+
+      !-----------------------------------------------------------------!
+      ! [Nov 2026] vectors made elsewhere (density_fitting): m vectors    !
+      ! per momentum transfer, all nfuc bands; filled by the caller      !
+      !-----------------------------------------------------------------!
+      subroutine chol_init_ext(f, m)
+        use unitcell_module, only: N_cell
+        integer, intent(in) :: f, m
+        integer :: coord(3,N_cell), i
+        call set_coords(coord)
+        call chol_free()
+        allocate(LK(N_cell))
+        do i = 1, N_cell
+          LK(i)%m = m
+          allocate(LK(i)%x(m, f, f, N_cell))
+        end do
+        chol_nb  = f
+        chol_tol = 0.0_dp
+      end subroutine chol_init_ext
 
       subroutine chol_free()
         integer :: i

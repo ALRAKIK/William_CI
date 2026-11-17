@@ -14,6 +14,7 @@ program CI
       use chol_store , only : chol_on , chol_build , chol_build_g , chol_reduce_active , chol_free , chol_bytes   ! [Nov 2026] keyword cholesky
       use cc_disk    , only : disk_on , disk_open , disk_close , disk_bytes   ! [Nov 2026] keyword CC_to_disk
       use omp_lib , only : omp_get_wtime
+      use df_toroidal, only : df_kMO , df_build_chol   ! [Nov 2026] keyword density_fitting
 
       implicit none
 
@@ -366,7 +367,11 @@ program CI
       allocate(coeff_SAO(nBas,nBas))
 
       if (c_SAO) then 
+        if (c_direct) then
+          allocate(ERI(1,1,1,1))            ! [Nov 2026] keyword direct: no ERIs stored
+        else
         allocate(ERI (nfuc,nBas,nBas,nBas))
+        end if
         allocate(blk(N_cell))
         ERI_size = nfuc
       else 
@@ -417,7 +422,7 @@ program CI
       !                  write the integrals to outputfile              !
       ! --------------------------------------------------------------- !
 
-      if (c_details) then 
+      if (c_details .and. .not. c_direct) then   ! [Nov 2026] direct: no ERI to print
         if (c_SAO) then 
           call details_integrals_SAO(nBas,S,T,V,ERI)
         else 
@@ -427,7 +432,7 @@ program CI
 
       ! --------------------------------------------------------------- !
 
-      if (c_trexio) then
+      if (c_trexio .and. .not. c_direct) then
         call trexio_conv_integrals(nBas,S,T,V,Hc,ERI)
       end if
 
@@ -575,7 +580,12 @@ program CI
               if (c_physicist) error stop 'keyword cholesky needs chemist-ordered integrals (no physicist / MCDE)'
               g_n1 = o_hi
               w_start = omp_get_wtime()
+                if (c_df) then
+                  ! [Nov 2026] density_fitting + ccsdt: DF vectors instead of Cholesky (no 4-index ERIs)
+                  call df_build_chol(nBas, coeff_SAO, outfile)
+                else
                 call chol_build(nBas, ERI, coeff_SAO, cholesky_tol, outfile)
+                end if
                 deallocate(ERI)                ! the real-space ERI is not needed any more
                 chol_on = .true.
                 write(outfile,'(a,f8.2,a,f8.2,a)') '  [cholesky] stored k-space integrals (occupied first index): ', &
@@ -763,8 +773,18 @@ program CI
           allocate(ERI_kMO(p_lo:p_hi,q_lo:q_hi,p_lo:p_hi,q_lo:q_hi,N_cell,N_cell,N_cell))
 
           w_start = omp_get_wtime()
+          if (c_df) then
+            ! [Nov 2026] keyword density_fitting: (ov|ov) = 1/N sum_Q L^Q L^Q
+            call df_kMO(nBas, coeff_SAO, p_lo, p_hi, q_lo, q_hi, ERI_kMO, outfile)
+            deallocate(ERI)
+          else if (c_direct) then
+            ! [Nov 2026] keyword direct: (ov|ov) from integrals computed shell by shell
+            call transform_ERI_direct_kMO(nBas, coeff_SAO, p_lo, p_hi, q_lo, q_hi, ERI_kMO, outfile)
+            deallocate(ERI)
+          else
             call transform_ERI_AO_to_kMO(nBas, ERI, coeff_SAO, p_lo, p_hi, q_lo, q_hi, ERI_kMO)
             deallocate(ERI)                  ! the real-space ERI is not needed any more
+          end if
           w_end = omp_get_wtime()
 
           write(outfile,'(A65,1X,F9.3,A8)') 'Wall time for AO to k-MO transformation = ',w_end-w_start,' seconds'

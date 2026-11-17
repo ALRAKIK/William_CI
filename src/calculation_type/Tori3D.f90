@@ -27,6 +27,8 @@ subroutine Tori3D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
       use unitcell_module
       use debug_tools
       use omp_lib
+      use eri_direct, only : direct_init                ! [Nov 2026] keyword direct
+      use df_toroidal, only : df_init                   ! [Nov 2026] keyword density_fitting
 
       implicit none
 
@@ -89,6 +91,9 @@ subroutine Tori3D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
 
       if (c_One) then
         ERI = 0.d0
+      else if (c_direct) then
+        call direct_init(3,nBas,AOn)                      ! [Nov 2026] keyword direct: nothing stored
+        if (c_df) call df_init(3,n_atoms,atoms,geometry,nBas,AOn,outfile)   ! [Nov 2026] density fitting
       else
         call ERI_integral_toroidal(3,nBas,AOn,ERI)          ! ndp = 3 periodic directions
       end if

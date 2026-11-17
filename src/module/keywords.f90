@@ -16,6 +16,7 @@ module keywords
       public  :: c_prim_screen
       public  :: c_cholesky, cholesky_tol
       public  :: c_cc_disk
+      public  :: c_direct, c_df
       public  :: c_physicist
       public  :: c_ccsdt
       public  :: c_fast_ccsdt
@@ -47,6 +48,8 @@ module keywords
       logical :: c_cholesky = .false.                 ! [Nov 2026] keyword cholesky
       double precision :: cholesky_tol = 1.0d-6
       logical :: c_cc_disk = .false.                  ! [Nov 2026] keyword CC_to_disk
+      logical :: c_direct  = .false.                  ! [Nov 2026] keyword direct
+      logical :: c_df      = .false.                  ! [Nov 2026] keyword density_fitting
       logical :: c_physicist
       logical :: c_ccsdt
       logical :: c_fast_ccsdt 
