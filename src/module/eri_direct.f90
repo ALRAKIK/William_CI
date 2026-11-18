@@ -33,6 +33,7 @@ module eri_direct
       public :: direct_init, direct_JK, direct_slab, direct_free
       public :: d_nsh, d_nshuc, d_sh_first, d_sh_n, d_ready
       public :: d_Q, d_Qsh                    ! [Nov 2026] used by df_toroidal (density_fitting)
+      public :: set_ps                        ! [Nov 2026] used by df_toroidal (Cholesky fitting)
 
       logical, save :: d_ready = .false.
       integer, save :: d_ndp = 0, d_nBas = 0, d_nsh = 0, d_nshuc = 0, d_ncl(3) = 1

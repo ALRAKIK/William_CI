@@ -204,6 +204,7 @@ end subroutine diagonalize_matrix_complex
 subroutine check_the_overlap(N,over)
 
       use files 
+      use keywords, only : s_eig_min      ! [Nov 2026] used by density fitting
       implicit none 
 
       ! input !
@@ -236,6 +237,7 @@ subroutine check_the_overlap(N,over)
 
       ! \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ !
 
+      s_eig_min       = MINVAL(Eval)
       cond            = MAXVAL(Eval)/MINVAL(Eval)
       double_digits   = log10(1.0 / machine_eps)
       digits_lost     = log10(cond)

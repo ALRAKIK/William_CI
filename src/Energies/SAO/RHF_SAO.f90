@@ -44,6 +44,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       double precision,allocatable  ::                   F(:,:)
       double precision,allocatable  ::               error(:,:)
       double precision,allocatable  ::             error_o(:,:)   ! [Nov 2026] X^T error X
+      double precision,allocatable  ::          wA(:,:), wB(:,:)  ! [Nov 2026] work for the dgemm products
       logical                       ::               converged     ! [Nov 2026]
       logical                       ::               ksym_ok       ! [Nov 2026] fast_ccsdt gauge
       integer                       ::               fourth_k      ! [Nov 2026]
@@ -100,6 +101,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       ! Memory allocation
   
       allocate(P(nBas,nBas) ,error(nBas,nBas), error_o(nBas,nBas))
+      allocate(wA(nBas,nBas), wB(nBas,nBas))
       allocate(J(nBas,nBas) ,    K(nBas,nBas))
       allocate(F(nBas,nBas))
 
@@ -241,21 +243,20 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       !   energy belongs to the final density (before: one iteration late)
       !---------------------------------------------------------------- !
   
+      !   [Nov 2026] Tr(P A) = sum_ij P(i,j) A(j,i): O(n^2), no matrix product
+      !   (was: trace_matrix(nBas,matmul(P,A)), O(n^3) each)
+
       !   Compute the kinetic energy
-      ET = trace_matrix(nBas,matmul(P,T))
-      ! ****************** !
+      ET = dot_product(reshape(P,[nBas*nBas]), reshape(transpose(T),[nBas*nBas]))
 
       !   Compute the potential energy
-      EV = trace_matrix(nBas,matmul(P,V))
-      ! ****************** !
+      EV = dot_product(reshape(P,[nBas*nBas]), reshape(transpose(V),[nBas*nBas]))
 
       !   Compute the Hartree energy
-      EJ = 0.5d0*trace_matrix(nBas,matmul(P,J)) * N_cell
-
-      ! ****************** !
+      EJ = 0.5d0*dot_product(reshape(P,[nBas*nBas]), reshape(transpose(J),[nBas*nBas])) * N_cell
 
       !   Compute the exchange energy
-      EK = 0.5d0*trace_matrix(nBas,matmul(P,K)) * N_cell
+      EK = 0.5d0*dot_product(reshape(P,[nBas*nBas]), reshape(transpose(K),[nBas*nBas])) * N_cell
 
       ! ****************** !
 
@@ -267,8 +268,13 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       ! [Nov 2026] error in the orthogonal basis, X^T (FPS - SPF) X : used
       ! for the convergence test AND for DIIS (standard, better conditioned)
 
-      error   = matmul(F,matmul(P,S)) - matmul(matmul(S,P),F)
-      error_o = matmul(transpose(X),matmul(error,X))
+      ! [Nov 2026] same products with BLAS dgemm (was: matmul, ~10x slower)
+      call dgemm('N','N',nBas,nBas,nBas,1.d0,P,nBas,S,nBas,0.d0,wA,nBas)        ! P S
+      call dgemm('N','N',nBas,nBas,nBas,1.d0,F,nBas,wA,nBas,0.d0,error,nBas)    ! F P S
+      call dgemm('N','N',nBas,nBas,nBas,1.d0,S,nBas,P,nBas,0.d0,wA,nBas)        ! S P
+      call dgemm('N','N',nBas,nBas,nBas,-1.d0,wA,nBas,F,nBas,1.d0,error,nBas)   ! - S P F
+      call dgemm('N','N',nBas,nBas,nBas,1.d0,error,nBas,X,nBas,0.d0,wB,nBas)    ! error X
+      call dgemm('T','N',nBas,nBas,nBas,1.d0,X,nBas,wB,nBas,0.d0,error_o,nBas)  ! X^T error X
       if(nSCF > 1) Conv = maxval(abs(error_o))
 
       ! [Nov 2026] stop ONLY when the orbitals are converged. Before, the
@@ -424,7 +430,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       write(outfile,*) repeat('-', 110)
       flush(outfile)
 
-      write(*,"(1x,a1,i2,1x,a1,f16.8,1x,a1,f10.6,1x,a1,f10.6,1x,a1,f16.8,4x,a1,f16.8,4x,a1,f16.8,4x,a1)")      & 
+      write(*,"(1x,a1,i2,1x,a1,f16.8,1x,a1,f10.8,1x,a1,f10.6,1x,a1,f16.8,4x,a1,f16.8,4x,a1,f16.8,4x,a1)")      & 
       "|",nSCF,"|",EHF+ENuc,"|",Conv,"|",Gap,"|"
       write(*,*) repeat('-', 46)
       flush(6)

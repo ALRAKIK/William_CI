@@ -17,6 +17,7 @@ module keywords
       public  :: c_cholesky, cholesky_tol
       public  :: c_cc_disk
       public  :: c_direct, c_df
+      public  :: c_df_etb, df_cd_tol, s_eig_min   ! [Nov 2026] density fitting: aux set, Cholesky tolerance
       public  :: c_physicist
       public  :: c_ccsdt
       public  :: c_fast_ccsdt
@@ -50,6 +51,9 @@ module keywords
       logical :: c_cc_disk = .false.                  ! [Nov 2026] keyword CC_to_disk
       logical :: c_direct  = .false.                  ! [Nov 2026] keyword direct
       logical :: c_df      = .false.                  ! [Nov 2026] keyword density_fitting
+      logical :: c_df_etb  = .false.                  ! [Nov 2026] keyword df_etb: even-tempered aux basis instead of Cholesky fitting
+      double precision :: df_cd_tol = 1.0d-8          ! [Nov 2026] Cholesky fitting tolerance (df_cd_6: 1e-6, df_cd_10: 1e-10)
+      double precision :: s_eig_min = 1.0d0           ! [Nov 2026] smallest overlap eigenvalue (set in check_the_overlap)
       logical :: c_physicist
       logical :: c_ccsdt
       logical :: c_fast_ccsdt 

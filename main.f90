@@ -28,6 +28,7 @@ program CI
       integer                         ::           nO , n_electron 
 
       double precision                ::  geometry_tmp(max_atom,3)
+      double precision                ::  hfw0                    ! [Nov 2026] wall clock at HF start
       integer                         ::      charge_tmp(max_atom)
       character*(2)                   ::       label_tmp(max_atom)
       integer                         ::           n_atom_unitcell 
@@ -464,6 +465,7 @@ program CI
       !                                                                  !
       ! ---------------------------------------------------------------- ! 
        
+      hfw0 = omp_get_wtime()
       if (c_SAO) then 
         call cpu_time(start)
           call Hartree_Fock_SAO(nBas,nO,S,T,V,Hc,ERI,X,E_nuc,EHF,e,coeff,coeff_SAO,n_alpha,n_beta,blk,n_atoms,charge)
@@ -480,6 +482,7 @@ program CI
       time = end - start
 
       write(outfile,'(A65,1X,F9.3,A8)') 'Total CPU time for HF = ',time,' seconds'
+      write(outfile,'(A65,1X,F9.3,A8)') 'Wall time for HF = ',omp_get_wtime()-hfw0,' seconds'   ! [Nov 2026]
 
       write(outfile,*)
       

@@ -364,6 +364,9 @@ subroutine read_keywords(keyword)
         if (trim(line) == 'direct')      keyword(36) = 'direct'       ! [Nov 2026] integral-direct HF and MP2 (no stored ERIs)
         if (trim(line) == 'density_fitting' .or. trim(line) == 'DF' .or. trim(line) == 'df') &
                                          keyword(37) = 'df'           ! [Nov 2026] density fitting for HF and MP2 (file AuxBasis)
+        if (trim(line) == 'df_etb')      keyword(38) = 'df_etb'       ! [Nov 2026] DF with the even-tempered aux basis (not Cholesky fitting)
+        if (trim(line) == 'df_cd_6')     keyword(39) = 'df_cd_6'      ! [Nov 2026] Cholesky fitting tolerance 1e-6 (default 1e-8)
+        if (trim(line) == 'df_cd_10')    keyword(40) = 'df_cd_10'     ! [Nov 2026] Cholesky fitting tolerance 1e-10
 
 
 

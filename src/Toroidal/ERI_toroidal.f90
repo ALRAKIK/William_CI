@@ -35,7 +35,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       use unitcell_module
       use debug_tools
       use clifford_tools, only : init_clifford, orbital_to_lxyz, setup_t_tables, bessel_nmax_estimate, &
-                                 ps_on, ps_noscreen, ps_qp, ps_bra, ps_ket
+                                 ps_on, ps_noscreen, ps_qp, ps_bra, ps_ket, pair_cache_free
 
       implicit none
 
@@ -63,6 +63,12 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       double precision               :: Qmax
       integer                        :: mp, p1, p2, ab(4)
       type(ERI_function), allocatable :: A1(:), B1(:)
+      ! [Nov 2026] cell tables: cell / local index of each shell and function,
+      ! relc(c1,c2) = cell of (c2 - c1) on the periodic lattice
+      integer, allocatable :: scell(:), sloc(:), fcell(:), floc(:), relc(:,:)
+      integer                        :: ncell, c1, c2, cc, ctr, iperm8(4,8), t4(4), r4(4), ip8
+      logical                        :: fast_tab
+      data iperm8 / 1,2,3,4, 2,1,3,4, 1,2,4,3, 2,1,4,3, 3,4,1,2, 4,3,1,2, 3,4,2,1, 4,3,2,1 /
 
       !-----------------------------------------------------------------!
 
@@ -101,20 +107,63 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
         i = i + ncomp
       end do
 
+      ! ---- cell tables (used by the Schwarz pass and the symmetry driver) ---- !
+      ncl = (/ max(nx,1), max(ny,1), max(nz,1) /)
+      ncell = ncl(1)*ncl(2)*ncl(3)
+      nshuc = 0
+      do SI = 1 , nsh
+        if (sh_first(SI) <= nfuc) nshuc = nshuc + 1
+      end do
+      sym_ok = (nsh == nshuc*ncell) .and. (nBas == nfuc*ncell)
+      if (sym_ok) then
+        do SI = 1 , nsh - nshuc               ! every cell repeats the shells of the unit cell
+          if (sh_n(SI+nshuc) /= sh_n(SI) .or. sh_first(SI+nshuc) /= sh_first(SI) + nfuc) sym_ok = .false.
+        end do
+      end if
+      fast_tab = sym_ok .and. ncell <= 4096
+      if (fast_tab) then
+        allocate(scell(nsh), sloc(nsh), fcell(nBas), floc(nBas), relc(0:ncell-1,0:ncell-1))
+        do SI = 1 , nsh
+          scell(SI) = (SI-1)/nshuc ; sloc(SI) = mod(SI-1,nshuc)
+        end do
+        do i = 1 , nBas
+          fcell(i) = (i-1)/nfuc ; floc(i) = mod(i-1,nfuc)
+        end do
+        do c1 = 0 , ncell-1
+          do c2 = 0 , ncell-1
+            relc(c1,c2) = modulo(mod(c2,ncl(1)) - mod(c1,ncl(1)), ncl(1)) &
+                        + ncl(1)*( modulo(mod(c2/ncl(1),ncl(2)) - mod(c1/ncl(1),ncl(2)), ncl(2)) &
+                        + ncl(2)*  modulo(c2/(ncl(1)*ncl(2)) - c1/(ncl(1)*ncl(2)), ncl(3)) )
+          end do
+        end do
+      end if
+
       ! ---- Schwarz: diagonal shell-pair blocks ---- !
+      ! [Nov 2026] regular lattice: only pairs with SI in the unit cell are
+      ! computed, the others are copies shifted by a lattice vector.
       allocate(Q_schwarz(nBas,nBas), Qsh(nsh,nsh))
       Q_schwarz = 0.d0
-      !$omp parallel do default(shared) private(SI,SJ,blk,a,b,i,j) schedule(dynamic,1)
+      !$omp parallel do default(shared) private(SI,SJ,blk,a,b,i,j,ctr,cc) schedule(dynamic,1)
       do SI = 1 , nsh
-        do SJ = SI , nsh
+        if (fast_tab .and. SI > nshuc) cycle
+        do SJ = merge(1, SI, fast_tab) , nsh
           allocate(blk(sh_n(SI),sh_n(SJ),sh_n(SI),sh_n(SJ)))
           call ERI_shell_block_toroidal(ndp,sh_n(SI),AO(sh_first(SI):),sh_n(SJ),AO(sh_first(SJ):), &
                                      sh_n(SI),AO(sh_first(SI):),sh_n(SJ),AO(sh_first(SJ):),blk)
           do a = 1 , sh_n(SI)
             do b = 1 , sh_n(SJ)
               i = sh_first(SI)+a-1 ; j = sh_first(SJ)+b-1
-              Q_schwarz(i,j) = dsqrt(dabs(blk(a,b,a,b)))
-              Q_schwarz(j,i) = Q_schwarz(i,j)
+              if (fast_tab) then
+                do ctr = 0 , ncell-1            ! shift (i,j) by every lattice vector
+                  cc = relc(ctr, 0)             ! cell -ctr: relc(ctr,0) = (0 - ctr)
+                  ! i in cell 0 -> cell t ; j in cell fcell(j) -> cell (fcell(j)+t)
+                  Q_schwarz(relc(cc,0)*nfuc + floc(i) + 1, relc(cc,fcell(j))*nfuc + floc(j) + 1) = dsqrt(dabs(blk(a,b,a,b)))
+                  Q_schwarz(relc(cc,fcell(j))*nfuc + floc(j) + 1, relc(cc,0)*nfuc + floc(i) + 1) = dsqrt(dabs(blk(a,b,a,b)))
+                end do
+              else
+                Q_schwarz(i,j) = dsqrt(dabs(blk(a,b,a,b)))
+                Q_schwarz(j,i) = Q_schwarz(i,j)
+              end if
             end do
           end do
           deallocate(blk)
@@ -128,18 +177,6 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       end do
 
       ! ---- symmetry-unique shell quartets (translation x 8-fold) ---- !
-      ncl = (/ max(nx,1), max(ny,1), max(nz,1) /)
-      nshuc = 0
-      do SI = 1 , nsh
-        if (sh_first(SI) <= nfuc) nshuc = nshuc + 1
-      end do
-      sym_ok = (nsh == nshuc*ncl(1)*ncl(2)*ncl(3)) .and. (nBas == nfuc*ncl(1)*ncl(2)*ncl(3))
-      if (sym_ok) then
-        do SI = 1 , nsh - nshuc               ! every cell repeats the shells of the unit cell
-          if (sh_n(SI+nshuc) /= sh_n(SI) .or. sh_first(SI+nshuc) /= sh_first(SI) + nfuc) sym_ok = .false.
-        end do
-      end if
-
       if (sym_ok) then
 
         Qmax = maxval(Qsh)
@@ -188,7 +225,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
         end if
         two_electron_integrals = 0.d0
 
-        !$omp parallel do default(shared) private(SI,SJ,SK,SL,blk,a,b,c,d,i,j,k,l,val,q4,qc,pp,ii,iperm,ab) &
+        !$omp parallel do default(shared) private(SI,SJ,SK,SL,blk,a,b,c,d,i,j,k,l,val,q4,qc,pp,ii,iperm,ab,t4,r4,ip8) &
         !$omp schedule(dynamic,1) collapse(2)
         do SI = 1 , nshuc
           do SJ = 1 , nsh
@@ -200,13 +237,40 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
                 if (mod(SL-1,nshuc)+1 < SI) cycle
                 if (Qsh(SI,SJ)*Qsh(SK,SL) < schwarz_thresh) cycle
                 q4 = (/ SI, SJ, SK, SL /)
-                call canonical_quartet_toroidal(q4, nsh, nshuc, ncl, qc)
-                if (any(qc /= q4)) cycle
+                if (fast_tab) then
+                  ! is q4 the smallest member of its orbit? (same rule as canonical_quartet_toroidal)
+                  sym_small: block
+                    logical :: smaller
+                    smaller = .false.
+                    do ip8 = 2 , 8
+                      t4 = q4(iperm8(:,ip8))
+                      do ii = 1 , 4
+                        r4(ii) = relc(scell(t4(1)), scell(t4(ii)))*nshuc + sloc(t4(ii)) + 1
+                      end do
+                      do ii = 1 , 4
+                        if (r4(ii) < q4(ii)) then
+                          smaller = .true. ; exit
+                        end if
+                        if (r4(ii) > q4(ii)) exit
+                      end do
+                      if (smaller) exit
+                    end do
+                    if (smaller) cycle
+                  end block sym_small
+                else
+                  call canonical_quartet_toroidal(q4, nsh, nshuc, ncl, qc)
+                  if (any(qc /= q4)) cycle
+                end if
                 allocate(blk(sh_n(SI),sh_n(SJ),sh_n(SK),sh_n(SL)))
                 if (ps_on) then                                   ! primitive tables of the bra and ket pairs
                   ps_bra => ps_qp(:,:,SI,SJ)
-                  ab = (/ SK, SL, SK, SK /)
-                  call translate_to_unit_cell(ab, nshuc, ncl)     ! (SK,SL) shifted so that SK is in the unit cell
+                  if (fast_tab) then
+                    ab(1) = sloc(SK) + 1
+                    ab(2) = relc(scell(SK), scell(SL))*nshuc + sloc(SL) + 1
+                  else
+                    ab = (/ SK, SL, SK, SK /)
+                    call translate_to_unit_cell(ab, nshuc, ncl)     ! (SK,SL) shifted so that SK is in the unit cell
+                  end if
                   ps_ket => ps_qp(:,:,ab(1),ab(2))
                 end if
                 call ERI_shell_block_toroidal(ndp,sh_n(SI),AO(sh_first(SI):),sh_n(SJ),AO(sh_first(SJ):), &
@@ -220,8 +284,16 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
                     if (Q_schwarz(i,j)*Q_schwarz(k,l) < schwarz_thresh) cycle   ! same screen as before
                     val = blk(a,b,c,d)
                     do iperm = 1 , 8
-                      call permute_quartet(iperm, (/ i, j, k, l /), pp)
-                      call translate_to_unit_cell(pp, nfuc, ncl)     ! (ij|kl) chemist, pp(1) in the unit cell
+                      if (fast_tab) then
+                        t4 = (/ i, j, k, l /)
+                        t4 = t4(iperm8(:,iperm))
+                        do ii = 1 , 4
+                          pp(ii) = relc(fcell(t4(1)), fcell(t4(ii)))*nfuc + floc(t4(ii)) + 1
+                        end do
+                      else
+                        call permute_quartet(iperm, (/ i, j, k, l /), pp)
+                        call translate_to_unit_cell(pp, nfuc, ncl)     ! (ij|kl) chemist, pp(1) in the unit cell
+                      end if
                       if (c_physicist) then
                         two_electron_integrals(pp(1),pp(3),pp(2),pp(4)) = val
                       else
@@ -325,6 +397,8 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       end if
 
       deallocate(sh_first, sh_n, Q_schwarz, Qsh)
+      if (allocated(relc)) deallocate(scell, sloc, fcell, floc, relc)
+      call pair_cache_free()                    ! memo of pair Fourier vectors (kernel)
 
 end subroutine ERI_integral_toroidal
 

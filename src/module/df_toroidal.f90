@@ -32,6 +32,7 @@
 module df_toroidal
 
       use classification_ERI, only: ERI_function
+      use iso_c_binding, only: c_int
       implicit none
 
       private
@@ -39,6 +40,7 @@ module df_toroidal
 
       logical, save :: df_ready = .false.
       integer, save :: df_nau = 0, df_naux = 0, df_ncell = 0
+      integer, save :: nb_saved = 1                 ! [Nov 2026] BLAS thread count saved by blas_serial
       integer, allocatable, save :: df_coord(:,:)
       double precision, allocatable, save :: df_B(:,:,:)
       ! [Nov 2026] k-space B for the exchange (HF only): k2 over a half set df_kh, conj for the rest
@@ -46,7 +48,8 @@ module df_toroidal
       integer, save :: df_nkh = 0
       integer, allocatable, save :: df_kh(:), df_khi(:)
       complex(8), allocatable, save :: df_phase(:,:)
-      double precision, parameter :: lindep_thresh = 1.0d-10
+      double precision, parameter :: metric_tol_aux = 1.0d-10   ! [Nov 2026] pivoted Cholesky of (P|Q), Gaussian aux basis
+      double precision, parameter :: metric_tol_cd  = 1.0d-12   ! [Nov 2026] same, Cholesky fitting set
       double precision, parameter :: df_schwarz    = 1.0d-13
       double precision, parameter :: etb_beta      = 2.0d0     ! PySCF ETB_BETA
       ! inputs kept for a rebuild with the MP2-fit basis (file AuxBasis_MP2)
@@ -54,6 +57,7 @@ module df_toroidal
       type(ERI_function), allocatable, save :: sv_AO(:)
       double precision, allocatable, save :: sv_geom(:,:)
       integer, allocatable, save :: sv_charge(:)
+      integer, allocatable, save :: sv_aoat(:)      ! [Nov 2026] atom of each AO (for the fitting-error report)
 
 contains
 
@@ -264,6 +268,7 @@ contains
       end subroutine etb_atom
 
       ! the generated set, once per element
+
       subroutine print_etb(n_atoms, aat, iout)
         use atom_basis
         integer, intent(in) :: n_atoms, iout
@@ -332,6 +337,7 @@ contains
         use atom_basis
         use unitcell_module, only: nfuc, nx, ny, nz, N_cell
         use torus_init     , only: ax, ay, az
+        use keywords       , only: c_df_etb, df_cd_tol, s_eig_min   ! [Nov 2026]
         use clifford_tools , only: orbital_to_lxyz, setup_t_tables, bessel_nmax_estimate, ps_on
         use eri_direct     , only: d_nsh, d_nshuc, d_sh_first, d_sh_n, d_Q, d_Qsh
         use constants_module, only: pi
@@ -358,6 +364,9 @@ contains
         integer :: nu0, m1, kh
         logical :: do_bh
         integer, allocatable :: tq(:,:)
+        logical :: cdmode
+        double precision :: cd_tol_eff, mtol
+        double precision, allocatable :: cd_Vm(:,:), cd_T3(:,:,:)
 
         fname = 'AuxBasis'
         if (present(fname_in)) then
@@ -367,6 +376,16 @@ contains
           if (allocated(sv_AO)) deallocate(sv_AO, sv_geom, sv_charge)
           allocate(sv_AO(nBas), sv_geom(n_atoms,3), sv_charge(n_atoms))
           sv_AO = AO ; sv_geom = geometry ; sv_charge = atoms(:)%charge
+          if (allocated(sv_aoat)) deallocate(sv_aoat)
+          allocate(sv_aoat(nBas))
+          a = 0
+          do i = 1, n_atoms
+            do p = 1, atoms(i)%num_s_function + 3*atoms(i)%num_p_function + 6*atoms(i)%num_d_function &
+                      + 10*atoms(i)%num_f_function + 15*atoms(i)%num_g_function
+              a = a + 1 ; if (a <= nBas) sv_aoat(a) = i
+            end do
+          end do
+          if (a /= nBas) sv_aoat = 0                    ! unknown layout: report without element labels
         end if
         ncell = N_cell ; df_ncell = ncell
         if (allocated(df_coord)) deallocate(df_coord)
@@ -393,7 +412,19 @@ contains
         allocate(df_phase(ncell,ncell)) ; df_phase = phase
 
         ! ---------------- auxiliary functions ---------------- !
+        ! [Nov 2026] default: Cholesky fitting set (orbital products chosen by a
+        ! pivoted Cholesky, tolerance cd_tol_eff). A file AuxBasis in the run folder,
+        ! the MP2 file AuxBasis_MP2, or keyword df_etb select a Gaussian aux basis.
+        inquire(file=trim(fname), exist=use_file)
+        cdmode = .not. (use_file .or. present(fname_in) .or. c_df_etb)
+        cd_tol_eff = min(df_cd_tol, 1.d-4*s_eig_min**2)
         allocate(aat(n_atoms))
+        if (cdmode) then
+          call cd_build(ndp, nBas, AO, ncell, cd_tol_eff, iout, nau, cd_Vm, cd_T3)
+          naux = nau*ncell ; nash = 0 ; nashuc = 0 ; use_file = .true.
+          fname = 'Cholesky fitting set (generated)'
+          allocate(AUX(0), afirst(0), ancp(0))
+        else
         naux = 0
         inquire(file=trim(fname), exist=use_file)
         if (.not. present(fname_in) .and. .not. use_file) fname = 'even-tempered (generated)'
@@ -423,6 +454,7 @@ contains
           if (ancp(SP+nashuc) /= ancp(SP) .or. afirst(SP+nashuc) /= afirst(SP) + nau) &
             error stop 'keyword density_fitting: the auxiliary functions must be the same in every cell'
         end do
+        end if
         df_nau = nau ; df_naux = naux
 
         ! t-tables large enough for the auxiliary exponents and l
@@ -431,7 +463,7 @@ contains
           call orbital_to_lxyz(AO(i)%orbital, lxyz)
           lmax = max(lmax, maxval(lxyz(1:ndp))) ; emax = max(emax, 2.d0*maxval(AO(i)%exponent))
         end do
-        do i = 1, naux
+        do i = 1, size(AUX)
           call orbital_to_lxyz(AUX(i)%orbital, lxyz)
           lmax = max(lmax, maxval(lxyz(1:ndp))) ; emax = max(emax, maxval(AUX(i)%exponent))
         end do
@@ -444,7 +476,13 @@ contains
         write(iout,'(a)') '------------------------------------------------------------'
         write(iout,'(2a)') ' Density fitting (keyword density_fitting), file ', trim(fname)
         write(iout,'(a)') '------------------------------------------------------------'
-        if (.not. use_file) call print_etb(n_atoms, aat, iout)
+        if (.not. use_file .and. .not. cdmode) call print_etb(n_atoms, aat, iout)
+        if (cdmode) then
+          write(iout,'(a)')        ' auxiliary set: orbital products chosen by pivoted Cholesky (Cholesky fitting)'
+          write(iout,'(a,es10.2)') '   requested tolerance (1e-8, df_cd_6: 1e-6, df_cd_10: 1e-10) : ', df_cd_tol
+          write(iout,'(a,es10.2)') '   smallest overlap eigenvalue lambda_min(S)               : ', s_eig_min
+          write(iout,'(a,es10.2)') '   tolerance used = min(requested, 1e-4 lambda_min(S)^2)    : ', cd_tol_eff
+        end if
         write(iout,'(a,i10)') ' auxiliary functions per cell     : ', nau
         write(iout,'(a,i10)') ' auxiliary functions (total)      : ', naux
         flush(iout)
@@ -470,6 +508,7 @@ contains
           end do
         end do
         !$omp end parallel do
+        if (cdmode) Vm = cd_Vm
         allocate(Qa(naux))
         do r = 1, ncell
           do p = 1, nau
@@ -480,6 +519,7 @@ contains
         ! V^-1/2 per k, back to real space: mf(P,Q,R) = [V^-1/2](P0, Q R)
         allocate(fk(nau,nau,ncell), Mk(nau,nau), w(nau), rwork(3*nau), work(1))
         ndrop_tot = 0 ; wmin = huge(1.d0)
+        mtol = metric_tol_aux ; if (cdmode) mtol = metric_tol_cd
         call zheev('V','U', nau, Mk, nau, w, work, -1, rwork, info)
         lwork = max(1, int(dble(work(1)))) ; deallocate(work) ; allocate(work(lwork))
         do k = 1, ncell
@@ -488,24 +528,20 @@ contains
             Mk = Mk + Vm(:, (r-1)*nau+1:r*nau)*phase(k,r)
           end do
           Mk = 0.5d0*(Mk + conjg(transpose(Mk)))
-          call zheev('V','U', nau, Mk, nau, w, work, lwork, rwork, info)
-          if (info /= 0) error stop 'keyword density_fitting: zheev failed for the metric'
-          wmin = min(wmin, w(1))
-          ndrop = 0
-          do p = 1, nau
-            if (w(p) > lindep_thresh) then
-              Mk(:,p) = Mk(:,p)/dsqrt(dsqrt(w(p)))      ! U diag(w^-1/4): f = (U w^-1/4)(U w^-1/4)^H
-            else
-              Mk(:,p) = (0.d0,0.d0) ; ndrop = ndrop + 1
-            end if
-          end do
-          ndrop_tot = ndrop_tot + ndrop
-          fk(:,:,k) = matmul(Mk, conjg(transpose(Mk)))       ! [V(k)]^-1/2
+          ! [Nov 2026] pivoted Cholesky of V(k) (was: eigenvalues, drop < 1e-10):
+          ! redundant aux functions are skipped, no division by tiny eigenvalues
+          if (csub(1,k) < k) then                      ! V(-k) = conj V(k): keep W(-k) = conj W(k)
+            fk(:,:,k) = conjg(fk(:,:,csub(1,k)))
+            cycle
+          end if
+          call chol_f(nau, Mk, mtol, fk(:,:,k), ndrop, wmin)
+          ndrop_tot = max(ndrop_tot, ndrop)
         end do
         deallocate(Mk, w, rwork, work, Vm)
         t_V = omp_get_wtime() - w0
-        write(iout,'(a,es12.4)') ' smallest eigenvalue of (P|Q)(k)  : ', wmin
-        write(iout,'(a,i10)')    ' dropped (eigenvalue < 1e-10)     : ', ndrop_tot
+        write(iout,'(a,es12.4)') ' metric (P|Q)(k): pivoted Cholesky, tolerance ', mtol
+        write(iout,'(a,es12.4)') ' smallest pivot kept               : ', wmin
+        write(iout,'(a,i10)')    ' aux functions skipped (max over k): ', ndrop_tot
         flush(iout)
 
         ! ---------------- (mu0 nu | P) ---------------- !
@@ -538,6 +574,7 @@ contains
           end do
         end do
         !$omp end parallel do
+        if (cdmode) T3 = cd_T3
         deallocate(tq)
         t_3 = omp_get_wtime() - w0
 
@@ -602,11 +639,144 @@ contains
         if (do_bh) write(iout,'(a,f10.3,a)') ' memory of B(k1,k2) for exchange  : ', &
                    16.d0*dble(nfuc)*dble(nfuc)*dble(nau)*dble(ncell)*dble(df_nkh)/1024.d0**3, ' GB (freed after HF)'
         write(iout,'(a,f10.3,a)') ' (stored 4-index integrals would be ', 8.d0*dble(nfuc)*dble(nBas)**3/1024.d0**3, ' GB)'
+        call df_fit_report(nBas, AO, iout)
         write(iout,'(a)') '------------------------------------------------------------'
         flush(iout)
         df_ready = .true.
       end subroutine df_init
 
+
+      !-----------------------------------------------------------------!
+      ! [Nov 2026] fitting error of each orbital product, Coulomb metric: !
+      !   delta(mu0,nu) = (mu0 nu|mu0 nu) - sum_Q B^Q_{mu0 nu}^2  >= 0    !
+      ! = self-repulsion of the part of mu*nu the auxiliary set misses.  !
+      ! (mu nu|mu nu) = d_Q(mu,nu)^2 from the Schwarz factors.           !
+      ! Grouped by (element, l) of mu and nu, same atom / two atoms.     !
+      !-----------------------------------------------------------------!
+      subroutine df_fit_report(nBas, AO, iout)
+        use unitcell_module, only: nfuc
+        use eri_direct     , only: d_Q
+        integer           , intent(in) :: nBas, iout
+        type(ERI_function), intent(in) :: AO(nBas)
+        integer, parameter :: maxg = 400
+        double precision, parameter :: rel_floor = 1.d-6     ! products with (mu nu|mu nu) below this: no relative error
+        character(len=1), parameter :: lname(0:4) = (/ 'S','P','D','F','G' /)
+        integer :: mu, nu, ig, ng, key(5), keys(5,maxg), cnt(maxg), t
+        double precision :: dmax(maxg), dsum(maxg), rmax(maxg), ex, del, rel, tot, totex, dworst, rworst
+        integer :: iworst(2), irworst(2)
+        double precision, allocatable :: d(:,:)
+
+        allocate(d(nfuc,nBas))
+        !$omp parallel do default(shared) private(nu,mu) collapse(2)
+        do nu = 1, nBas
+          do mu = 1, nfuc
+            d(mu,nu) = d_Q(mu,nu)**2 - dot_product(df_B(mu,nu,:), df_B(mu,nu,:))
+          end do
+        end do
+        !$omp end parallel do
+
+        ng = 0 ; cnt = 0 ; dmax = 0.d0 ; dsum = 0.d0 ; rmax = 0.d0
+        tot = 0.d0 ; totex = 0.d0 ; dworst = -1.d0 ; rworst = -1.d0 ; iworst = 0 ; irworst = 0
+        do nu = 1, nBas
+          do mu = 1, nfuc
+            ex = d_Q(mu,nu)**2 ; del = d(mu,nu)
+            tot = tot + del ; totex = totex + ex
+            rel = 0.d0
+            if (ex > rel_floor) rel = del/ex
+            if (del > dworst) then
+              dworst = del ; iworst = (/ mu, nu /)
+            end if
+            if (rel > rworst) then
+              rworst = rel ; irworst = (/ mu, nu /)
+            end if
+            call group_key(mu, nu, key)
+            ig = 0
+            do t = 1, ng
+              if (all(keys(:,t) == key)) then
+                ig = t ; exit
+              end if
+            end do
+            if (ig == 0) then
+              if (ng == maxg) cycle
+              ng = ng + 1 ; ig = ng ; keys(:,ig) = key
+            end if
+            cnt(ig) = cnt(ig) + 1 ; dsum(ig) = dsum(ig) + del
+            dmax(ig) = max(dmax(ig), del) ; rmax(ig) = max(rmax(ig), rel)
+          end do
+        end do
+
+        write(iout,'(a)') ''
+        write(iout,'(a)') ' fitting error of the orbital products (Coulomb metric), mu in cell 0, nu anywhere:'
+        write(iout,'(a)') '   delta(mu,nu) = (mu nu|mu nu) - sum_Q (B^Q_mu,nu)^2  [Eh] ,  relative = delta/(mu nu|mu nu)'
+        write(iout,'(a)') '   (relative error only for products with (mu nu|mu nu) > 1e-6)'
+        write(iout,'(a,es11.3,a,es11.3)') '   sum of delta            : ', tot, '   (sum of (mu nu|mu nu): ', totex
+        write(iout,'(a,es11.3,a,a)')       '   largest delta           : ', dworst, '   for ', pair_label(iworst(1), iworst(2))
+        write(iout,'(a,es11.3,a,a)')       '   largest relative delta  : ', rworst, '   for ', pair_label(irworst(1), irworst(2))
+        write(iout,'(a)') '   by type of product (Z = element, l; centres: one atom, or two atoms / two cells):'
+        write(iout,'(a)') '      Z  l    Z  l   centres     pairs    max delta    sum delta   max relative'
+        call sort_groups()
+        do ig = 1, ng
+          write(iout,'(3x,i4,2x,a1,2x,i4,2x,a1,3x,a8,i10,3es13.3)') keys(1,ig), lname(keys(2,ig)), keys(3,ig), &
+               lname(keys(4,ig)), merge('one     ', 'two     ', keys(5,ig) == 1), cnt(ig), dmax(ig), dsum(ig), rmax(ig)
+        end do
+        deallocate(d)
+
+      contains
+
+        subroutine group_key(m, n, kk)
+          integer, intent(in)  :: m, n
+          integer, intent(out) :: kk(5)
+          integer :: z1, z2, l1, l2, s
+          call ao_info(m, z1, l1) ; call ao_info(n, z2, l2)
+          s = 2
+          if (AO(m)%x == AO(n)%x .and. AO(m)%y == AO(n)%y .and. AO(m)%z == AO(n)%z) s = 1
+          if (z1 > z2 .or. (z1 == z2 .and. l1 > l2)) then      ! (Z,l) pair unordered
+            kk = (/ z2, l2, z1, l1, s /)
+          else
+            kk = (/ z1, l1, z2, l2, s /)
+          end if
+        end subroutine group_key
+
+        subroutine ao_info(i, z, l)
+          integer, intent(in)  :: i
+          integer, intent(out) :: z, l
+          z = 0
+          if (allocated(sv_aoat)) then
+            if (size(sv_aoat) == nBas) then
+              if (sv_aoat(i) > 0) z = sv_charge(sv_aoat(i))
+            end if
+          end if
+          l = index('spdfg', AO(i)%orbital(1:1)) - 1
+          if (l < 0) l = 0
+        end subroutine ao_info
+
+        character(len=40) function pair_label(m, n)
+          integer, intent(in) :: m, n
+          integer :: z1, z2, l1, l2
+          if (m == 0) then
+            pair_label = '-' ; return
+          end if
+          call ao_info(m, z1, l1) ; call ao_info(n, z2, l2)
+          write(pair_label,'(a,i0,a,i0,a,a,a,i0,a,i0,a,a,a)') 'AO ', m, ' (Z=', z1, ' ', trim(AO(m)%orbital), &
+                ') x AO ', n, ' (Z=', z2, ' ', trim(AO(n)%orbital), ')'
+        end function pair_label
+
+        subroutine sort_groups()                           ! largest max delta first
+          integer :: i, j, ki(5), ci
+          double precision :: a1, a2, a3
+          do i = 2, ng
+            ki = keys(:,i) ; ci = cnt(i) ; a1 = dmax(i) ; a2 = dsum(i) ; a3 = rmax(i)
+            j = i - 1
+            do while (j >= 1)
+              if (dmax(j) >= a1) exit
+              keys(:,j+1) = keys(:,j) ; cnt(j+1) = cnt(j) ; dmax(j+1) = dmax(j) ; dsum(j+1) = dsum(j) ; rmax(j+1) = rmax(j)
+              j = j - 1
+            end do
+            keys(:,j+1) = ki ; cnt(j+1) = ci ; dmax(j+1) = a1 ; dsum(j+1) = a2 ; rmax(j+1) = a3
+          end do
+        end subroutine sort_groups
+
+      end subroutine df_fit_report
 
       ! s function of exponent 0 (the constant 1) at the centre of F
       subroutine dummy_at(F, D)
@@ -685,6 +855,7 @@ contains
           nok(ik) = n
         end do
         nmax = max(1, maxval(nok))
+        nb_saved = blas_serial()                    ! [Nov 2026] no BLAS threads inside OpenMP
         !$omp parallel default(shared) private(kk,k1,k2,mk1,no,L,Lw,Kloc,i,cc)
         allocate(L(nfuc,nau,nmax), Lw(nfuc,nau,nmax), Kloc(nfuc,nfuc), cc(nfuc,nmax))
         !$omp do schedule(dynamic,1)
@@ -713,6 +884,7 @@ contains
         !$omp end do
         deallocate(L, Lw, Kloc, cc)
         !$omp end parallel
+        call blas_restore(nb_saved)
         do r = 1, ncell
           pk = (0.d0,0.d0)
           do kk = 1, ncell
@@ -791,6 +963,7 @@ contains
         t_L = omp_get_wtime() - w0
 
         w0 = omp_get_wtime()
+        nb_saved = blas_serial()                    ! [Nov 2026] no BLAS threads inside OpenMP
         !$omp parallel do default(shared) private(it,k1,k2,k3,k4) schedule(dynamic,1)
         do it = 0, ncell**3-1
           k1 = it/(ncell*ncell) + 1
@@ -801,6 +974,7 @@ contains
                      L(p_lo,q_lo,1,k3,k4), no*nv, zero, ERI_out(p_lo,q_lo,p_lo,q_lo,k1,k2,k3), no*nv)
         end do
         !$omp end parallel do
+        call blas_restore(nb_saved)
         t_E = omp_get_wtime() - w0
         deallocate(L, phase)
 
@@ -848,6 +1022,7 @@ contains
         end do
         !$omp end parallel do
         deallocate(Bk)
+        nb_saved = blas_serial()                    ! [Nov 2026] no BLAS threads inside OpenMP
         !$omp parallel default(shared) private(k2,k1,off1,off2,tmp,C2,q)
         allocate(tmp(nfuc,q_lo:q_hi,nau), C2(nfuc,q_lo:q_hi))
         !$omp do schedule(dynamic,1)
@@ -864,6 +1039,7 @@ contains
         !$omp end do
         deallocate(tmp, C2)
         !$omp end parallel
+        call blas_restore(nb_saved)
         deallocate(F)
       end subroutine df_L_kap
 
@@ -941,5 +1117,322 @@ contains
         call df_init(sv_ndp, size(sv_charge), at, sv_geom, size(sv_AO), sv_AO, sv_iout, 'AuxBasis_MP2')
         deallocate(at)
       end subroutine df_rebuild_mp2
+
+
+
+
+
+      !-----------------------------------------------------------------!
+      ! [Nov 2026] pivoted Cholesky of the metric V(k) (Hermitian PSD):      !
+      !   V(piv,piv) ~ L L^H , rank m where the largest remaining        !
+      !   diagonal (Schur complement) < tol                              !
+      !   f(piv(i), j) = [L^-H](i,j) , j <= m ; f = 0 otherwise          !
+      ! so B = T3 f fits with the m pivot functions only:  f f^H = V_pp^-1
+      !-----------------------------------------------------------------!
+      subroutine chol_f(n, V, tol, f, ndrop, dmin)
+        integer, intent(in) :: n
+        complex(8), intent(inout) :: V(n,n)
+        double precision, intent(in) :: tol
+        complex(8), intent(out) :: f(n,n)
+        integer, intent(out) :: ndrop
+        double precision, intent(inout) :: dmin
+        integer :: piv(n), m, info, i, j
+        double precision :: work(2*n)
+        complex(8), allocatable :: L(:,:)
+        call zpstrf('L', n, V, n, piv, m, tol, work, info)
+        if (info < 0) error stop 'chol_f: zpstrf failed'
+        allocate(L(m,m)) ; L = (0.d0,0.d0)
+        do j = 1, m
+          do i = j, m
+            L(i,j) = V(i,j)
+          end do
+        end do
+        dmin = min(dmin, dble(L(m,m))**2)
+        call ztrtri('L', 'N', m, L, m, info)            ! L^-1
+        if (info /= 0) error stop 'chol_f: ztrtri failed'
+        f = (0.d0,0.d0)
+        do j = 1, m
+          do i = 1, m
+            f(piv(i), j) = conjg(L(j,i))                 ! (L^-1)^H
+          end do
+        end do
+        ndrop = n - m
+        deallocate(L)
+      end subroutine chol_f
+
+
+
+      !-----------------------------------------------------------------!
+      ! [Nov 2026] Cholesky-based fitting set: the auxiliary "functions" are !
+      ! orbital products I = (p0 q) (p in cell 0, q anywhere) chosen by  !
+      ! a pivoted Cholesky of the Gamma-point lattice-summed Coulomb     !
+      ! matrix  V(I,J) = sum_R (I_-R | J_0)  down to the tolerance tol.  !
+      ! The set is replicated in every cell, so the usual DF pipeline    !
+      ! (per-k metric, B in k-space) runs unchanged. tol -> 0 gives the  !
+      ! exact integrals (all products are then in the fitting set).     !
+      ! Returns Vm(P0, Q R) and T3(mu0, nu, Q R) = (mu0 nu | Q_R).       !
+      !-----------------------------------------------------------------!
+      subroutine cd_build(ndp, nBas, AO, ncell, tol, iout, nau, Vout, Tout)
+        use unitcell_module, only: nfuc
+        use eri_direct     , only: d_nsh, d_nshuc, d_sh_first, d_sh_n, d_Q, d_Qsh, set_ps
+        use clifford_tools , only: ps_on
+        use keywords       , only: c_prim_screen
+        use omp_lib
+        integer, intent(in) :: ndp, nBas, ncell, iout
+        type(ERI_function), intent(in) :: AO(nBas)
+        double precision, intent(in) :: tol
+        integer, intent(out) :: nau
+        double precision, allocatable, intent(out) :: Vout(:,:), Tout(:,:,:)
+        type colT
+          double precision, allocatable :: a(:,:)
+        end type colT
+        type(colT), allocatable :: col(:)
+        integer, allocatable :: sh_of(:), trT(:,:), piv(:), sp(:,:)
+        double precision, allocatable :: D(:), L(:,:), c(:), blk(:,:,:,:)
+        integer :: ncand, i, r, rn, fn, ci, i0, SA, SB, SAp, SBp, a, b, k, J, ii, p, q, maxr, nsp, it, P_, Q_, nc, ncols
+        double precision :: w0, dj, t_d, t_c, t_u, t1
+        integer :: nsp_done, nreuse
+        logical, allocatable :: done(:,:)
+
+        w0 = omp_get_wtime()
+        allocate(sh_of(nBas))
+        do SA = 1, d_nsh
+          do a = 1, d_sh_n(SA)
+            sh_of(d_sh_first(SA)+a-1) = SA
+          end do
+        end do
+        ! trT(fn, r) = function fn translated by -R(r)
+        allocate(trT(nBas, ncell))
+        do r = 1, ncell
+          rn = csub(1, r)
+          do fn = 1, nBas
+            ci = (fn-1)/nfuc + 1 ; i0 = mod(fn-1, nfuc) + 1
+            trT(fn, r) = (cadd(ci, rn)-1)*nfuc + i0
+          end do
+        end do
+        ncand = nfuc*nBas
+        allocate(D(ncand)) ; D = 0.d0
+
+        ! ---- diagonal D(ii) = sum_R (I_-R | I_0) ---- !
+        allocate(sp(2, d_nshuc*d_nsh)) ; nsp = 0
+        do SA = 1, d_nshuc
+          do SB = 1, d_nsh
+            if (dble(ncell)*d_Qsh(SA,SB)**2 < tol) cycle
+            nsp = nsp + 1 ; sp(:,nsp) = (/ SA, SB /)
+          end do
+        end do
+        !$omp parallel do default(shared) private(it,SA,SB,r,SAp,SBp,blk,a,b,ii) schedule(dynamic,1)
+        do it = 1, nsp
+          SA = sp(1,it) ; SB = sp(2,it)
+          allocate(blk(d_sh_n(SA),d_sh_n(SB),d_sh_n(SA),d_sh_n(SB)))
+          do r = 1, ncell
+            SAp = sh_of(trT(d_sh_first(SA), r)) ; SBp = sh_of(trT(d_sh_first(SB), r))
+            call ERI_shell_block_toroidal(ndp, d_sh_n(SA), AO(d_sh_first(SAp):), d_sh_n(SB), AO(d_sh_first(SBp):), &
+                                               d_sh_n(SA), AO(d_sh_first(SA):),  d_sh_n(SB), AO(d_sh_first(SB):), blk)
+            do b = 1, d_sh_n(SB)
+              do a = 1, d_sh_n(SA)
+                ii = (d_sh_first(SB)+b-2)*nfuc + d_sh_first(SA)+a-1
+                D(ii) = D(ii) + blk(a,b,a,b)
+              end do
+            end do
+          end do
+          deallocate(blk)
+        end do
+        !$omp end parallel do
+        deallocate(sp)
+        t_d = omp_get_wtime()-w0 ; t_c = 0 ; t_u = 0 ; nsp_done = 0
+
+        ! ---- pivoted Cholesky ---- !
+        maxr = min(ncand, 20000)
+        allocate(L(ncand, 64), piv(maxr), c(ncand), col(ncand), done(d_nshuc, d_nsh))
+        done = .false. ; nreuse = 0
+        k = 0 ; ncols = 0
+        do
+          J = maxloc(D, 1) ; dj = D(J)
+          if (dj < tol .or. k == maxr) exit
+          t1 = omp_get_wtime()
+          if (.not. allocated(col(J)%a)) call shellpair_cols(J)
+          t_c = t_c + omp_get_wtime()-t1 ; t1 = omp_get_wtime()
+          ! c(ii) = sum_R col_J(p_-R, q_-R)
+          !$omp parallel do default(shared) private(ii,p,q,r)
+          do ii = 1, ncand
+            p = mod(ii-1,nfuc) + 1 ; q = (ii-1)/nfuc + 1
+            c(ii) = 0.d0
+            do r = 1, ncell
+              c(ii) = c(ii) + col(J)%a(trT(p,r), trT(q,r))
+            end do
+          end do
+          !$omp end parallel do
+          k = k + 1
+          if (k > size(L,2)) call grow_L()
+          if (k > 1) call dgemv('N', ncand, k-1, -1.d0, L, ncand, L(J,1), ncand, 1.d0, c, 1)
+          L(:,k) = c/dsqrt(dj)
+          D = D - L(:,k)**2
+          D(J) = 0.d0
+          piv(k) = J
+          t_u = t_u + omp_get_wtime()-t1
+        end do
+        nau = k
+        write(iout,'(a,i10,a,i10,a,es9.2)') ' Cholesky fitting set: ', nau, ' products per cell (of', ncand, &
+                                            ' candidates), largest remaining diagonal ', maxval(D)
+        write(iout,'(a,i10,a,i10,a)') ' columns of integrals             : ', ncols, '  (', nsp_done, ' shell pairs)'
+        write(iout,'(a,i10)') ' shell blocks copied, not computed: ', nreuse
+        write(iout,'(a,3f9.2,a)') ' wall time diagonal/columns/update: ', t_d, t_c, t_u, ' s'
+
+        ! ---- Vm(P0, Q R) = (P_-R | Q_0) , T3(mu0, nu, Q R) = (mu_-R nu_-R | Q_0) ---- !
+        allocate(Vout(nau, nau*ncell), Tout(nfuc, nBas, nau*ncell))
+        !$omp parallel do default(shared) private(Q_,r,J,P_,ii,p,q,i,fn) collapse(2)
+        do r = 1, ncell
+          do Q_ = 1, nau
+            J = piv(Q_)
+            do P_ = 1, nau
+              ii = piv(P_) ; p = mod(ii-1,nfuc) + 1 ; q = (ii-1)/nfuc + 1
+              Vout(P_, (r-1)*nau+Q_) = col(J)%a(trT(p,r), trT(q,r))
+            end do
+            do fn = 1, nBas
+              do i = 1, nfuc
+                Tout(i, fn, (r-1)*nau+Q_) = col(J)%a(trT(i,r), trT(fn,r))
+              end do
+            end do
+          end do
+        end do
+        !$omp end parallel do
+        do ii = 1, ncand
+          if (allocated(col(ii)%a)) deallocate(col(ii)%a)
+        end do
+        deallocate(col, L, D, c, piv, trT, sh_of, done)
+        write(iout,'(a,f10.2,a)') ' wall time Cholesky selection     : ', omp_get_wtime()-w0, ' s'
+
+      contains
+
+        subroutine grow_L()
+          double precision, allocatable :: t(:,:)
+          allocate(t(ncand, 2*size(L,2)))
+          t(:,1:size(L,2)) = L
+          call move_alloc(t, L)
+        end subroutine grow_L
+
+        ! all columns (a b | c d)_{a,b in supercell} for the shell pair of the product J
+        ! [Nov 2026] a block (S1 S2|SC SD) whose bra pair, moved to cell 0, was already
+        ! a pivot shell pair is copied from that pair's columns (bra-ket symmetry);
+        ! the others are computed with the quartet moved so that S1 is in cell 0
+        ! (needed for the primitive screening tables of keyword prim_screen)
+        subroutine shellpair_cols(Jp)
+          integer, intent(in) :: Jp
+          integer :: SC, SD, nC, nD, cc, dd, JJ, S1, S2, x, y, r1, T1, T2, TC, TD, KK, fx, fy, nr, r2, U1, U2, UC, UD
+          double precision, allocatable :: bk(:,:,:,:)
+          SC = sh_of(mod(Jp-1,nfuc)+1) ; SD = sh_of((Jp-1)/nfuc+1)
+          nsp_done = nsp_done + 1
+          nC = d_sh_n(SC) ; nD = d_sh_n(SD)
+          do dd = 1, nD
+            do cc = 1, nC
+              JJ = (d_sh_first(SD)+dd-2)*nfuc + d_sh_first(SC)+cc-1
+              allocate(col(JJ)%a(nBas,nBas)) ; col(JJ)%a = 0.d0
+              ncols = ncols + 1
+            end do
+          end do
+          ps_on = c_prim_screen
+          nr = 0
+          !$omp parallel do default(shared) private(S1,S2,bk,x,y,cc,dd,JJ,r1,T1,T2,TC,TD,KK,fx,fy,r2,U1,U2,UC,UD) &
+          !$omp reduction(+:nr) schedule(dynamic,1)
+          do S1 = 1, d_nsh
+            do S2 = S1, d_nsh
+              if (d_Qsh(S1,S2)*d_Qsh(SC,SD) < 1.d-15) cycle
+              allocate(bk(d_sh_n(S1),d_sh_n(S2),nC,nD))
+              ! move the quartet so that S1 is in cell 0
+              r1 = (d_sh_first(S1)-1)/nfuc + 1
+              T1 = sh_of(trT(d_sh_first(S1), r1)) ; T2 = sh_of(trT(d_sh_first(S2), r1))
+              TC = sh_of(trT(d_sh_first(SC), r1)) ; TD = sh_of(trT(d_sh_first(SD), r1))
+              if (done(T1, T2)) then
+                ! (S1 S2|SC SD) = (TC TD|T1 T2) = column (x0 y) of pair (T1,T2) at (c-R, d-R)
+                do y = 1, d_sh_n(S2)
+                  do x = 1, d_sh_n(S1)
+                    KK = (d_sh_first(T2)+y-2)*nfuc + d_sh_first(T1)+x-1
+                    do dd = 1, nD
+                      do cc = 1, nC
+                        bk(x,y,cc,dd) = col(KK)%a(d_sh_first(TC)+cc-1, d_sh_first(TD)+dd-1)
+                      end do
+                    end do
+                  end do
+                end do
+                nr = nr + 1
+              else
+                ! the same with S2 moved to cell 0: (S1 S2|SC SD) = (UC UD|U1 U2), U1 = S2-R2, U2 = S1-R2
+                r2 = (d_sh_first(S2)-1)/nfuc + 1
+                U1 = sh_of(trT(d_sh_first(S2), r2)) ; U2 = sh_of(trT(d_sh_first(S1), r2))
+                UC = sh_of(trT(d_sh_first(SC), r2)) ; UD = sh_of(trT(d_sh_first(SD), r2))
+                if (done(U1, U2)) then
+                  do y = 1, d_sh_n(S2)
+                    do x = 1, d_sh_n(S1)
+                      KK = (d_sh_first(U2)+x-2)*nfuc + d_sh_first(U1)+y-1
+                      do dd = 1, nD
+                        do cc = 1, nC
+                          bk(x,y,cc,dd) = col(KK)%a(d_sh_first(UC)+cc-1, d_sh_first(UD)+dd-1)
+                        end do
+                      end do
+                    end do
+                  end do
+                  nr = nr + 1
+                else
+                if (ps_on) call set_ps(T1, T2, TC, TD)
+                call ERI_shell_block_toroidal(ndp, d_sh_n(S1), AO(d_sh_first(T1):), d_sh_n(S2), AO(d_sh_first(T2):), &
+                                                   nC, AO(d_sh_first(TC):), nD, AO(d_sh_first(TD):), bk)
+                end if
+              end if
+              do dd = 1, nD
+                do cc = 1, nC
+                  JJ = (d_sh_first(SD)+dd-2)*nfuc + d_sh_first(SC)+cc-1
+                  do y = 1, d_sh_n(S2)
+                    fy = d_sh_first(S2)+y-1
+                    do x = 1, d_sh_n(S1)
+                      fx = d_sh_first(S1)+x-1
+                      col(JJ)%a(fx, fy) = bk(x,y,cc,dd)
+                      col(JJ)%a(fy, fx) = bk(x,y,cc,dd)
+                    end do
+                  end do
+                end do
+              end do
+              deallocate(bk)
+            end do
+          end do
+          !$omp end parallel do
+          ps_on = .false.
+          nreuse = nreuse + nr
+          done(SC, SD) = .true.
+        end subroutine shellpair_cols
+
+      end subroutine cd_build
+
+
+      !-----------------------------------------------------------------!
+      ! [Nov 2026] OpenBLAS (pthreads build, e.g. Homebrew) starts its   !
+      ! own threads in every zgemm, also inside our OpenMP regions:      !
+      ! threads x threads oversubscription. Switch BLAS to one thread    !
+      ! around those regions and restore afterwards.                     !
+      !-----------------------------------------------------------------!
+      integer function blas_serial()
+        interface
+          integer(c_int) function openblas_get_num_threads() bind(C, name='openblas_get_num_threads')
+            import :: c_int
+          end function openblas_get_num_threads
+          subroutine openblas_set_num_threads(n) bind(C, name='openblas_set_num_threads')
+            import :: c_int
+            integer(c_int), value :: n
+          end subroutine openblas_set_num_threads
+        end interface
+        blas_serial = int(openblas_get_num_threads())
+        call openblas_set_num_threads(1_c_int)
+      end function blas_serial
+
+      subroutine blas_restore(n)
+        integer, intent(in) :: n
+        interface
+          subroutine openblas_set_num_threads(m) bind(C, name='openblas_set_num_threads')
+            import :: c_int
+            integer(c_int), value :: m
+          end subroutine openblas_set_num_threads
+        end interface
+        call openblas_set_num_threads(int(max(n,1), c_int))
+      end subroutine blas_restore
 
 end module df_toroidal

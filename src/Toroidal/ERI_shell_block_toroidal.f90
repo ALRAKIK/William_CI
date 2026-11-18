@@ -51,6 +51,7 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
       double precision :: t2, D2, w, Rr, phi, c1, s1, cn, sn, tmp, gm1, g0, gp1, val, p, q, sgn
       double precision :: cAmax, cBmax, cCmax, cDmax
       complex(8)       :: acc
+      logical,          allocatable :: k_done(:)
 
       ! ket storage
       double precision, allocatable :: k_fac(:), k_cen(:,:), k_q(:), k_E(:,:,:,:,:)
@@ -62,6 +63,11 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
       complex(8),       allocatable :: G(:,:,:,:), dco(:)
       double precision, allocatable :: Idir(:,:,:), SNv(:), gt(:,:), cph(:), sph(:), wq(:)
       double precision, allocatable :: coA(:,:), coB(:,:), coC(:,:), coD(:,:)
+      double precision, allocatable :: rD2(:), rw(:), rs(:)       ! real directions: per-node factors
+      double precision, allocatable :: Iacc(:)
+      integer          :: ne, k0, ns
+      double precision :: Fmx
+      double precision, allocatable :: FT(:,:), Kr(:), Ki(:), accv(:), sgnv(:,:)
 
       blk = 0.d0
       if (.not. allocated(t_bessel)) error stop "ERI_shell_block_toroidal: t-table not initialized"
@@ -98,6 +104,21 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
       allocate(b_cen(3), b_N(3), b_E(0:NMAX_CLIFF,0:lsA,0:lsB,3))
       allocate(Iv(0:nw), F(0:nw), dco(-ME:ME), G(0:nw,0:lsA,0:lsB,ndp))
       allocate(Idir(nq,0:ncomb-1,3), SNv(0:NN), gt(0:NN,nq), cph(0:nw), sph(0:nw), wq(nq))
+      allocate(rD2(nq), rw(nq), rs(nq), Iacc(nq))
+      allocate(FT(0:ncomb-1,0:nw), Kr(0:nw), Ki(0:nw), accv(0:ncomb-1), sgnv(0:ncomb-1,3))
+      do id = 0 , lsD
+       do ic = 0 , lsC
+        do ib = 0 , lsB
+         do ia = 0 , lsA
+          cmb = ia + (lsA+1)*(ib + (lsB+1)*(ic + (lsC+1)*id))
+          sgnv(cmb,:) = 1.d0
+          do d = 1 , ndp
+            sgnv(cmb,d) = av(d)**(-(ia+ib+ic+id))
+          end do
+         end do
+        end do
+       end do
+      end do
       wq = t_weight(1:nq)
 
       allocate(coA(n1,nA), coB(n2,nB), coC(n3,nC), coD(n4,nD))
@@ -140,31 +161,8 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
         end do
       end do
 
-      allocate(Hall(0:max(off,1)-1))
-      kl = 0
-      do k = 1 , n3
-        do l = 1 , n4
-          kl = kl + 1
-          e1 = SC(1)%exponent(k) ; e2 = SD(1)%exponent(l)
-          do d = 1 , ndp
-            call bary_dir(d, e1, e2, rC(d), rD(d), pe, cen)
-            Aarg = 2.d0*pe/(av(d)*av(d))
-            call bessel_scaled_vector_fast(k_N(d,kl)+lsC+lsD, Aarg, Iv(0:k_N(d,kl)+lsC+lsD))
-            do ic = 0 , lsC
-              do id = 0 , lsD
-                call fourier_sin_product(ic, id, av(d)*(cen-rC(d)), av(d)*(cen-rD(d)), dco(-(ic+id):(ic+id)))
-                do n = 0 , k_N(d,kl)
-                  acc = (0.d0,0.d0)
-                  do kk = -(ic+id) , ic+id
-                    acc = acc + dco(kk) * Iv(abs(n-kk))
-                  end do
-                  Hall(k_off(d,kl) + n + (k_N(d,kl)+1)*(ic + (lsC+1)*id)) = acc
-                end do
-              end do
-            end do
-          end do
-        end do
-      end do
+      allocate(Hall(0:max(off,1)-1), k_done(nket))
+      k_done = .false.          ! ket Fourier vectors are built on first use (lazy)
 
       !------------------------ bra pairs / quartets -----------------!
       do i = 1 , n1
@@ -194,17 +192,9 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
             if (d <= ndp) then
               call bary_dir(d, e1, e2, rA(d), rB(d), pe, cen)
               Aarg = 2.d0*pe/(av(d)*av(d))
-              call bessel_scaled_vector_fast(b_N(d)+lsA+lsB, Aarg, Iv(0:b_N(d)+lsA+lsB))
               do ia = 0 , lsA
                 do ib = 0 , lsB
-                  call fourier_sin_product(ia, ib, av(d)*(cen-rA(d)), av(d)*(cen-rB(d)), dco(-(ia+ib):(ia+ib)))
-                  do n = 0 , b_N(d)
-                    acc = (0.d0,0.d0)
-                    do kk = -(ia+ib) , ia+ib
-                      acc = acc + dco(kk) * Iv(abs(n+kk))
-                    end do
-                    G(n,ia,ib,d) = acc
-                  end do
+                  call pair_vector_cached(b_N(d), Aarg, ia, ib, av(d)*(cen-rA(d)), av(d)*(cen-rB(d)), -1, G(0:b_N(d),ia,ib,d))
                 end do
               end do
             else
@@ -226,8 +216,18 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
                 if (ps_bra(i,j)*ps_ket(k,l) < ps_tol) cycle
               end if
               q = k_q(kl)
+              if (.not. k_done(kl)) call build_ket(k, l, kl)
 
               !---- 1D factors for every power combination ----!
+              if (ndp < 3) then                  ! node factors shared by the real directions
+                do kq = 1 , nq
+                  t2 = t_node(kq)*t_node(kq)
+                  D2 = 1.d0/(p*q + (p+q)*t2)
+                  rD2(kq) = D2
+                  rw(kq)  = p*q*t2*D2
+                  rs(kq)  = pi*dsqrt(D2)
+                end do
+              end if
               do d = 1 , 3
                 if (d <= ndp) then
                   nm  = min(b_N(d), k_N(d,kl))
@@ -256,12 +256,39 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
                         F(n) = dble(acc)*cph(n) - aimag(acc)*sph(n)
                       end do
                       sgn = av(d)**(-(ia+ib+ic+id))
-                      do kq = 1 , nq
-                        nt = min(nm, t_nmax(kq,d))
-                        val = F(0)*t_bessel(0,kq,d)
-                        if (nt >= 1) val = val + 2.d0*dot_product(F(1:nt), t_bessel(1:nt,kq,d))
-                        Idir(kq,cmb,d) = val * sgn
-                      end do
+                      if (ndp == 1) then                  ! 1D: per-node dot products (faster there)
+                        do kq = 1 , nq
+                          nt = min(nm, t_nmax(kq,d))
+                          val = F(0)*t_bessel(0,kq,d)
+                          if (nt >= 1) val = val + 2.d0*dot_product(F(1:nt), t_bessel(1:nt,kq,d))
+                          Idir(kq,cmb,d) = val * sgn
+                        end do
+                      else
+                        ! [Nov 2026] sum over n outside, all t nodes at once (vector of
+                        ! length nq). t_bt holds 2*T_n, and 0 beyond each node's t_nmax,
+                        ! so the terms kept are exactly those of the per-node sums.
+                        ! terms with |F_n| < 1e-17 max|F| are dropped (each below 1e-17
+                        ! of the largest term, as for the Bessel truncations)
+                        ne = min(nm, t_nmaxall(d))
+                        Fmx = maxval(dabs(F(0:ne)))
+                        do while (ne > 0)
+                          if (dabs(F(ne)) >= 1.d-17*Fmx) exit
+                          ne = ne - 1
+                        end do
+                        ns = min(ne, t_nsplit(d))
+                        Iacc(1:nq) = F(0)*t_bt(1:nq,0,d)
+                        do n = 1 , ns                       ! many nodes active: vector over nodes
+                          k0 = t_kfirst(n,d)
+                          Iacc(k0:nq) = Iacc(k0:nq) + F(n)*t_bt(k0:nq,n,d)
+                        end do
+                        if (ne > ns) then                   ! the few broad nodes: dot over n
+                          do kq = t_kfirst(ns+1,d) , nq
+                            nt = min(ne, t_nmax(kq,d))
+                            if (nt > ns) Iacc(kq) = Iacc(kq) + 2.d0*dot_product(F(ns+1:nt), t_bessel(ns+1:nt,kq,d))
+                          end do
+                        end if
+                        Idir(:,cmb,d) = Iacc(1:nq) * sgn
+                      end if
                      end do
                     end do
                    end do
@@ -269,10 +296,12 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
                 else
                   Rr = b_cen(d) - k_cen(d,kl)
                   do kq = 1 , nq
-                    t2 = t_node(kq)*t_node(kq)
-                    D2 = 1.d0/(p*q + (p+q)*t2)
-                    w  = p*q*t2*D2
-                    gt(0,kq) = pi*dsqrt(D2)*dexp(-w*Rr*Rr)
+                    w  = rw(kq)
+                    if (Rr == 0.d0) then
+                      gt(0,kq) = rs(kq)
+                    else
+                      gt(0,kq) = rs(kq)*dexp(-w*Rr*Rr)
+                    end if
                     gm1 = 0.d0 ; g0 = gt(0,kq)
                     do n = 0 , NN - 1
                       gp1 = 2.d0*w*Rr*g0 - 2.d0*dble(n)*w*gm1
@@ -328,6 +357,28 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
         end do
       end do
 
-      deallocate(k_fac, k_cen, k_q, k_N, k_off, k_E, b_cen, b_N, b_E, Iv, F, dco, G, Idir, SNv, gt, cph, sph, wq, Hall, coA, coB, coC, coD)
+      deallocate(k_fac, k_cen, k_q, k_N, k_off, k_E, b_cen, b_N, b_E, Iv, F, dco, G, Idir, SNv, gt, cph, sph, wq, Hall, coA, coB, coC, coD, k_done, rD2, rw, rs, FT, Kr, Ki, accv, sgnv)
+
+contains
+
+      !---- Fourier vectors H_n of ket primitive pair (k,l), all directions ----!
+      subroutine build_ket(k, l, kl)
+        integer, intent(in) :: k, l, kl
+        integer             :: d, ic, id, n, kk
+        double precision    :: e1, e2, pe, cen, Aarg
+        complex(8)          :: acc
+        e1 = SC(1)%exponent(k) ; e2 = SD(1)%exponent(l)
+        do d = 1 , ndp
+          call bary_dir(d, e1, e2, rC(d), rD(d), pe, cen)
+          Aarg = 2.d0*pe/(av(d)*av(d))
+          do ic = 0 , lsC
+            do id = 0 , lsD
+              call pair_vector_cached(k_N(d,kl), Aarg, ic, id, av(d)*(cen-rC(d)), av(d)*(cen-rD(d)), 1, &
+                   Hall(k_off(d,kl) + (k_N(d,kl)+1)*(ic + (lsC+1)*id) : k_off(d,kl) + k_N(d,kl) + (k_N(d,kl)+1)*(ic + (lsC+1)*id)))
+            end do
+          end do
+        end do
+        k_done(kl) = .true.
+      end subroutine build_ket
 
 end subroutine ERI_shell_block_toroidal

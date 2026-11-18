@@ -48,8 +48,9 @@ module clifford_tools
       public :: overlap_1D_clifford, overlap_1D_clifford_ext, overlap_1D_real
       public :: kinetic_1D_clifford, kinetic_1D_real
       public :: bessel_scaled_vector, bessel_scaled_vector_fast, bessel_nmax_estimate
+      public :: pair_vector_cached, pair_cache_free
       public :: fourier_sin_product, hermite_E_1D, orbital_to_lxyz
-      public :: setup_t_tables, nq_t, t_node, t_weight, t_bessel, t_nmax
+      public :: setup_t_tables, nq_t, t_node, t_weight, t_bessel, t_nmax, t_bt, t_nmaxall, t_kfirst, t_nsplit
       public :: bary_dir, clifford_pair
       public :: ps_on, ps_noscreen, ps_tol, ps_qp, ps_bra, ps_ket
 
@@ -57,6 +58,12 @@ module clifford_tools
       integer,          save              :: nq_t = 0
       double precision, save, allocatable :: t_node(:), t_weight(:), t_bessel(:,:,:)
       integer,          save, allocatable :: t_nmax(:,:)
+      ! [Nov 2026] transposed table for the ERI kernel: t_bt(k,n,d) = c_n t_bessel(n,k,d)
+      ! (c_0 = 1, c_n = 2) for n <= t_nmax(k,d), 0 beyond; t_nmaxall(d) = max_k t_nmax(k,d)
+      double precision, save, allocatable :: t_bt(:,:,:)
+      integer,          save, allocatable :: t_nmaxall(:)
+      integer,          save, allocatable :: t_kfirst(:,:)   ! t_bt(k,n,d) = 0 for k < t_kfirst(n,d)
+      integer,          save, allocatable :: t_nsplit(:)     ! last n with >= 8 nodes active
 
       ! ---- [Nov 2026] keyword prim_screen: primitive-pair Schwarz screening ---- !
       ! ps_qp(i,j,SI,SJ) = max_comp sqrt|(ij|ij)| for primitives i,j of shells   !
@@ -74,6 +81,21 @@ module clifford_tools
       integer, parameter :: NM = NMAX_CLIFF
 
       double precision, parameter :: pi = 3.14159265358979323846d0
+
+      ! ---- [Nov 2026] memo of the pair Fourier vectors of the ERI kernel ---- !
+      !   V_n = sum_k d_k exp(-A) I_|n - s k|(A),  n = 0..N,  s = +1 (ket) / -1 (bra)
+      ! d_k = Fourier coefficients of sin^i(u+phA) sin^l(u+phB). Keyed on the  !
+      ! bit patterns of all inputs, so a hit returns exactly what would be     !
+      ! computed. One table shared by all threads: a slot is filled once, under!
+      ! a critical section, and published last (pv_off), so readers need no   !
+      ! lock. The pool is reserved once (virtual memory, pages are used only   !
+      ! when filled). When it is full, vectors are just computed.             !
+      integer,    parameter :: pv_slots = 262144                   ! hash slots (power of 2)
+      integer(8), parameter :: pv_pool_max = 16000000_8            ! complex numbers (256 MB max)
+      integer(8),       save, allocatable :: pv_key(:,:), pv_off(:)
+      complex(8),       save, allocatable :: pv_pool(:)
+      integer(8),       save :: pv_used = 0
+      logical,          save :: pv_ready = .false.
 
       ! T(e,nu,s,m): coefficients of d^m/dA^m [A^-s I_s] = sum T A^-e I_nu
       double precision, save :: T(0:NM, 0:NM, 0:NM/2, 0:NM)
@@ -427,6 +449,105 @@ subroutine bessel_scaled_vector_fast(N, A, Iv)
 
 end subroutine bessel_scaled_vector_fast
 
+
+!---------------------------------------------------------------------!
+! Pair Fourier vector of the ERI kernel, memoized (shared by threads). !
+!---------------------------------------------------------------------!
+subroutine pair_vector_cached(N, A, i, l, phA, phB, sgn, V)
+
+      integer,          intent(in)  :: N, i, l, sgn
+      double precision, intent(in)  :: A, phA, phB
+      complex(8),       intent(out) :: V(0:N)
+
+      integer(8) :: k1, k2, k3, k4, hh, o
+      integer    :: h0, h, probe, m, kk
+      double precision :: Iv(0:N+i+l)
+      complex(8)       :: dco(-(i+l):(i+l)), acc
+      logical          :: ready
+
+      !$omp atomic read
+      ready = pv_ready
+      if (.not. ready) then
+        !$omp critical (pv_cache)
+        if (.not. pv_ready) then
+          allocate(pv_key(4,0:pv_slots-1), pv_off(0:pv_slots-1), pv_pool(pv_pool_max))
+          pv_off = -1 ; pv_used = 0
+          !$omp flush
+          !$omp atomic write
+          pv_ready = .true.
+        end if
+        !$omp end critical (pv_cache)
+      end if
+
+      k1 = transfer(A, k1) ; k2 = transfer(phA, k2) ; k3 = transfer(phB, k3)
+      k4 = int(N,8) + 1000000_8*(int(i,8) + 64_8*(int(l,8) + 64_8*int(sgn+1,8)))
+      hh = k1*31_8 + k2
+      hh = hh*31_8 + k3
+      hh = hh*31_8 + k4
+      hh = ieor(hh, ishft(hh,-31))
+      h0 = int(iand(hh, int(pv_slots-1,8)))
+
+      ! ---- lookup (lock free) ---- !
+      h = h0
+      do probe = 1 , 64
+        !$omp atomic read
+        o = pv_off(h)
+        if (o < 0) exit
+        !$omp flush
+        if (pv_key(1,h) == k1 .and. pv_key(2,h) == k2 .and. pv_key(3,h) == k3 .and. pv_key(4,h) == k4) then
+          V(0:N) = pv_pool(o:o+N)
+          return
+        end if
+        h = iand(h+1, pv_slots-1)
+      end do
+
+      ! ---- compute ---- !
+      call bessel_scaled_vector_fast(N+i+l, A, Iv)
+      if (i + l == 0) then
+        V(0:N) = cmplx(Iv(0:N), 0.d0, kind=8)
+      else
+        call fourier_sin_product(i, l, phA, phB, dco)
+        do m = 0 , N
+          acc = (0.d0,0.d0)
+          do kk = -(i+l) , i+l
+            acc = acc + dco(kk) * Iv(abs(m - sgn*kk))
+          end do
+          V(m) = acc
+        end do
+      end if
+
+      ! ---- store (one writer at a time; the slot is published last) ---- !
+      !$omp critical (pv_cache)
+      h = h0
+      do probe = 1 , 64
+        if (pv_off(h) < 0) exit
+        if (pv_key(1,h) == k1 .and. pv_key(2,h) == k2 .and. pv_key(3,h) == k3 .and. pv_key(4,h) == k4) exit
+        h = iand(h+1, pv_slots-1)
+      end do
+      if (pv_off(h) < 0 .and. pv_used + N + 1 <= pv_pool_max) then
+        o = pv_used + 1
+        pv_pool(o:o+N) = V(0:N)
+        pv_used = pv_used + N + 1
+        pv_key(:,h) = (/ k1, k2, k3, k4 /)
+        !$omp flush
+        !$omp atomic write
+        pv_off(h) = o
+      end if
+      !$omp end critical (pv_cache)
+
+end subroutine pair_vector_cached
+
+!---------------------------------------------------------------------!
+! Release the pair-vector memo (call outside parallel regions).        !
+!---------------------------------------------------------------------!
+subroutine pair_cache_free()
+      if (allocated(pv_off))  deallocate(pv_off)
+      if (allocated(pv_key))  deallocate(pv_key)
+      if (allocated(pv_pool)) deallocate(pv_pool)
+      pv_used = 0
+      pv_ready = .false.
+end subroutine pair_cache_free
+
 !---------------------------------------------------------------------!
 ! Order beyond which exp(-A) I_n(A) / exp(-A) I_0(A) < ~1e-17          !
 ! ( ~ exp(-n^2/2A) for large A, (A/2)^n/n! for small A )               !
@@ -506,6 +627,10 @@ subroutine setup_t_tables(ncap, ndp)
       if (allocated(t_weight)) deallocate(t_weight)
       if (allocated(t_bessel)) deallocate(t_bessel)
       if (allocated(t_nmax))   deallocate(t_nmax)
+      if (allocated(t_bt))     deallocate(t_bt)
+      if (allocated(t_nmaxall)) deallocate(t_nmaxall)
+      if (allocated(t_kfirst)) deallocate(t_kfirst)
+      if (allocated(t_nsplit)) deallocate(t_nsplit)
 
       had_tw = allocated(t_val)
       if (.not. had_tw) then
@@ -536,6 +661,36 @@ subroutine setup_t_tables(ncap, ndp)
               exit
             end if
           end do
+        end do
+      end do
+      allocate(t_bt(nq, 0:ncap, ndp), t_nmaxall(ndp))
+      t_bt = 0.d0
+      do d = 1, ndp
+        t_nmaxall(d) = maxval(t_nmax(:,d))
+        do k = 1, nq
+          t_bt(k,0,d) = t_bessel(0,k,d)
+          do n = 1, t_nmax(k,d)
+            t_bt(k,n,d) = 2.d0*t_bessel(n,k,d)
+          end do
+        end do
+      end do
+      allocate(t_kfirst(0:ncap, ndp))
+      do d = 1, ndp
+        do n = 0, ncap
+          t_kfirst(n,d) = nq + 1
+          do k = 1, nq
+            if (any(t_bt(k:nq,n,d) /= 0.d0)) then
+              t_kfirst(n,d) = k ; exit
+            end if
+          end do
+          ! keep only leading zeros: rows k >= t_kfirst are summed as they are
+        end do
+      end do
+      allocate(t_nsplit(ndp))
+      do d = 1, ndp
+        t_nsplit(d) = 0
+        do n = 0, ncap
+          if (count(t_nmax(:,d) >= n) >= min(8,nq)) t_nsplit(d) = n
         end do
       end do
       nq_t = nq

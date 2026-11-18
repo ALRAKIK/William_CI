@@ -63,6 +63,10 @@ subroutine  get_keywords(keyword)
       ! [Nov 2026] keyword density_fitting: fitted J/K and (ov|ov), no 4-index ERIs stored
       !            (uses the direct-mode plumbing: no ERI array, AO shells and Schwarz bounds)
       c_df          = any(keyword == 'df'       )
+      c_df_etb      = any(keyword == 'df_etb'   )      ! [Nov 2026]
+      df_cd_tol     = 1.0d-8
+      if (any(keyword == 'df_cd_6' )) df_cd_tol = 1.0d-6
+      if (any(keyword == 'df_cd_10')) df_cd_tol = 1.0d-10
       if (c_df) then
         if (.not. c_SAO) error stop 'keyword density_fitting needs SAO (toroidal RHF)'
         if (c_cholesky .or. c_cc_disk .or. c_MCDE .or. c_UHF) &
