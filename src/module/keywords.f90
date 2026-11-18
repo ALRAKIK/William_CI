@@ -17,6 +17,9 @@ module keywords
       public  :: c_Spin_adapt
       public  :: c_Lanczos
       public  :: c_screen
+      public  :: c_3_1
+      public  :: c_4_0
+      public  :: c_4_2
 
 
       logical :: c_One , c_OV , c_K , c_NA , c_ERI
@@ -34,6 +37,9 @@ module keywords
       logical :: c_Spin_adapt
       logical :: c_Lanczos
       logical :: c_screen
+      logical :: c_3_1
+      logical :: c_4_0
+      logical :: c_4_2
 
 
 end module keywords

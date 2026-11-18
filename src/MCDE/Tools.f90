@@ -20,7 +20,7 @@ subroutine inv_S(N,eigve, S)
       implicit none
 
       ! Input variables
-      integer         , intent(in)            :: N
+      integer         , intent(in)           :: N
       double precision, intent(in)           :: eigve(N,N)
       double precision, intent(inout)        :: S(N,N)
 

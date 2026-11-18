@@ -349,6 +349,12 @@ subroutine read_keywords(keyword)
 
         if (trim(line) == 'screen'   )   keyword(52) = 'screen'
 
+        if (trim(line) == '3_1'   )      keyword(53) = '3_1'
+
+        if (trim(line) == '4_0'   )      keyword(54) = '4_0'
+
+        if (trim(line) == '4_2'   )      keyword(53) = '4_2'
+
       end do
 
 end subroutine

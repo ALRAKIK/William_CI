@@ -1,4 +1,4 @@
-subroutine MCDE_4_2(nBas, nOcc, energies, ERI)
+subroutine MCDE_4_2(nBas, nOcc, energies, ERI, Lanczos)
 
 
       ! ==================================================================================================================
@@ -34,8 +34,9 @@ subroutine MCDE_4_2(nBas, nOcc, energies, ERI)
 
       ! Input variables
       integer,intent(in)                  :: nBas, nOcc
-      double precision,intent(in)         :: energies(:)
-      double precision, intent(in)        :: ERI(:,:,:,:)
+      double precision,intent(in)         :: energies(nBas)
+      double precision, intent(in)        :: ERI(nBas,nBas,nBas,nBas)
+      logical                             :: Lanczos
 
       ! Local Variables
       integer                             :: nBasZ, nSpace, nSpace02, nSpace04, heffbas, nV, n, k, e3, h3
@@ -102,11 +103,11 @@ subroutine MCDE_4_2(nBas, nOcc, energies, ERI)
 
       ! 2-particle space creation
       allocate(g02space(2, nSpace02))
-      call get_g2space(nBas, nOcc, nSpace02, g02Space)
+      call get_g2space_4_2(nBas, nOcc, nSpace02, g02Space)
 
       ! 4-particle space creation
       allocate(g04space(4, nSpace04))
-      call get_g4space(nBas, nOcc, nSpace04, g04Space)
+      call get_g4space_4_2(nBas, nOcc, nSpace04, g04Space)
 
       ! Create the ERI in spin-basis
       allocate(ERI_Z(nBasZ, nBasZ, nBasZ, nBasZ))
@@ -119,15 +120,17 @@ subroutine MCDE_4_2(nBas, nOcc, energies, ERI)
       print*, "Diagonalizing the effective Hamiltonian..."
 
       allocate(complex_energies(heffbas))
-      ! call diagonalize_matrix_nonh(heffbas,heffMatrix,heff_energies,complex_energies)  ! Diagonalize the effective Hamiltonian
+      call diagonalize_matrix_nonh(heffbas,heffMatrix,heff_energies,complex_energies)  ! Diagonalize the effective Hamiltonian
       
-      ! call matout(heffbas,1,heff_energies)
+      call matout(heffbas,1,heff_energies)
       write(*,*)
       ! allocate(alpha(heffbas,1))
       ! allocate(beta(heffbas,1))
-      call Lanczos_Haydock(heffMatrix, nSpace02, nSpace04, heffbas, 300, alpha, beta)
-      write(*,*)'a = ',alpha
-      write(*,*)'b = ',beta
+      if (Lanczos) then
+         call Lanczos_Haydock(heffMatrix, nSpace02, nSpace04, heffbas, 300, alpha, beta)
+         write(*,*)'a = ',alpha
+         write(*,*)'b = ',beta
+      end if
       write(*,*)
 
       ! NOTE: One can now do an internal diagonalization routine to obtain the eigenvalues/eigenvectors

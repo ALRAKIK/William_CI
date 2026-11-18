@@ -81,9 +81,6 @@ subroutine MCDE_3_1(nBas, nOcc, energies, ERI, lanczos, spin, screen)
       read(3,*)e_min, e_max, step, it
       close(3)
       ! - / - / - / - / - / - / - / - / - / - / - / - / - / - / - / - / !
-   
-      ! 3-particle space creation     
-      write(*,*)'screen = ', screen
 
       if (screen) then
 
@@ -112,16 +109,14 @@ subroutine MCDE_3_1(nBas, nOcc, energies, ERI, lanczos, spin, screen)
          deallocate(heffMatrix)
          allocate(S_inv(nSpace2,nSpace2))
          call inv_S(nspace2,VR, S_inv)   
-         ! write(*,*)S_inv
-         !write(*,*)VR                                          
+         write(*,*)S_inv
+         ! write(*,*)VR                                          
          call calculate_ERI_S(nspace2,S_inv, VR, heff_energies, ERI_Z, ERI_S,nOcc*2,nBas)
          do i = 1, nBas
             write(*,*)ERI_S(i,i,i,i) - ERI_Z(i,i,i,i)
          enddo
          deallocate(heff_energies)
-      else
-         allocate(ERI_Z(nBasZ, nBasZ, nBasZ, nBasZ))
-         call g3_spin_potential(nBas,nBasz, ERI, ERI_Z)
+
       end if     
 
       if (spin) then 
@@ -132,19 +127,22 @@ subroutine MCDE_3_1(nBas, nOcc, energies, ERI, lanczos, spin, screen)
          allocate(heffMatrix(heffbasS,heffbasS))
          call spin_adapt(nBas, nOcc, energies, ERI, heffMatrix, g03space_spin, heffbasS, nSpaceS)
       else     
-            ! Allocate and construct the (3,1)-MCDE effective Hamiltonian
-         allocate(g03space(3, nSpace))
-         call get_g3space(nBas, nOcc, nSpace, g03Space)
-         allocate(heff_energies(heffbas))
+         ! Allocate and construct the (3,1)-MCDE effective Hamiltonian
          if (screen) then
             allocate(heffMatrix(heffbas, heffbas))
             do i = 1, nBas
                write(*,*)ERI_S(i,i,i,i) - ERI_Z(i,i,i,i)
             enddo
+            allocate(g03space(3, nSpace))
+            call get_g3space(nBas, nOcc, nSpace, g03Space)
             call heff_screened_3_1(nBas, nOcc, nSpace, heffbas, g03space, energies, ERI_Z, ERI_S, heffMatrix)  
-            deallocate(heff_energies)
             allocate(heff_energies(heffbas))
          else
+            allocate(g03space(3, nSpace))
+            call get_g3space(nBas, nOcc, nSpace, g03Space)
+            allocate(ERI_Z(nBasZ, nBasZ, nBasZ, nBasZ))
+            call g3_spin_potential(nBas,nBasz, ERI, ERI_Z)
+            allocate(heff_energies(heffbas))
             allocate(heffMatrix(heffbas, heffbas))      
             call heff_3_1(nBas, nOcc, nSpace, heffbas, g03space, energies, ERI_Z, heffMatrix)
          endif

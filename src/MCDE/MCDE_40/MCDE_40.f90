@@ -1,4 +1,4 @@
-subroutine MCDE_4_0(nBas, nOcc, energies, ERI)
+subroutine MCDE_4_0(nBas, nOcc, energies, ERI, Lanczos)
 
       ! ==================================================================================================================
       ! -This (4,0)-MCDE module contains all the routines for the creation of the (4,0)-MCDE effective Hamiltonian
@@ -34,11 +34,12 @@ subroutine MCDE_4_0(nBas, nOcc, energies, ERI)
 
       ! Input variables
       integer,intent(in)                  :: nBas, nOcc
-      double precision,intent(in)         :: energies(:)
-      double precision, intent(in)        :: ERI(:,:,:,:)
+      double precision,intent(in)         :: energies(nBas)
+      double precision, intent(in)        :: ERI(nBas,nBas,nBas,nBas)
+      logical                             :: Lanczos
 
       ! Local Variables
-      integer                             :: nBasZ, nSpace, nSpace02, nSpace04, heffbas, nV, n, k, e3, h3
+      integer                             :: nBasZ, nSpace, nSpace02, nSpace04, heffbas, nV
       integer, allocatable                :: g02space(:,:)
       integer, allocatable                :: g04space(:,:)
       double precision, allocatable       :: ERI_Z(:,:,:,:), heffMatrix(:,:)
@@ -69,11 +70,11 @@ subroutine MCDE_4_0(nBas, nOcc, energies, ERI)
 
       ! 2-particle space creation
       allocate(g02space(2, nSpace02))
-      call get_g2space(nBas, nOcc, nSpace02, g02Space)
+      call get_g2space_4_0(nBas, nOcc, nSpace02, g02Space)
 
       ! 4-particle space creation
       allocate(g04space(4, nSpace04))
-      call get_g4space(nBas, nOcc, nSpace04, g04Space)
+      call get_g4space_4_0(nBas, nOcc, nSpace04, g04Space)
 
       ! Create the ERI in spin-basis
       allocate(ERI_Z(nBasZ, nBasZ, nBasZ, nBasZ))
@@ -86,15 +87,18 @@ subroutine MCDE_4_0(nBas, nOcc, energies, ERI)
       print*, "Diagonalizing the effective Hamiltonian..."
 
       allocate(complex_energies(heffbas))
-      ! call diagonalize_matrix_nonh(heffbas,heffMatrix,heff_energies,complex_energies)  ! Diagonalize the effective Hamiltonian
+      call diagonalize_matrix_nonh(heffbas,heffMatrix,heff_energies,complex_energies)  ! Diagonalize the effective Hamiltonian
       
-      ! call matout(heffbas,1,heff_energies)
+      call matout(heffbas,1,heff_energies)
       write(*,*)
       ! allocate(alpha(heffbas,1))
       ! allocate(beta(heffbas,1))
-      call Lanczos_Haydock(heffMatrix, nSpace02, nSpace04, heffbas, 200, alpha, beta)
-      write(*,*)'a = ',alpha
-      write(*,*)'b = ',beta
+      if (Lanczos) then
+            call Lanczos_Haydock(heffMatrix, nSpace02, nSpace04, heffbas, 200, alpha, beta)
+            write(*,*)'a = ',alpha
+            write(*,*)'b = ',beta
+      endif
+      
 
       ! NOTE: One can now do an internal diagonalization routine to obtain the eigenvalues/eigenvectors
 

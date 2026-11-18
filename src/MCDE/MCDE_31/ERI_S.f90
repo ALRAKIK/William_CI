@@ -75,8 +75,8 @@ subroutine calculate_ERI_S(nspace,S_inv, eigve, eigva, ERI_Z, ERI_S, nOccZ, nBas
          enddo
       enddo
       do i = 1, nBas*2
-         write(*,*)"P = ",P(i,i,i,i)
-         write(*,*)"X = ",X(i,i,i,i)
+         ! write(*,*)"P = ",P(i,i,i,i)
+         ! write(*,*)"X = ",X(i,i,i,i)
       enddo
       deallocate(P,X)
 

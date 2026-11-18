@@ -111,6 +111,9 @@ program CI
       c_Lanczos     = any(keyword == 'Lanczos'  )
       c_Spin_adapt  = any(keyword == 'Spin'     )     ! 25
       c_screen      = any(keyword == 'screen'   )
+      c_3_1         = any(keyword == '3_1'      )
+      c_4_0         = any(keyword == '4_0'      )
+      c_4_2         = any(keyword == '4_2'      )
                               
       ! --------------------------------------------------------------- !
       !            Read number of alpha and beta electrons              !
@@ -281,7 +284,7 @@ program CI
         nfuc = nfuc  + atoms(i)%num_s_function + 3*atoms(i)%num_p_function
       end do
 
-      N_cell = nBas / nfuc 
+      ! N_cell = nBas / nfuc 
 
 
       ! --------------------------------------------------------------- !
@@ -615,7 +618,13 @@ program CI
       !-----------------------------------------------------------------!
 
       if (c_MCDE) then
-        call  MCDE_3_1(nBas, nO, e, ERI_MO, c_Lanczos, c_Spin_adapt, c_screen)
+        if (c_3_1) then
+          call  MCDE_3_1(nBas, nO, e, ERI_MO, c_Lanczos, c_Spin_adapt, c_screen)
+        else if (c_4_0) then
+          call  MCDE_4_0(nBas, nO, e, ERI_MO, c_Lanczos)
+        else if (c_4_2) then
+          call  MCDE_4_2(nBas, nO, e, ERI_MO, c_Lanczos)
+        endif
       end if 
     
       !-----------------------------------------------------------------!

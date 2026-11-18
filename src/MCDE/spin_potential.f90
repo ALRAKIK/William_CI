@@ -2,10 +2,10 @@ subroutine g4_spin_potential(nBas, ERI, ERI_Z)
 
       ! Input variables
       integer, intent(in)                      :: nBas
-      double precision, intent(in)             :: ERI(:, :, :, :)
+      double precision, intent(in)             :: ERI(nBas, nBas, nBas, nBas)
 
       ! Output variables
-      double precision, intent(out)            :: ERI_Z(:,:,:,:)
+      double precision, intent(out)            :: ERI_Z(2*nBas,2*nBas,2*nBas,2*nBas)
 
       ! Local variables
       integer                                  :: mu, nu, la, si, spinmu, mu2, nu2, la2, si2, spinnu, spinla, spinsi

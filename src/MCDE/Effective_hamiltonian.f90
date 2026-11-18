@@ -3,13 +3,13 @@ subroutine heff_4_0(nBas, nOcc, nSpace2, nSpace4, heffbas, g04space, g02space, e
       
       ! Input variables
       integer         , intent(in)           :: nBas, nOcc, nSpace2, nSpace4, heffbas
-      double precision, intent(in)           :: energies(:)
-      integer         , intent(in)           :: g02space(:,:)
-      integer         , intent(in)           :: g04space(:,:)
-      double precision, intent(in)           :: ERI_Z(:,:,:,:)
+      double precision, intent(in)           :: energies(nBas)
+      integer         , intent(in)           :: g02space(2,nSpace2)
+      integer         , intent(in)           :: g04space(4,nSpace4)
+      double precision, intent(in)           :: ERI_Z(nBas*2, nBas*2, nBas*2, nBas*2)
 
       ! Output variables     
-      double precision, intent(out)          :: heffMatrix(:,:)
+      double precision, intent(out)          :: heffMatrix(heffbas,heffbas)
 
       ! Local variables
       integer                                :: idx, i, j, p, q, a, b, c, d, w, x, y, z, k, nOccZ, nBasZ, dim1, dim2
@@ -189,13 +189,13 @@ subroutine heff_4_2(nBas, nOcc, nSpace2, nSpace4, heffbas, g04space, g02space, e
       
       ! Input variables
       integer, intent(in)                    :: nBas, nOcc, nSpace2, nSpace4, heffbas
-      double precision, intent(in)           :: energies(:)
-      integer, intent(in)                    :: g02space(:,:)
-      integer, intent(in)                    :: g04space(:,:)
-      double precision, intent(in)           :: ERI_Z(:,:,:,:)
+      double precision, intent(in)           :: energies(nBas)
+      integer, intent(in)                    :: g02space(2,nSpace2)
+      integer, intent(in)                    :: g04space(4,nSpace4)
+      double precision, intent(in)           :: ERI_Z(nBas*2,nBas*2,nBas*2,nBas*2)
 
       ! Output variables     
-      double precision, intent(out)          :: heffMatrix(:,:)
+      double precision, intent(out)          :: heffMatrix(heffbas,heffbas)
 
       ! Local variables
       integer                                :: idx, i, j, p, q, a, b, c, d, w, x, y, z, k, nOccZ, nBasZ, dim1, dim2

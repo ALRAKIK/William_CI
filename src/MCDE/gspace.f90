@@ -63,13 +63,13 @@ subroutine get_g3space_spin_adapted(nBas, nOcc, nSpace, g03space)
 
 end subroutine get_g3space_spin_adapted
 
-subroutine get_g4space(nBas, nOcc, nSpace, g04space)
+   subroutine get_g4space_4_0(nBas, nOcc, nSpace, g04space)
    
       ! Input variables
       integer, intent(in)           :: nBas, nOcc,  nSpace
 
       ! Output 
-      integer, intent(out)          :: g04space(:,:)
+      integer, intent(out)          :: g04space(4,nSpace)
          
       ! Local variables
       integer                       :: i, j, l, n, idx, nBasZ, nOccZ
@@ -138,7 +138,65 @@ subroutine get_g4space(nBas, nOcc, nSpace, g04space)
       write(*,*) '    |  Auxiliary Subspace Creation Finished  |'
       write(*,*) '---------------------------------------------------'
       write(*,*)
-   end subroutine get_g4space
+   end subroutine get_g4space_4_0
+
+subroutine get_g2space_4_0(nBas, nOcc, nSpace, g02space)
+   
+      ! Input variables
+      integer, intent(in)           :: nBas, nOcc,  nSpace
+
+      ! Output 
+      integer, intent(out)          :: g02space(2,nSpace)
+         
+      ! Local variables
+      integer                       :: j, l, idx, nBasZ, nOccZ
+      double precision              :: fj, fl
+      integer, allocatable          :: tempSpace(:,:)
+
+      write(*,*)
+      write(*,*) '---------------------------------------------------'
+      write(*,*) '         |  Auxiliary Subspace Creation  |'
+      write(*,*) '---------------------------------------------------'
+      write(*,*)
+
+      ! Temporary workspace (maximum possible size)
+      allocate(tempSpace(2, nSpace))
+
+      nOccZ = 2 * nOcc
+      nBasZ = 2 * nBas
+         
+      ! Selection algorithm
+      idx = 1
+      do j = 1, nBasZ
+         fj = 1.0d0
+         ! nO times 2 because we use the spin orbital basis set
+         if (j > nOccZ) fj = 0.0d0
+            
+         do l = 1, nBasZ
+
+            fl = 1.0d0
+            if (l > nOccZ) fl = 0.0d0
+
+                        ! Makes sure it's 1e1h
+            if (fj-fl /= 0.0d0) then
+               tempSpace(1, idx) = j
+               tempSpace(2, idx) = l
+               idx = idx + 1
+            end if
+         end do
+      end do
+
+      ! Copy to output list
+      g02space = tempSpace(:, 1:nSpace)
+
+      deallocate(tempSpace)
+
+      write(*,*)
+      write(*,*) '---------------------------------------------------'
+      write(*,*) '    |  Auxiliary Subspace Creation Finished  |'
+      write(*,*) '---------------------------------------------------'
+      write(*,*)
+   end subroutine get_g2space_4_0
 
 
 subroutine get_g2space_4_2(nBas, nOcc, nSpace, g02space)
@@ -147,7 +205,7 @@ subroutine get_g2space_4_2(nBas, nOcc, nSpace, g02space)
       integer, intent(in)           :: nBas, nOcc,  nSpace
 
       ! Output 
-      integer, intent(out)          :: g02space(:,:)
+      integer, intent(out)          :: g02space(2,nSpace)
          
       ! Local variables
       integer                       :: j, l, idx, nBasZ, nOccZ
@@ -211,7 +269,7 @@ subroutine get_g4space_4_2(nBas, nOcc, nSpace, g04space)
       integer, intent(in)           :: nBas, nOcc, nSpace
 
       ! Output 
-      integer, intent(out)          :: g04space(:,:)
+      integer, intent(out)          :: g04space(4,nSpace)
          
       ! Local variables
       integer                       :: i, j, l, n, idx, nBasZ, nOccZ
