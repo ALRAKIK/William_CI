@@ -380,6 +380,8 @@ subroutine read_keywords(keyword)
 
         if (trim(line) == 'screen'   )   keyword(52) = 'screen'
 
+        if (trim(line) == 'block_lanczos') keyword(53) = 'blanczos'   ! [Nov 2026] MCDE block Lanczos spectral function
+
       end do
 
 end subroutine

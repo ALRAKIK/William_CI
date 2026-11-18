@@ -26,6 +26,7 @@ subroutine  get_keywords(keyword)
       c_save        = any(keyword == 'Save'      )
       c_DIIS        = any(keyword == 'DIIS'      )     
       c_MCDE        = any(keyword == 'MCDE'      )     ! 20
+      c_block_lanczos = any(keyword == 'blanczos')     ! [Nov 2026] input word: block_lanczos
       c_nquad_128   = any(keyword == 'nquad_128' )
       c_fast_quad   = any(keyword == 'fast_quad' )
       c_prim_screen = any(keyword == 'primscreen')     ! input word: prim_screen

@@ -32,6 +32,7 @@ module keywords
       public  :: c_Spin_adapt
       public  :: c_Lanczos
       public  :: c_screen
+      public  :: c_block_lanczos              ! [Nov 2026] MCDE: block Lanczos spectral function
 
 
       logical :: c_One , c_OV , c_K , c_NA , c_ERI
@@ -69,6 +70,7 @@ module keywords
       logical :: c_Spin_adapt
       logical :: c_Lanczos
       logical :: c_screen
+      logical :: c_block_lanczos = .false.    ! [Nov 2026] keyword block_lanczos
 
 
 end module keywords

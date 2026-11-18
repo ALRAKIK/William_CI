@@ -34,6 +34,7 @@ subroutine MCDE_3_1(nBas, nOcc, energies, ERI, lanczos, spin, screen)
 
       use files
       use OMP_LIB
+      use keywords, only : c_block_lanczos   ! [Nov 2026]
 
       implicit none
 
@@ -174,6 +175,20 @@ subroutine MCDE_3_1(nBas, nOcc, energies, ERI, lanczos, spin, screen)
          if (spin) then
             call diagonalize_matrix(heffbasS,heffMatrix,heff_energies)
             call matout(heffbasS,1,heff_energies)
+         else if (c_block_lanczos) then
+            ! [Nov 2026] block Lanczos: same spectral function as dsyevd + spectral_function,
+            ! without diagonalizing heffMatrix (see src/MCDE/MCDE_block_lanczos/)
+            if (allocated(ERI_Z)) deallocate(ERI_Z)
+            allocate(A_w(int((e_max-e_min)/step,4),2))
+            call mcde_blanczos_spectrum(heffbas, nBas, heffMatrix, it, e_min, e_max, step, eta, A_w)
+            if (screen) then
+               open (unit=10,file="Block Lanczos MCDE screening.txt",action="write")
+            else
+               open (unit=10,file="Block Lanczos MCDE.txt",action="write")
+            endif
+            do i=1, size(A_W(:,1))
+               write (10,*)  A_w(i,1) , A_w(i,2)
+            enddo
          else
             call diagonalize_matrix_d(heffbas,heffMatrix,heff_energies)
             call matout(heffbas,1,heff_energies)
