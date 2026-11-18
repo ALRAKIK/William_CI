@@ -184,7 +184,7 @@ subroutine MCDE_3_1(nBas, nOcc, energies, ERI, lanczos, spin, screen)
             if (screen) then
                open (unit=10,file="Block Lanczos MCDE screening.txt",action="write")
             else
-               open (unit=10,file="Block Lanczos MCDE.txt",action="write")
+               open (unit=10,file="BLMCDE.txt",action="write")
             endif
             do i=1, size(A_W(:,1))
                write (10,*)  A_w(i,1) , A_w(i,2)
