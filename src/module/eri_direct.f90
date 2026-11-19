@@ -79,6 +79,7 @@ contains
         amin  = minval(a_dir(1:ndp))
         ncap = bessel_nmax_estimate(4.d0*emax/(amin*amin)) + 2*lmax + 1
         call setup_t_tables(ncap, ndp)
+        call rys_self_check(ndp, nBas, AO)        ! [Nov 2026] keyword rys_quad (no-op otherwise)
 
         ! shells (same rule as the driver)
         if (allocated(d_sh_first)) deallocate(d_sh_first, d_sh_n)

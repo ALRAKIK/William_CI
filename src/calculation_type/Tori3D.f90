@@ -76,6 +76,7 @@ subroutine Tori3D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
       allocate(AOn(nBas))
       AOn = AO
       call normalize_AO_toroidal_3D(nBas, AOn, .false.)                   ! normalize the basis functions
+      call fast_quad_self_check(3,nBas,AOn,n_atoms,geometry,atoms)                       ! [Nov 2026] keyword fast_quad: accuracy check (no-op otherwise)
 
       ! $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ !
 

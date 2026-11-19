@@ -93,7 +93,7 @@ subroutine get_X_from_overlap(N,over,X)
 
       ! local !
 
-      integer                       :: i , o
+      integer                       :: i , o , ndrop
       double precision              :: Evec(N,N)
       double precision              :: Eval(N)
       double precision,parameter    :: thresh = 1d-6
@@ -109,16 +109,16 @@ subroutine get_X_from_overlap(N,over,X)
 
       call diagonalize_matrix(N,Evec,Eval)
 
-      do i = 1 , N
-          if (Eval(i) > thresh) then
-            Eval(i) = dsqrt(1.d0 / Eval(i))
-          else
-            write(outfile,"(a,I3,a,4x,E16.10)") 'Eigenvalue ',i,' is too small for Lowdin orthogonalization',Eval(i)
-            !Eval(i) = 0.d0
-          end if
-      end do
-    
-      call ADAt(N,Evec,Eval,X)
+      ! [Nov 2026] canonical orthogonalization when S is near singular:
+      ! eigenvectors with eigenvalue <= thresh are removed (zero column of X),
+      ! the others give X = U s^-1/2. Before, the tiny eigenvalue was kept
+      ! (only a warning), so X had huge, noisy columns. No eigenvalue below
+      ! thresh -> Lowdin X = S^-1/2 exactly as before.
+      call canonical_X_real(N,Evec,Eval,thresh,X,ndrop)
+      if (ndrop > 0) then
+        write(outfile,'(a,i6,a,i6,a,es12.4,a)') ' Canonical orthogonalization (AO): ', ndrop, ' of ', N, &
+             ' vectors removed (S eigenvalue <= ', thresh, ')'
+      end if
 
       open(1,file=trim(tmp_file_name)//"/X.dat")
       write(1,'(15x,1000(i3,15x))') (i,i=1,size(X,1))
@@ -269,7 +269,7 @@ subroutine get_X_from_overlap_complex(N,over,X)
 
       ! local !
 
-      integer                       :: i , o
+      integer                       :: i , o , ndrop
       complex(dpc)                  :: Evec(N,N)
       double precision              :: Eval(N)
       double precision,parameter    :: thresh = 1d-6
@@ -284,15 +284,12 @@ subroutine get_X_from_overlap_complex(N,over,X)
 
       call diagonalize_matrix_complex(N,Evec,Eval)
 
-      do i = 1 , N
-          if (Eval(i) > thresh) then
-            Eval(i) = dsqrt(1.d0 / Eval(i))
-          else
-            write(outfile,"(a,I3,a,4x,E16.10)") 'Eigenvalue ',i,' is too small for Lowdin orthogonalization',Eval(i)
-          end if
-      end do
-    
-      call ADAt_complex(N,Evec,Eval,X)
+      ! [Nov 2026] canonical orthogonalization (see get_X_from_overlap)
+      call canonical_X_complex(N,Evec,Eval,thresh,X,ndrop)
+      if (ndrop > 0) then
+        write(outfile,'(a,i6,a,i6,a,es12.4,a)') ' Canonical orthogonalization: ', ndrop, ' of ', N, &
+             ' vectors removed (S eigenvalue <= ', thresh, ')'
+      end if
 
       open(1,file=trim(tmp_file_name)//"/X.dat")
       write(1,'(15x,1000(i3,15x))') (i,i=1,size(X,1))
@@ -344,9 +341,16 @@ subroutine get_X_from_overlap_complex_blocks(N,nf,nk,over,X)
       double precision, parameter   :: thresh = 1d-6
       complex(dpc)    , allocatable :: Evec(:,:) , Xb(:,:)
       double precision, allocatable :: Eval(:)
+      integer                       :: ndrop(nk)
+      double precision              :: emin(nk)
 
       X = (0.0_dp, 0.0_dp)
 
+      ! [Nov 2026] canonical orthogonalization per k block (see
+      ! get_X_from_overlap): vectors with S_k eigenvalue <= thresh are
+      ! removed (zero column of X); blocks without such vectors keep the
+      ! Lowdin X_k = S_k^-1/2 exactly as before. The dropped orbitals are
+      ! moved to the top of the spectrum in RHF_SAO (shift_dropped_complex).
       !$omp parallel default(shared) private(k,b1,b2,i,Evec,Xb,Eval)
       allocate(Evec(nf,nf), Xb(nf,nf), Eval(nf))
       !$omp do schedule(static)
@@ -354,22 +358,26 @@ subroutine get_X_from_overlap_complex_blocks(N,nf,nk,over,X)
         b1 = (k-1)*nf + 1 ; b2 = k*nf
         Evec(:,:) = over(b1:b2,b1:b2)
         call diagonalize_matrix_complex(nf,Evec,Eval)
-        do i = 1 , nf
-          if (Eval(i) > thresh) then
-            Eval(i) = dsqrt(1.d0 / Eval(i))
-          else
-            !$omp critical
-            write(outfile,"(a,I3,a,I3,a,4x,E16.10)") 'Eigenvalue ',i,' of k block ',k, &
-                                                    ' is too small for Lowdin orthogonalization',Eval(i)
-            !$omp end critical
-          end if
-        end do
-        call ADAt_complex(nf,Evec,Eval,Xb)
+        emin(k) = Eval(1)
+        call canonical_X_complex(nf,Evec,Eval,thresh,Xb,ndrop(k))
         X(b1:b2,b1:b2) = Xb
       end do
       !$omp end do
       deallocate(Evec, Xb, Eval)
       !$omp end parallel
+
+      if (sum(ndrop) > 0) then
+        write(outfile,'(a)') ''
+        write(outfile,'(a,es10.2,a)') ' Canonical orthogonalization (S_k eigenvalues <= ', thresh, ' removed)'
+        do k = 1 , nk
+          if (ndrop(k) > 0) write(outfile,'(a,i5,a,i4,a,i4,a,es12.4)') '   k block ', k, ' : ', ndrop(k), &
+                                    ' of ', nf, ' removed, smallest eigenvalue ', emin(k)
+        end do
+        write(outfile,'(a,i8,a,i8)') '   total removed : ', sum(ndrop), ' of ', N
+        write(outfile,'(a)') '   (the removed orbitals have zero coefficients and are placed at the top of the'
+        write(outfile,'(a)') '    spectrum with an orbital energy of 1.0E+04, they never get occupied)'
+        write(outfile,'(a)') ''
+      end if
 
       if (c_details) then
         open(1,file=trim(tmp_file_name)//"/X.dat")
@@ -419,3 +427,102 @@ end subroutine ADAt_complex
 ! --------------------------------------------------------------------- !
 ! --------------------------------------------------------------------- !
 ! --------------------------------------------------------------------- !
+
+
+!=====================================================================!
+! [Nov 2026] Canonical orthogonalization helpers.                      !
+!                                                                     !
+!  U, e : eigenvectors / eigenvalues of S (e ascending, from dsyev or  !
+!         zheev).                                                     !
+!  If no e <= thresh : X = U e^-1/2 U^T (Lowdin, unchanged behaviour). !
+!  Else              : X(:,j) = U(:,j)/sqrt(e_j) for e_j > thresh and  !
+!                      X(:,j) = 0 for the removed vectors.            !
+!  X^T S X = 1 on the kept space, 0 on the removed one. With a zero    !
+!  column j, F' = X^T F X has a zero row and column j; shift_dropped_* !
+!  puts lindep_shift on F'(j,j) so the removed orbital is the highest  !
+!  one (C = X e_j = 0, it is never occupied and gives zero integrals). !
+!=====================================================================!
+subroutine canonical_X_real(N,U,e,thresh,X,ndrop)
+
+      implicit none
+      integer         , intent(in)  :: N
+      double precision, intent(in)  :: U(N,N) , e(N) , thresh
+      double precision, intent(out) :: X(N,N)
+      integer         , intent(out) :: ndrop
+      double precision              :: d(N)
+      integer                       :: j
+
+      ndrop = count(e <= thresh)
+      if (ndrop == 0) then
+        d = 1.d0 / dsqrt(e)
+        call ADAt(N,U,d,X)
+      else
+        do j = 1 , N
+          if (e(j) > thresh) then
+            X(:,j) = U(:,j) / dsqrt(e(j))
+          else
+            X(:,j) = 0.d0
+          end if
+        end do
+      end if
+
+end subroutine canonical_X_real
+
+subroutine canonical_X_complex(N,U,e,thresh,X,ndrop)
+
+      use constants_module
+      implicit none
+      integer         , intent(in)  :: N
+      complex(dpc)    , intent(in)  :: U(N,N)
+      double precision, intent(in)  :: e(N) , thresh
+      complex(dpc)    , intent(out) :: X(N,N)
+      integer         , intent(out) :: ndrop
+      double precision              :: d(N)
+      integer                       :: j
+
+      ndrop = count(e <= thresh)
+      if (ndrop == 0) then
+        d = 1.d0 / dsqrt(e)
+        call ADAt_complex(N,U,d,X)
+      else
+        do j = 1 , N
+          if (e(j) > thresh) then
+            X(:,j) = U(:,j) / dsqrt(e(j))
+          else
+            X(:,j) = (0.0_dp, 0.0_dp)
+          end if
+        end do
+      end if
+
+end subroutine canonical_X_complex
+
+subroutine shift_dropped_real(N,X,Fp)
+
+      implicit none
+      integer         , intent(in)    :: N
+      double precision, intent(in)    :: X(N,N)
+      double precision, intent(inout) :: Fp(N,N)
+      double precision, parameter     :: lindep_shift = 1.d4
+      integer                         :: j
+
+      do j = 1 , N
+        if (all(X(:,j) == 0.d0)) Fp(j,j) = lindep_shift
+      end do
+
+end subroutine shift_dropped_real
+
+subroutine shift_dropped_complex(N,X,Fp)
+
+      use constants_module
+      implicit none
+      integer         , intent(in)    :: N
+      complex(dpc)    , intent(in)    :: X(N,N)
+      complex(dpc)    , intent(inout) :: Fp(N,N)
+      double precision, parameter     :: lindep_shift = 1.d4
+      integer                         :: j
+
+      do j = 1 , N
+        if (all(X(:,j) == (0.0_dp, 0.0_dp))) Fp(j,j) = cmplx(lindep_shift, 0.0_dp, kind=dpc)
+      end do
+
+end subroutine shift_dropped_complex

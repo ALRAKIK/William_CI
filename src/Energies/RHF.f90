@@ -256,6 +256,8 @@ subroutine RHF(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,c,natom,Zat)
       !   Transform for the Fock matrix F in the orthogonal basis 
       
       Fp = matmul(transpose(X),matmul(F,X))
+      ! [Nov 2026] removed (linearly dependent) vectors -> top of the spectrum
+      call shift_dropped_real(nBas,X,Fp)
             
       !   Diagonalize F' to get MO coefficients (eigenvectors in the orthogonal basis) c' and MO energies (eigenvalues) e
 

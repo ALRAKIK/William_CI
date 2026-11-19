@@ -30,6 +30,8 @@ subroutine guess_AO_RHF_SAO(nBas,c_details,nO,HC,X,ENuc,S,T,V,P)
       cp(:,:) = 0.d0 
 
       cp(:,:) = matmul(transpose(X(:,:)), matmul(HC(:,:), X(:,:)))
+      ! [Nov 2026] removed (linearly dependent) vectors -> top of the spectrum
+      call shift_dropped_real(nBas,X,cp)
 
       call diagonalize_matrix(nbas, cp, e)
 

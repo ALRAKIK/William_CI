@@ -217,8 +217,10 @@ subroutine check_the_overlap(N,over)
       integer                       :: i
       double precision              :: Evec(N,N)
       double precision              :: Eval(N)
-      double precision,parameter    :: thresh = 1d-6
+      double precision,parameter    :: thresh = 1d-6       ! = lindep threshold of the X builders
+      double precision,parameter    :: neg_tol = 1d-10     ! [Nov 2026] relative tolerance for "negative"
       double precision,parameter    :: machine_eps = 2.22E-16
+      integer                       :: n_small
       double precision              :: cond
       double precision              :: double_digits, digits_lost, reliable_digits
 
@@ -238,20 +240,38 @@ subroutine check_the_overlap(N,over)
       ! \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ !
 
       s_eig_min       = MINVAL(Eval)
-      cond            = MAXVAL(Eval)/MINVAL(Eval)
       double_digits   = log10(1.0 / machine_eps)
-      digits_lost     = log10(cond)
+      ! [Nov 2026] a zero or round-off negative eigenvalue gave cond = ****
+      ! and NaN digits: cond is now taken as infinite (singular) in that case
+      if (MINVAL(Eval) > 0.d0) then
+        cond            = MAXVAL(Eval)/MINVAL(Eval)
+        digits_lost     = log10(cond)
+      else
+        cond            = huge(1.d0)
+        digits_lost     = double_digits
+      end if
       reliable_digits = double_digits - digits_lost
+      n_small         = count(Eval <= thresh)
 
 
       write(outfile,*) ""
       write(outfile,*) ""
-      write(outfile,'(5X,a,f16.8)') " The smallest eigenvalue   : " , MINVAL(Eval)
-      write(outfile,'(5X,a,f16.8)') " The Largest  eigenvalue   : " , MAXVAL(Eval)
-      write(outfile,'(5X,a,f16.8)') " The conditional number    : " , cond
+      write(outfile,'(5X,a,es16.6)') " The smallest eigenvalue   : " , MINVAL(Eval)
+      write(outfile,'(5X,a,f16.8)')  " The Largest  eigenvalue   : " , MAXVAL(Eval)
+      if (MINVAL(Eval) > 0.d0) then
+        write(outfile,'(5X,a,es16.6)') " The conditional number    : " , cond
+      else
+        write(outfile,'(5X,a,a16)')    " The conditional number    : " , "infinite"
+      end if
       write(outfile,'(5X,a,f16.4)') " Estimated digits lost     : " , digits_lost
       write(outfile,'(5X,a,f16.4)') " Estimated reliable digits : " , reliable_digits
+      write(outfile,'(5X,a,i16)')   " Eigenvalues <= 1e-6       : " , n_small
       write(outfile,*) ""
+      if (n_small > 0) then
+        write(outfile,'(a)') " *** NOTE: near linear dependence. The eigenvectors of S below 1e-6 are removed   ***"
+        write(outfile,'(a)') " ***       by canonical orthogonalization when X is built (see the HF output).    ***"
+        write(outfile,*) ""
+      end if
       if (cond > 1.0E12) then
         write(outfile,'(a)') " *** WARNING: Matrix is ill-conditioned! Results may be inaccurate. ***"
       end if
@@ -260,7 +280,11 @@ subroutine check_the_overlap(N,over)
       end if
       FLUSH(outfile)
 
-      if (Minval(Eval) < 0.d0) then 
+      ! [Nov 2026] stop only for a TRULY negative eigenvalue. A tiny negative
+      ! one (|e| ~ 1e-14, round-off of dsyev on a numerically singular S,
+      ! e.g. aug basis on a dense chain) is a zero eigenvalue: it is removed
+      ! by canonical orthogonalization in get_X_from_overlap*.
+      if (Minval(Eval) < -neg_tol*max(1.d0,MAXVAL(Eval))) then 
         call header("Error",-1)
           write(outfile,'(a80)')'*******************************************************************************************'
           write(outfile,'(a80)')           "* The smallest eigenvalue of the overlap is negative, exiting the program      *"

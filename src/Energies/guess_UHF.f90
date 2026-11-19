@@ -25,6 +25,8 @@ subroutine guess_UHF(nBas,c_details,nO,HC,X,ENuc,T,V,P,type_calc,ET1,EV1,ET2,EV2
       allocate(cp(nbas,nbas),c(nbas,nbas),ct(nbas,nbas), e(nbas))
 
       cp(:,:) = matmul(transpose(X(:,:)), matmul(HC(:,:), X(:,:)))
+      ! [Nov 2026] removed (linearly dependent) vectors -> top of the spectrum
+      call shift_dropped_real(nBas,X,cp)
 
       call diagonalize_matrix(nbas, cp, e)
 

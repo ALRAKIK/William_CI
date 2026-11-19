@@ -1,6 +1,7 @@
 subroutine  get_keywords(keyword)
 
       use keywords
+      use clifford_tools, only : rys_req
 
       implicit none 
 
@@ -30,6 +31,7 @@ subroutine  get_keywords(keyword)
       c_nquad_128   = any(keyword == 'nquad_128' )
       c_fast_quad   = any(keyword == 'fast_quad' )
       c_prim_screen = any(keyword == 'primscreen')     ! input word: prim_screen
+      rys_req       = any(keyword == 'rys_quad'  )     ! [Nov 2026] Rys-type t quadrature (clifford_tools)
       c_physicist   = any(keyword == 'physicist' )
       c_ccsdt       = any(keyword == 'ccsdt'     )
       c_debug       = any(keyword == 'debug'     )     ! 25 

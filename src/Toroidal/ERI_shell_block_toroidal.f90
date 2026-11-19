@@ -68,6 +68,15 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
       integer          :: ne, k0, ns
       double precision :: Fmx
       double precision, allocatable :: FT(:,:), Kr(:), Ki(:), accv(:), sgnv(:,:)
+      ! [Nov 2026] keyword rys_quad
+      logical          :: use_rys
+      integer          :: nr, nqe, nqa, jr
+      double precision :: rho_q, Tq, chord, ur(64), wr(64), uu
+      double precision, allocatable :: tn(:), wn(:), bcol(:,:,:)
+      integer,          allocatable :: ncolr(:,:)
+      double precision, allocatable :: k_A(:,:)
+      double precision :: b_A(3), invA, Cr(64)
+      integer(8)       :: cnt_rys, cnt_all
 
       blk = 0.d0
       if (.not. allocated(t_bessel)) error stop "ERI_shell_block_toroidal: t-table not initialized"
@@ -98,13 +107,20 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
       nket = n3*n4
       nq   = nq_t
       nw   = ubound(t_bessel,1) + ME + 2
+      nr   = 0
+      if (rys_on) nr = rys_nodes(NN)
+      if (nr > rys_nhi) nr = 0                 ! beyond the tabulated rules: global tables
+      if (ncomb < 2) nr = 0                    ! pure s quartets: the global tables are faster
+      cnt_rys = 0 ; cnt_all = 0
+      nqa  = max(nq, nr)
 
-      allocate(k_fac(nket), k_cen(3,nket), k_q(nket), k_N(3,nket), k_off(3,nket))
+      allocate(k_fac(nket), k_cen(3,nket), k_q(nket), k_N(3,nket), k_off(3,nket), k_A(3,nket))
       allocate(k_E(0:NMAX_CLIFF,0:lsC,0:lsD,3,nket))   ! hermite_E_1D fills 0:NMAX_CLIFF
       allocate(b_cen(3), b_N(3), b_E(0:NMAX_CLIFF,0:lsA,0:lsB,3))
       allocate(Iv(0:nw), F(0:nw), dco(-ME:ME), G(0:nw,0:lsA,0:lsB,ndp))
-      allocate(Idir(nq,0:ncomb-1,3), SNv(0:NN), gt(0:NN,nq), cph(0:nw), sph(0:nw), wq(nq))
-      allocate(rD2(nq), rw(nq), rs(nq), Iacc(nq))
+      allocate(Idir(nqa,0:ncomb-1,3), SNv(0:NN), gt(0:NN,nqa), cph(0:nw), sph(0:nw), wq(nq))
+      allocate(rD2(nqa), rw(nqa), rs(nqa), Iacc(nqa), tn(nqa), wn(nqa))
+      if (nr > 0) allocate(bcol(0:nw,nr,ndp), ncolr(nr,ndp))
       allocate(FT(0:ncomb-1,0:nw), Kr(0:nw), Ki(0:nw), accv(0:ncomb-1), sgnv(0:ncomb-1,3))
       do id = 0 , lsD
        do ic = 0 , lsC
@@ -143,6 +159,7 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
               k_cen(d,kl) = cen
               cf = cf * dexp(-2.d0*(esum - pe)/(av(d)*av(d)))
               k_N(d,kl)   = min(bessel_nmax_estimate(2.d0*pe/(av(d)*av(d))), nw - ME - 2)
+              k_A(d,kl)   = 2.d0*pe/(av(d)*av(d))
               k_off(d,kl) = off
               off = off + (k_N(d,kl)+1)*(lsC+1)*(lsD+1)
             else
@@ -180,6 +197,7 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
               bra_fac  = bra_fac * dexp(-2.d0*(esum - pe)/(av(d)*av(d)))
               Aarg     = 2.d0*pe/(av(d)*av(d))
               b_N(d)   = min(bessel_nmax_estimate(Aarg), nw - ME - 2)
+              b_A(d)   = Aarg
             else
               cen = (e1*rA(d) + e2*rB(d))/esum
               b_cen(d) = cen
@@ -218,10 +236,58 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
               q = k_q(kl)
               if (.not. k_done(kl)) call build_ket(k, l, kl)
 
+              !---- [Nov 2026] keyword rys_quad: nodes of this primitive quartet ----!
+              use_rys = .false.
+              if (nr > 0) then
+                rho_q = p*q/(p+q)
+                use_rys = .true.
+                do d = 1 , ndp
+                  if (rho_q < rys_ratio*av(d)*av(d)) use_rys = .false.
+                end do
+              end if
+              cnt_all = cnt_all + 1
+              if (use_rys) then
+                cnt_rys = cnt_rys + 1
+                Tq = 0.d0
+                do d = 1 , 3
+                  if (d <= ndp) then
+                    chord = 2.d0/av(d)*dsin(0.5d0*av(d)*(b_cen(d) - k_cen(d,kl)))
+                  else
+                    chord = b_cen(d) - k_cen(d,kl)
+                  end if
+                  Tq = Tq + chord*chord
+                end do
+                Tq = rho_q*Tq
+                call rys_rule(nr, Tq, ur(1:nr), wr(1:nr))
+                nqe = nr
+                do jr = 1 , nr
+                  uu = ur(jr)
+                  tn(jr) = dsqrt(rho_q)*uu/dsqrt(1.d0 - uu*uu)
+                  wn(jr) = wr(jr)*dsqrt(rho_q)/(1.d0 - uu*uu)**1.5d0
+                end do
+                do d = 1 , ndp
+                  nm = min(b_N(d), k_N(d,kl))
+                  invA = 1.d0/max(b_A(d),1.d-300) + 1.d0/max(k_A(d,kl),1.d-300)
+                  do jr = 1 , nr
+                    t2 = 2.d0*tn(jr)*tn(jr)/(av(d)*av(d))
+                    ! terms of sum_n F_n I~_n(C) decay like exp(-n^2 (1/A_P + 1/A_Q + 1/C)/2):
+                    ! keep n <= 8.9/sqrt(...) (1e-17) plus the angular shift 2*ME and a margin
+                    ncolr(jr,d) = min(nm, bessel_nmax_estimate(t2), &
+                                      ceiling(8.9d0/dsqrt(invA + 1.d0/max(t2,1.d-300))) + 2*ME + 5)
+                    Cr(jr) = t2
+                  end do
+                  call bessel_columns_multi(nr, Cr(1:nr), ncolr(1:nr,d), nw, bcol(:,:,d))
+                end do
+              else
+                nqe = nq
+                tn(1:nq) = t_node(1:nq)
+                wn(1:nq) = wq(1:nq)
+              end if
+
               !---- 1D factors for every power combination ----!
               if (ndp < 3) then                  ! node factors shared by the real directions
-                do kq = 1 , nq
-                  t2 = t_node(kq)*t_node(kq)
+                do kq = 1 , nqe
+                  t2 = tn(kq)*tn(kq)
                   D2 = 1.d0/(p*q + (p+q)*t2)
                   rD2(kq) = D2
                   rw(kq)  = p*q*t2*D2
@@ -256,7 +322,14 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
                         F(n) = dble(acc)*cph(n) - aimag(acc)*sph(n)
                       end do
                       sgn = av(d)**(-(ia+ib+ic+id))
-                      if (ndp == 1) then                  ! 1D: per-node dot products (faster there)
+                      if (use_rys) then                   ! keyword rys_quad: own nodes, own columns
+                        do kq = 1 , nr
+                          nt = ncolr(kq,d)
+                          val = F(0)*bcol(0,kq,d)
+                          if (nt >= 1) val = val + 2.d0*dot_product(F(1:nt), bcol(1:nt,kq,d))
+                          Idir(kq,cmb,d) = val * sgn
+                        end do
+                      else if (ndp == 1) then             ! 1D: per-node dot products (faster there)
                         do kq = 1 , nq
                           nt = min(nm, t_nmax(kq,d))
                           val = F(0)*t_bessel(0,kq,d)
@@ -287,7 +360,7 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
                             if (nt > ns) Iacc(kq) = Iacc(kq) + 2.d0*dot_product(F(ns+1:nt), t_bessel(ns+1:nt,kq,d))
                           end do
                         end if
-                        Idir(:,cmb,d) = Iacc(1:nq) * sgn
+                        Idir(1:nq,cmb,d) = Iacc(1:nq) * sgn
                       end if
                      end do
                     end do
@@ -295,7 +368,7 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
                   end do
                 else
                   Rr = b_cen(d) - k_cen(d,kl)
-                  do kq = 1 , nq
+                  do kq = 1 , nqe
                     w  = rw(kq)
                     if (Rr == 0.d0) then
                       gt(0,kq) = rs(kq)
@@ -320,7 +393,7 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
                           SNv(n+kk) = SNv(n+kk) + merge(-1.d0,1.d0,mod(n,2)==1) * b_E(n,ia,ib,d) * k_E(kk,ic,id,d,kl)
                         end do
                       end do
-                      do kq = 1 , nq
+                      do kq = 1 , nqe
                         Idir(kq,cmb,d) = dot_product(SNv(0:ia+ib+ic+id), gt(0:ia+ib+ic+id,kq))
                       end do
                      end do
@@ -331,7 +404,7 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
               end do
               ! fold the weights into x
               do cmb = 0 , ncomb-1
-                Idir(:,cmb,1) = Idir(:,cmb,1) * wq
+                Idir(1:nqe,cmb,1) = Idir(1:nqe,cmb,1) * wn(1:nqe)
               end do
 
               !---- all component quartets ----!
@@ -343,7 +416,7 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
                   cy = pwA(2,ca) + (lsA+1)*(pwB(2,cb) + (lsB+1)*(pwC(2,cc) + (lsC+1)*pwD(2,cd)))
                   cz = pwA(3,ca) + (lsA+1)*(pwB(3,cb) + (lsB+1)*(pwC(3,cc) + (lsC+1)*pwD(3,cd)))
                   val = 0.d0
-                  do kq = 1 , nq
+                  do kq = 1 , nqe
                     val = val + Idir(kq,cx,1)*Idir(kq,cy,2)*Idir(kq,cz,3)
                   end do
                   blk(ca,cb,cc,cd) = blk(ca,cb,cc,cd) + fac * coA(i,ca)*coB(j,cb)*coC(k,cc)*coD(l,cd) * val
@@ -357,7 +430,14 @@ subroutine ERI_shell_block_toroidal(ndp,nA,SA,nB,SB,nC,SC,nD,SD,blk)
         end do
       end do
 
-      deallocate(k_fac, k_cen, k_q, k_N, k_off, k_E, b_cen, b_N, b_E, Iv, F, dco, G, Idir, SNv, gt, cph, sph, wq, Hall, coA, coB, coC, coD, k_done, rD2, rw, rs, FT, Kr, Ki, accv, sgnv)
+      deallocate(k_A, k_fac, k_cen, k_q, k_N, k_off, k_E, b_cen, b_N, b_E, Iv, F, dco, G, Idir, SNv, gt, cph, sph, wq, Hall, coA, coB, coC, coD, k_done, rD2, rw, rs, FT, Kr, Ki, accv, sgnv, tn, wn)
+      if (allocated(bcol)) deallocate(bcol, ncolr)
+      if (nr > 0) then
+        !$omp atomic
+        rys_nq_used = rys_nq_used + cnt_rys
+        !$omp atomic
+        rys_nq_total = rys_nq_total + cnt_all
+      end if
 
 contains
 

@@ -306,6 +306,9 @@ subroutine UHF(nBas,c_details,n_alpha,n_beta,S,T,V,Hc,ERI,X,ENuc,EHF,e,c)
       
       Fp_alpha = matmul(transpose(X),matmul(F_alpha,X))
       Fp_beta  = matmul(transpose(X),matmul(F_beta,X))
+      ! [Nov 2026] removed (linearly dependent) vectors -> top of the spectrum
+      call shift_dropped_real(nBas,X,Fp_alpha)
+      call shift_dropped_real(nBas,X,Fp_beta)
             
       !   Diagonalize F' to get MO coefficients (eigenvectors in the orthogonal basis) c' and MO energies (eigenvalues) e
 

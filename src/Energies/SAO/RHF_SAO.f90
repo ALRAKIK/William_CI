@@ -315,6 +315,8 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
         b1 = (kb-1)*nfuc + 1 ; b2 = kb*nfuc
         Fp_SAO(b1:b2,b1:b2) = matmul(conjg(transpose(X_SAO(b1:b2,b1:b2))), &
                                      matmul(F_SAO(b1:b2,b1:b2), X_SAO(b1:b2,b1:b2)))
+        ! [Nov 2026] removed (linearly dependent) vectors -> top of the spectrum
+        call shift_dropped_complex(nfuc,X_SAO(b1:b2,b1:b2),Fp_SAO(b1:b2,b1:b2))
       end do
             
       !   Diagonalize F' to get MO coefficients (eigenvectors in the orthogonal basis) c' and MO energies (eigenvalues) e
