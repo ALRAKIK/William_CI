@@ -48,6 +48,7 @@ module symmetry_clifford
 
       public :: sym_run, sym_setup, sym_nop, sym_R, sym_t, sym_perm, sym_sign, sym_ok, sym_pg_name
       public :: sym_ready, sym_eri_note
+      public :: sym_pairs_on, sym_pair_is_rep, sym_pair_fill   ! [Nov 2026] one-electron matrices
 
       integer         , save              :: sym_nop = 0       ! space-group operations mod lattice translations
       integer         , save, allocatable :: sym_R(:,:,:)      ! (3,3,nop) signed permutation matrices
@@ -59,6 +60,13 @@ module symmetry_clifford
       logical         , save              :: sym_ready = .false.  ! sym_setup done (ops + AO maps)
       integer         , save              :: sym_nbas  = 0
       character(len=200), save            :: sym_eri_note = ''      ! ERI driver report (printed by sym_run)
+      ! [Nov 2026] AO pairs (i in the unit cell, j): representative of the orbit under the
+      ! point operations x translations x (i<->j). sym_prep(i,j) = (ir-1)*nBas + jr of the
+      ! representative (ir <= nfuc), sym_psg = sign s_i s_j of the operation.
+      logical         , save              :: sym_pairs_on = .false.
+      integer(8)      , save, allocatable :: sym_prep(:,:)
+      integer(1)      , save, allocatable :: sym_psg(:,:)
+      integer         , save              :: sym_pnfuc = 0
 
       double precision, parameter :: pos_tol = 1.d-6           ! bohr
       double precision, parameter :: chk_tol = 1.d-8           ! Hartree (integral check)
@@ -174,7 +182,75 @@ contains
         call build_ao_maps(geometry, nBas, AO)
         sym_ready = .true.
         sym_nbas  = nBas
+        call build_pairs(nBas)
       end subroutine sym_setup
+
+      !---------------------------------------------------------------!
+      ! [Nov 2026] representatives of the AO pairs (one-electron      !
+      ! matrices S, T, V: only the representatives are computed, the  !
+      ! others are copies with the sign s_i s_j, see sym_pair_fill)   !
+      !---------------------------------------------------------------!
+      subroutine build_pairs(nBas)
+        use unitcell_module, only: nfuc
+        integer, intent(in) :: nBas
+        integer :: i, j, k, a, b, c(3), ia, jb
+        integer(8) :: key, best
+        integer :: sg
+        sym_pairs_on = .false.
+        if (allocated(sym_prep)) deallocate(sym_prep, sym_psg)
+        if (sym_nop <= 1 .or. any(sym_perm <= 0)) return
+        if (nBas /= nfuc*ncel(1)*ncel(2)*ncel(3)) return
+        allocate(sym_prep(nfuc,nBas), sym_psg(nfuc,nBas))
+        !$omp parallel do default(shared) private(i,j,k,a,b,c,ia,jb,key,best,sg) schedule(static)
+        do j = 1, nBas
+          do i = 1, nfuc
+            best = huge(1_8) ; sg = 1
+            do k = 1, sym_nop
+              a = sym_perm(i,k) ; b = sym_perm(j,k)
+              ! (a, b) with a brought to cell 0
+              call cell_of(a, nfuc, c)
+              ia = shift_ao(a, nfuc, c) ; jb = shift_ao(b, nfuc, c)
+              key = int(ia-1,8)*int(nBas,8) + int(jb,8)
+              if (key < best) then
+                best = key ; sg = sym_sign(i,k)*sym_sign(j,k)
+              end if
+              ! (b, a): the matrices are symmetric
+              call cell_of(b, nfuc, c)
+              ia = shift_ao(b, nfuc, c) ; jb = shift_ao(a, nfuc, c)
+              key = int(ia-1,8)*int(nBas,8) + int(jb,8)
+              if (key < best) then
+                best = key ; sg = sym_sign(i,k)*sym_sign(j,k)
+              end if
+            end do
+            sym_prep(i,j) = best ; sym_psg(i,j) = int(sg,1)
+          end do
+        end do
+        !$omp end parallel do
+        sym_pnfuc = nfuc
+        sym_pairs_on = .true.
+      end subroutine build_pairs
+
+      logical function sym_pair_is_rep(i, j, nBas)
+        integer, intent(in) :: i, j, nBas
+        sym_pair_is_rep = (sym_prep(i,j) == int(i-1,8)*int(nBas,8) + int(j,8))
+      end function sym_pair_is_rep
+
+      ! M(i,j), i <= nfuc: copy of the representative with the sign
+      subroutine sym_pair_fill(nBas, M)
+        integer         , intent(in)    :: nBas
+        double precision, intent(inout) :: M(nBas,nBas)
+        integer :: i, j, ir, jr
+        integer(8) :: key
+        !$omp parallel do default(shared) private(i,j,ir,jr,key) schedule(static)
+        do j = 1, nBas
+          do i = 1, sym_pnfuc
+            key = sym_prep(i,j)
+            ir = int((key-1)/int(nBas,8)) + 1 ; jr = int(mod(key-1, int(nBas,8))) + 1
+            if (ir /= i .or. jr /= j) M(i,j) = dble(sym_psg(i,j))*M(ir,jr)
+          end do
+        end do
+        !$omp end parallel do
+      end subroutine sym_pair_fill
 
       !---------------------------------------------------------------!
       ! difference of two positions in direction i (mod L if periodic)!

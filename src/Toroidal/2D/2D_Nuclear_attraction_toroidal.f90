@@ -128,6 +128,7 @@ subroutine nuclear_attraction_matrix_toroidal_2D(number_of_atoms,nBas,geometry,a
       use keywords
       use unitcell_module
       use clifford_tools, only : init_clifford, orbital_to_lxyz, setup_t_tables, bessel_nmax_estimate
+      use symmetry_clifford, only : sym_pairs_on, sym_pair_is_rep, sym_pair_fill   ! [Nov 2026] keyword symmetry
 
       implicit none
 
@@ -139,6 +140,7 @@ subroutine nuclear_attraction_matrix_toroidal_2D(number_of_atoms,nBas,geometry,a
 
       integer          :: i , j , lxyz(3,nBas) , lmax , ncap
       double precision :: r1(3) , r2(3) , emax , amin
+      logical          :: use_sp
 
       call init_clifford()
       lmax = 0 ; emax = 0.d0
@@ -152,9 +154,13 @@ subroutine nuclear_attraction_matrix_toroidal_2D(number_of_atoms,nBas,geometry,a
       call setup_t_tables(ncap, 2)
 
       NA = 0.d0
+      use_sp = c_symmetry .and. sym_pairs_on                ! [Nov 2026] only the symmetry-unique pairs
       !$omp parallel do default(shared) private(i,j,r1,r2) schedule(dynamic,4) collapse(2)
       do i = 1 , nfuc
         do j = 1 , nBas
+          if (use_sp) then
+            if (.not. sym_pair_is_rep(i, j, nBas)) cycle          ! [Nov 2026] keyword symmetry
+          end if
           r1 = (/ AO(i)%x , AO(i)%y , AO(i)%z /)
           r2 = (/ AO(j)%x , AO(j)%y , AO(j)%z /)
           call nuclear_attraction_integral_toroidal_2D(lxyz(:,i),lxyz(:,j),number_of_atoms,geometry,atoms, &
@@ -162,6 +168,7 @@ subroutine nuclear_attraction_matrix_toroidal_2D(number_of_atoms,nBas,geometry,a
         end do
       end do
       !$omp end parallel do
+      if (use_sp) call sym_pair_fill(nBas, NA)              ! [Nov 2026] the other pairs by symmetry
 
       do i = 1 , nfuc
         do j = 1 , nBas

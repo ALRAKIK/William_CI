@@ -77,6 +77,8 @@ subroutine Tori2D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
       allocate(AOn(nBas))
       AOn = AO
       call normalize_AO_toroidal_2D(nBas, AOn, .false.)                   ! normalize the basis functions
+      ! [Nov 2026] keyword symmetry: point operations (used by V, the ERIs and direct J/K)
+      if (c_symmetry) call sym_setup(2,n_atoms,geometry,atoms(:)%charge,nBas,AOn)
       call fast_quad_self_check(2,nBas,AOn,n_atoms,geometry,atoms)                       ! [Nov 2026] keyword fast_quad: accuracy check (no-op otherwise)
 
       ! $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ !
@@ -94,11 +96,9 @@ subroutine Tori2D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
       if (c_One) then
         ERI = 0.d0
       else if (c_direct) then
-        if (c_symmetry) call sym_setup(2,n_atoms,geometry,atoms(:)%charge,nBas,AOn)   ! [Nov 2026] point operations for direct J/K
         call direct_init(2,nBas,AOn)                      ! [Nov 2026] keyword direct: nothing stored
         if (c_df) call df_init(2,n_atoms,atoms,geometry,nBas,AOn,outfile)   ! [Nov 2026] density fitting
       else
-        if (c_symmetry) call sym_setup(2,n_atoms,geometry,atoms(:)%charge,nBas,AOn)   ! [Nov 2026] point operations for the ERIs
         call ERI_integral_toroidal(2,nBas,AOn,ERI)          ! ndp = 2 periodic directions
       end if
 

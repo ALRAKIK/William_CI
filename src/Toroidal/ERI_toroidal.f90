@@ -334,7 +334,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
           ps_noscreen = .false.
           ps_on = .true.
         end if
-        two_electron_integrals = 0.d0
+        call zero_eri_parallel(ERI_size, nBas, two_electron_integrals)   ! [Nov 2026] OpenMP first touch (was 2.5 s for 3.7 GB)
 
         !$omp parallel do default(shared) private(SI,SJ,SK,SL,blk,a,b,c,d,i,j,k,l,val,q4,qc,pp,ii,iperm,ab,t4,r4,ip8) &
         !$omp private(ig,gq,g4,i2,j2,k2,l2,val2) reduction(+:n_old,n_new) &
@@ -493,7 +493,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       ! rows i <= nfuc are computed here, directly in the output array.
       ! SAO : the output IS (nfuc,nBas,nBas,nBas) ; normal : the rows
       ! i > nfuc are filled afterwards by translation (in place).
-      two_electron_integrals = 0.d0
+      call zero_eri_parallel(ERI_size, nBas, two_electron_integrals)   ! [Nov 2026] OpenMP first touch
 
       !$omp parallel do default(shared) private(ip,SI,SJ,SK,SL,blk,a,b,c,d,i,j,k,l,val) schedule(dynamic,1)
       do ip = 1 , npair
@@ -631,3 +631,21 @@ subroutine canonical_quartet_toroidal(q, nsh, nshuc, ncl, best)
       end do
 
 end subroutine canonical_quartet_toroidal
+
+!---------------------------------------------------------------------!
+! [Nov 2026] ERI = 0 with all threads (memory bandwidth of one core   !
+! was the limit: 2.5 s for 3.7 GB, He bcc 5x5x5)                      !
+!---------------------------------------------------------------------!
+subroutine zero_eri_parallel(n1, nBas, E)
+      implicit none
+      integer, intent(in) :: n1, nBas
+      double precision, intent(out) :: E(n1,nBas,nBas,nBas)
+      integer :: k, l
+      !$omp parallel do default(shared) private(k,l) collapse(2) schedule(static)
+      do l = 1, nBas
+        do k = 1, nBas
+          E(:,:,k,l) = 0.d0
+        end do
+      end do
+      !$omp end parallel do
+end subroutine zero_eri_parallel
