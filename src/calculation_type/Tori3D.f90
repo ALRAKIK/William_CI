@@ -29,6 +29,7 @@ subroutine Tori3D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
       use omp_lib
       use eri_direct, only : direct_init                ! [Nov 2026] keyword direct
       use df_toroidal, only : df_init                   ! [Nov 2026] keyword density_fitting
+      use symmetry_clifford, only : sym_setup           ! [Nov 2026] keyword symmetry
 
       implicit none
 
@@ -93,9 +94,11 @@ subroutine Tori3D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
       if (c_One) then
         ERI = 0.d0
       else if (c_direct) then
+        if (c_symmetry) call sym_setup(3,n_atoms,geometry,atoms(:)%charge,nBas,AOn)   ! [Nov 2026] point operations for direct J/K
         call direct_init(3,nBas,AOn)                      ! [Nov 2026] keyword direct: nothing stored
         if (c_df) call df_init(3,n_atoms,atoms,geometry,nBas,AOn,outfile)   ! [Nov 2026] density fitting
       else
+        if (c_symmetry) call sym_setup(3,n_atoms,geometry,atoms(:)%charge,nBas,AOn)   ! [Nov 2026] point operations for the ERIs
         call ERI_integral_toroidal(3,nBas,AOn,ERI)          ! ndp = 3 periodic directions
       end if
 

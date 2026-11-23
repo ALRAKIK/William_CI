@@ -15,6 +15,7 @@ program CI
       use cc_disk    , only : disk_on , disk_open , disk_close , disk_bytes   ! [Nov 2026] keyword CC_to_disk
       use omp_lib , only : omp_get_wtime
       use df_toroidal, only : df_kMO , df_build_chol   ! [Nov 2026] keyword density_fitting
+      use symmetry_clifford, only : sym_run   ! [Nov 2026] keyword symmetry
 
       implicit none
 
@@ -407,6 +408,11 @@ program CI
         call calculation_type_select(calculation_type,n_atoms,nBas,atoms,geometry,AO,S,T,V,ERI,ERI_size)
 
         Hc(:,:) = T(:,:) + V(:,:)
+
+        ! [Nov 2026] keyword symmetry: detect the usable point operations and check
+        ! that S, T, V and the ERIs are invariant under them (nothing uses them yet)
+        if (c_symmetry) call sym_run(calculation_type, n_atoms, geometry, atoms(:)%charge, nBas, nfuc, &
+                                     AO, S, T, V, ERI, ERI_size, .not. c_direct, outfile)
 
       end if
 

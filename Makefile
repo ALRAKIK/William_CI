@@ -66,6 +66,7 @@ MODULES_IN_ORDER = constants_module \
                    chol_store \
                    cc_disk \
                    HF_constant \
+                   symmetry_clifford \
                    eri_direct \
                    df_toroidal \
 # =================================================== #

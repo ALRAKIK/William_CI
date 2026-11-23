@@ -32,6 +32,7 @@ subroutine  get_keywords(keyword)
       c_fast_quad   = any(keyword == 'fast_quad' )
       c_prim_screen = any(keyword == 'primscreen')     ! input word: prim_screen
       rys_req       = any(keyword == 'rys_quad'  )     ! [Nov 2026] Rys-type t quadrature (clifford_tools)
+      c_symmetry    = any(keyword == 'symmetry'  )     ! [Nov 2026] geometric symmetry: detection + check
       c_physicist   = any(keyword == 'physicist' )
       c_ccsdt       = any(keyword == 'ccsdt'     )
       c_debug       = any(keyword == 'debug'     )     ! 25 

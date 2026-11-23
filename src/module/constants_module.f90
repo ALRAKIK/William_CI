@@ -1,5 +1,5 @@
 module constants_module
-      integer          ,parameter    :: max_atom = 1500
+      integer          ,parameter    :: max_atom = 100000
       double precision ,parameter    :: pi       = 3.14159265358979323846D00
       double precision ,parameter    :: pi2      = 9.869604401089358d0
       double precision ,parameter    :: sqrt_pi  = 1.7724538509055159d0

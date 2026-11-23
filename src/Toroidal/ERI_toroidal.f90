@@ -22,6 +22,14 @@
 !   calls. Falls back to the original loop if the shells are not the  !
 !   same in every cell.                                               !
 !                                                                     !
+!   [Nov 2026] keyword symmetry: the point operations of the crystal  !
+!   (symmetry_clifford, signed permutations of the AOs) are added to  !
+!   the orbit: a quartet is computed only if it is the smallest of    !
+!   its orbit under 8 permutations x translations x point operations, !
+!   and its value is scattered to the whole orbit (sign s_i s_j s_k s_l).
+!   A self-check (random quartets computed directly and by symmetry)  !
+!   switches the point operations off if they do not hold (1e-10).    !
+!                                                                     !
 !   AO must be the SAME normalized list used for S, T and V.          !
 !=====================================================================!
 
@@ -37,6 +45,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       use clifford_tools, only : init_clifford, orbital_to_lxyz, setup_t_tables, bessel_nmax_estimate, &
                                  ps_on, ps_noscreen, ps_qp, ps_bra, ps_ket, pair_cache_free, &
                                  rys_on, rys_nq_used, rys_nq_total
+      use symmetry_clifford, only : sym_ready, sym_nop, sym_perm, sym_sign, sym_eri_note   ! [Nov 2026]
 
       implicit none
 
@@ -70,6 +79,13 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       integer                        :: ncell, c1, c2, cc, ctr, iperm8(4,8), t4(4), r4(4), ip8
       logical                        :: fast_tab
       data iperm8 / 1,2,3,4, 2,1,3,4, 1,2,4,3, 2,1,4,3, 3,4,1,2, 4,3,1,2, 3,4,2,1, 4,3,2,1 /
+      ! [Nov 2026] keyword symmetry: point operations on shells
+      logical              :: use_pg
+      integer              :: nG, ig, g4(4), gq(4), i2, j2, k2, l2, aa, bb, cc2, dd, nsamp, is, ntry
+      integer, allocatable :: ao2sh(:), shmap(:,:), cmap(:,:,:), csg(:,:,:)
+      integer(8)           :: n_old, n_new, lcg
+      double precision     :: val2, dev_pg, w_pg0, w_pg1
+      double precision, allocatable :: blk2(:,:,:,:)
 
       !-----------------------------------------------------------------!
 
@@ -140,6 +156,48 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
         end do
       end if
 
+      ! ---- [Nov 2026] keyword symmetry: point operations as shell maps ---- !
+      ! shmap(S,g) = image shell, cmap(a,S,g) = component in the image shell, csg = sign
+      use_pg = .false. ; nG = 1
+      if (c_symmetry .and. fast_tab) then
+        if (sym_ready) then
+          if (size(sym_perm,1) == nBas .and. sym_nop > 1) use_pg = .true.
+        end if
+      end if
+      if (use_pg) then
+        nG = sym_nop
+        allocate(ao2sh(nBas), shmap(nsh,nG), cmap(15,nsh,nG), csg(15,nsh,nG))
+        do SI = 1 , nsh
+          ao2sh(sh_first(SI):sh_first(SI)+sh_n(SI)-1) = SI
+        end do
+        cmap = 0 ; csg = 0
+        do ig = 1 , nG
+          do SI = 1 , nsh
+            i = sym_perm(sh_first(SI), ig)
+            if (i <= 0) then
+              use_pg = .false. ; cycle
+            end if
+            SJ = ao2sh(i)
+            shmap(SI,ig) = SJ
+            if (sh_n(SJ) /= sh_n(SI) .or. sh_n(SI) > 15) use_pg = .false.
+            do a = 1 , sh_n(SI)
+              j = sym_perm(sh_first(SI)+a-1, ig)
+              if (j <= 0) then
+                use_pg = .false. ; cycle
+              end if
+              if (ao2sh(j) /= SJ) use_pg = .false.
+              cmap(a,SI,ig) = j - sh_first(SJ) + 1
+              csg(a,SI,ig)  = sym_sign(sh_first(SI)+a-1, ig)
+            end do
+          end do
+        end do
+        if (.not. use_pg) then
+          nG = 1
+          sym_eri_note = 'point operations NOT used (they do not map shells on shells)'
+          write(outfile,'(a)') ' symmetry: '//trim(sym_eri_note)
+        end if
+      end if
+
       ! ---- Schwarz: diagonal shell-pair blocks ---- !
       ! [Nov 2026] regular lattice: only pairs with SI in the unit cell are
       ! computed, the others are copies shifted by a lattice vector.
@@ -182,6 +240,57 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       if (sym_ok) then
 
         Qmax = maxval(Qsh)
+
+        ! ---- [Nov 2026] keyword symmetry: self-check of the point operations ---- !
+        ! random non-negligible quartets, computed directly and as the image of an
+        ! operation: |s blk(a,b,c,d) - blk_g(a',b',c',d')| must be < 1e-10
+        if (use_pg) then
+          w_pg0 = omp_get_wtime()
+          dev_pg = 0.d0 ; nsamp = 0
+          ps_on = .false.
+          ! 4 quartets per operation (2 if > 16 operations, 1 if > 48), operations in parallel
+          !$omp parallel do default(shared) private(ig,is,ntry,lcg,SI,SJ,SK,SL,g4,blk,blk2,a,b,c,d,val2) &
+          !$omp reduction(max:dev_pg) reduction(+:nsamp) schedule(dynamic,1)
+          do ig = 2 , nG
+            is = 0 ; ntry = 0 ; lcg = 12345_8 + 7919_8*ig
+            do while (is < merge(4, merge(2, 1, nG <= 48), nG <= 16) .and. ntry < 400)
+              ntry = ntry + 1
+              lcg = mod(lcg*1103515245_8 + 12345_8, 2147483648_8) ; SI = 1 + int(mod(lcg, int(nshuc,8)))
+              lcg = mod(lcg*1103515245_8 + 12345_8, 2147483648_8) ; SJ = 1 + int(mod(lcg, int(nsh,8)))
+              lcg = mod(lcg*1103515245_8 + 12345_8, 2147483648_8) ; SK = 1 + int(mod(lcg, int(nsh,8)))
+              lcg = mod(lcg*1103515245_8 + 12345_8, 2147483648_8) ; SL = 1 + int(mod(lcg, int(nsh,8)))
+              if (Qsh(SI,SJ)*Qsh(SK,SL) < 1.d-8) cycle
+              is = is + 1 ; nsamp = nsamp + 1
+              g4 = (/ shmap(SI,ig), shmap(SJ,ig), shmap(SK,ig), shmap(SL,ig) /)
+              allocate(blk(sh_n(SI),sh_n(SJ),sh_n(SK),sh_n(SL)), blk2(sh_n(SI),sh_n(SJ),sh_n(SK),sh_n(SL)))
+              call ERI_shell_block_toroidal(ndp,sh_n(SI),AO(sh_first(SI):),sh_n(SJ),AO(sh_first(SJ):), &
+                                         sh_n(SK),AO(sh_first(SK):),sh_n(SL),AO(sh_first(SL):),blk)
+              call ERI_shell_block_toroidal(ndp,sh_n(g4(1)),AO(sh_first(g4(1)):),sh_n(g4(2)),AO(sh_first(g4(2)):), &
+                                         sh_n(g4(3)),AO(sh_first(g4(3)):),sh_n(g4(4)),AO(sh_first(g4(4)):),blk2)
+              do d = 1 , sh_n(SL)
+               do c = 1 , sh_n(SK)
+                do b = 1 , sh_n(SJ)
+                 do a = 1 , sh_n(SI)
+                  val2 = dble(csg(a,SI,ig)*csg(b,SJ,ig)*csg(c,SK,ig)*csg(d,SL,ig))*blk(a,b,c,d)
+                  dev_pg = max(dev_pg, abs(val2 - blk2(cmap(a,SI,ig),cmap(b,SJ,ig),cmap(c,SK,ig),cmap(d,SL,ig))))
+                 end do
+                end do
+               end do
+              end do
+              deallocate(blk, blk2)
+            end do
+          end do
+          !$omp end parallel do
+          w_pg1 = omp_get_wtime()
+          if (dev_pg > 1.d-10) then
+            use_pg = .false. ; nG = 1
+            write(sym_eri_note,'(a,es9.2,a)') 'point operations NOT used: self-check failed (max dev ', dev_pg, ')'
+          end if
+          write(outfile,'(a,i0,a,i0,a,es9.2,a,f8.2,a)') ' symmetry: ERI self-check, ', nsamp, ' quartets over ', &
+               sym_nop-1, ' operations: max dev ', dev_pg, '   (', w_pg1-w_pg0, ' s)'
+          if (.not. use_pg) write(outfile,'(a)') ' symmetry: '//trim(sym_eri_note)
+        end if
+        n_old = 0 ; n_new = 0
 
         ! ---- keyword prim_screen: primitive-pair Schwarz table ---- !
         ! built with the kernel's own prefactor screen switched off, so  !
@@ -228,6 +337,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
         two_electron_integrals = 0.d0
 
         !$omp parallel do default(shared) private(SI,SJ,SK,SL,blk,a,b,c,d,i,j,k,l,val,q4,qc,pp,ii,iperm,ab,t4,r4,ip8) &
+        !$omp private(ig,gq,g4,i2,j2,k2,l2,val2) reduction(+:n_old,n_new) &
         !$omp schedule(dynamic,1) collapse(2)
         do SI = 1 , nshuc
           do SJ = 1 , nsh
@@ -258,6 +368,29 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
                       if (smaller) exit
                     end do
                     if (smaller) cycle
+                    n_old = n_old + 1
+                    ! [Nov 2026] keyword symmetry: images under the point operations
+                    if (use_pg) then
+                      do ig = 2 , nG
+                        gq = (/ shmap(SI,ig), shmap(SJ,ig), shmap(SK,ig), shmap(SL,ig) /)
+                        do ip8 = 1 , 8
+                          t4 = gq(iperm8(:,ip8))
+                          do ii = 1 , 4
+                            r4(ii) = relc(scell(t4(1)), scell(t4(ii)))*nshuc + sloc(t4(ii)) + 1
+                          end do
+                          do ii = 1 , 4
+                            if (r4(ii) < q4(ii)) then
+                              smaller = .true. ; exit
+                            end if
+                            if (r4(ii) > q4(ii)) exit
+                          end do
+                          if (smaller) exit
+                        end do
+                        if (smaller) exit
+                      end do
+                      if (smaller) cycle
+                    end if
+                    n_new = n_new + 1
                   end block sym_small
                 else
                   call canonical_quartet_toroidal(q4, nsh, nshuc, ncl, qc)
@@ -284,10 +417,19 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
                     i = sh_first(SI)+a-1 ; j = sh_first(SJ)+b-1
                     k = sh_first(SK)+c-1 ; l = sh_first(SL)+d-1
                     if (Q_schwarz(i,j)*Q_schwarz(k,l) < schwarz_thresh) cycle   ! same screen as before
-                    val = blk(a,b,c,d)
+                    do ig = 1 , nG                                   ! [Nov 2026] images under the point operations
+                    if (ig == 1) then
+                      i2 = i ; j2 = j ; k2 = k ; l2 = l ; val = blk(a,b,c,d)
+                    else
+                      g4 = (/ shmap(SI,ig), shmap(SJ,ig), shmap(SK,ig), shmap(SL,ig) /)
+                      i2 = sh_first(g4(1)) + cmap(a,SI,ig) - 1 ; j2 = sh_first(g4(2)) + cmap(b,SJ,ig) - 1
+                      k2 = sh_first(g4(3)) + cmap(c,SK,ig) - 1 ; l2 = sh_first(g4(4)) + cmap(d,SL,ig) - 1
+                      if (Q_schwarz(i2,j2)*Q_schwarz(k2,l2) < schwarz_thresh) cycle   ! same screen as the image quartet
+                      val = dble(csg(a,SI,ig)*csg(b,SJ,ig)*csg(c,SK,ig)*csg(d,SL,ig))*blk(a,b,c,d)
+                    end if
                     do iperm = 1 , 8
                       if (fast_tab) then
-                        t4 = (/ i, j, k, l /)
+                        t4 = (/ i2, j2, k2, l2 /)
                         t4 = t4(iperm8(:,iperm))
                         do ii = 1 , 4
                           pp(ii) = relc(fcell(t4(1)), fcell(t4(ii)))*nfuc + floc(t4(ii)) + 1
@@ -302,6 +444,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
                         two_electron_integrals(pp(1),pp(2),pp(3),pp(4)) = val
                       end if
                     end do
+                    end do                                           ! ig
                    end do
                   end do
                  end do
@@ -314,6 +457,12 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
         !$omp end parallel do
         ps_on = .false.
         if (allocated(ps_qp)) deallocate(ps_qp)
+        if (use_pg .and. n_new > 0) then
+          write(sym_eri_note,'(a,i0,a,i0,a,i0,a,f6.2,a)') 'point symmetry used (', nG, ' operations): ', n_new, &
+               ' shell quartets computed instead of ', n_old, '  (', dble(n_old)/dble(n_new), 'x fewer)'
+          write(outfile,'(a)') ' symmetry: '//trim(sym_eri_note)
+          write(*,'(a)') ' symmetry: '//trim(sym_eri_note)
+        end if
         if (rys_on) then
           write(outfile,'(a,i0,a,i0,a)') ' rys_quad: ', rys_nq_used, ' of ', rys_nq_total, &
                                          ' primitive quartets used the Rys-type nodes'
@@ -406,6 +555,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
 
       deallocate(sh_first, sh_n, Q_schwarz, Qsh)
       if (allocated(relc)) deallocate(scell, sloc, fcell, floc, relc)
+      if (allocated(shmap)) deallocate(ao2sh, shmap, cmap, csg)
       call pair_cache_free()                    ! memo of pair Fourier vectors (kernel)
 
 end subroutine ERI_integral_toroidal

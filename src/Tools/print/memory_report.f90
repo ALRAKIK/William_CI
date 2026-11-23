@@ -89,11 +89,29 @@ subroutine memory_report(calculation_type, nBas, nfuc_in, N_cell_in, nO)
 
         ! ------------------------- SAO path ------------------------- !
 
+        if (c_df) then
+          ! [Nov 2026] density_fitting: no ERI; 3-index B(nfuc, nBas, naux), naux = nau*N_cell.
+          ! nau (aux per cell) is only known after df_init: estimate 15*nfuc (Cholesky aux set,
+          ! 14.5*nfuc measured for LiH STO-3G); T3 and B coexist while B is built, plus the
+          ! k-blocks Bh(nfuc,nau,nfuc,N_cell,~N_cell/2+1) used by the J/K build.
+          thr = 15.d0*f*C                                                  ! naux estimate
+          call add("Integrals (DF build)", "T3 + B (nfuc,nBas,naux) + Bh k-blocks (estimate)", &
+                   2.d0*d*f*N*thr + z*f*f*15.d0*f*C*(0.5d0*C + 1.d0) + z*f*f*15.d0*f*C)
+          call add("RHF (SAO, DF)", "B + Bh + 7 real + 5 complex nBas^2 + DIIS (estimate)", &
+                   d*f*N*thr + z*f*f*15.d0*f*C*(0.5d0*C + 1.d0) + 7.d0*d*N2 + 5.d0*z*N2 + 2.d0*d*N2*max_diis)
+        else if (c_direct) then
+          ! [Nov 2026] keyword direct: no ERI stored; J, K built from shell quartets each iteration
+          thr = dble(omp_get_max_threads())
+          call add("Integrals (direct)", "Schwarz tables only", 2.d0*d*N2)
+          call add("RHF (SAO, direct)", "7 real + 5 complex nBas^2 + DIIS + J,K per thread", &
+                   7.d0*d*N2 + 5.d0*z*N2 + 2.d0*d*N2*max_diis + thr*2.d0*d*f*N)
+        else
         call add("Integrals (SAO)",  "ERI(nfuc,nBas,nBas,nBas)", d*B3 + d*N2)
 
         ! [Nov 2026] SAO + UHF is now stopped in get_kw.f90
         call add("RHF (SAO)", "ERI + 7 real + 5 complex nBas^2 + DIIS", &
                  d*B3 + 7.d0*d*N2 + 5.d0*z*N2 + 2.d0*d*N2*max_diis)
+        end if
 
         if (c_MP2) then
           o    = dble(ceiling(dble(nO)/C))               ! occupied bands per k (estimate)
@@ -194,7 +212,13 @@ subroutine memory_report(calculation_type, nBas, nfuc_in, N_cell_in, nO)
                                                   "    N_cell = ", max(N_cell_in,1), "    nO = ", nO
       write(outfile,'(a)')""
       if (c_SAO) then
+        if (c_df) then
+          write(outfile,'(6x,a)') "path : SAO + density_fitting (no ERI stored; 3-index B ~ nfuc^2 nau N_cell^2)"
+        else if (c_direct) then
+          write(outfile,'(6x,a)') "path : SAO + direct (no ERI stored)"
+        else
         write(outfile,'(6x,a)') "path : SAO  (ERI stored as ERI(nfuc,nBas,nBas,nBas))"
+        end if
       else
         write(outfile,'(6x,a)') "path : normal  (ERI stored as ERI(nBas,nBas,nBas,nBas))"
       end if
