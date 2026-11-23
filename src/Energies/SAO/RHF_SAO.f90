@@ -46,6 +46,14 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       double precision,allocatable  ::             error_o(:,:)   ! [Nov 2026] X^T error X
       double precision,allocatable  ::          wA(:,:), wB(:,:)  ! [Nov 2026] work for the dgemm products
       logical                       ::               converged     ! [Nov 2026]
+      ! [Nov 2026] stall-aware convergence (near linear dependence: the orbital
+      ! error stops on a round-off floor above thresh while the energy is fixed)
+      logical                       ::                 stalled
+      integer                       ::                 n_stable
+      double precision              ::             conv_hist(0:4)
+      double precision, parameter   ::   stall_dE   = 1d-10   ! |dE| per iteration
+      double precision, parameter   ::   stall_conv = 1d-6    ! orbital error must be below
+      integer         , parameter   ::   stall_nit  = 5       ! for this many iterations
       logical                       ::               ksym_ok       ! [Nov 2026] fast_ccsdt gauge
       integer                       ::               fourth_k      ! [Nov 2026]
       integer                       ::        kb , b1 , b2 , nf    ! [Nov 2026] k-block bounds
@@ -185,6 +193,9 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       EHF_old         = 0d0 
       EHF             = 0d0 
       converged       = .false.
+      stalled         = .false.
+      n_stable        = 0
+      conv_hist(:)    = huge(1d0)
   
       !------------------------------------------------------------------------
       ! Main SCF loop
@@ -284,6 +295,23 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
         converged = .true.
         exit
       end if
+
+      ! [Nov 2026] stall: energy fixed (|dE| < 1e-10) for 5 iterations, orbital
+      ! error < 1e-6 and not halved over these 5 iterations -> round-off floor
+      ! (seen with near linearly dependent basis sets, e.g. cc-pVTZ C chain).
+      ! Accepted as converged, with a warning, instead of 100 useless iterations.
+      if (nSCF > 2 .and. abs(EHF - EHF_old) < stall_dE) then
+        n_stable = n_stable + 1
+      else
+        n_stable = 0
+      end if
+      if (n_stable >= stall_nit .and. Conv < stall_conv .and. &
+          Conv > 0.5d0*conv_hist(mod(nSCF,stall_nit))) then
+        converged = .true.
+        stalled   = .true.
+        exit
+      end if
+      conv_hist(mod(nSCF,stall_nit)) = Conv
 
       EHF_old = EHF
 
@@ -442,6 +470,15 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       if (c_details) then 
         close(HFfile)
       end if 
+
+      if (stalled) then
+        write(outfile,*)
+        write(outfile,'(a)') ' *** WARNING: SCF stopped on a round-off floor (near linear dependence of the basis).'
+        write(outfile,'(a,es10.2,a,es10.2,a,i0,a)') ' ***          orbital error ', Conv, ' (target ', thresh, &
+                                 '), energy unchanged (< 1e-10) for ', n_stable, ' iterations: accepted as converged.'
+        write(outfile,'(a)') ' ***          MP2/CC energies may carry an error of the order of this orbital error.'
+        write(outfile,*)
+      end if
 
       call print_band_structure(nBas, nfuc, N_cell, e, 'band_structure.dat')
 

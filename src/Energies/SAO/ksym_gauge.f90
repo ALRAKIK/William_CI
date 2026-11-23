@@ -32,6 +32,11 @@ subroutine ksym_gauge(nBas, nfuc, N_cell, S_SAO, F_SAO, coeff_SAO, e, ok)
       integer          :: k, km, b1, b2, m1, m2, info, lwork
       integer          :: fourth_k
       double precision :: Fr(nfuc,nfuc), Sr(nfuc,nfuc), w(nfuc), de, dimF
+      ! [Nov 2026] reduced space when S_k has eigenvalues <= lindep_thresh
+      ! (same cutoff and same removed vectors as the canonical X of the HF)
+      double precision, parameter :: lindep_thresh = 1.d-6, lindep_shift = 1.d4
+      double precision :: sw(nfuc), Xr(nfuc,nfuc), Fp(nfuc,nfuc), Cr(nfuc,nfuc)
+      integer          :: nk, nd, j
       double precision, allocatable :: work(:)
 
       ok = .true.
@@ -48,7 +53,29 @@ subroutine ksym_gauge(nBas, nfuc, N_cell, S_SAO, F_SAO, coeff_SAO, e, ok)
           dimF = max(maxval(abs(aimag(F_SAO(b1:b2,b1:b2)))), maxval(abs(aimag(S_SAO(b1:b2,b1:b2)))))
           Fr = real(F_SAO(b1:b2,b1:b2))
           Sr = real(S_SAO(b1:b2,b1:b2))
-          call dsygv(1, 'V', 'U', nfuc, Fr, nfuc, Sr, nfuc, w, work, lwork, info)
+          ! [Nov 2026] eigenvalues of S_k first: with near linear dependence the
+          ! HF removed the vectors with S eigenvalue <= 1e-6 (canonical X, zero
+          ! coefficients, orbital energy 1e4 at the top of the block). The full
+          ! generalized problem F c = S c e would bring them back (max|de| ~ 1e4),
+          ! so then the real orbitals are computed in the same reduced space.
+          Xr = Sr
+          call dsyev('V', 'U', nfuc, Xr, nfuc, sw, work, lwork, info)
+          nd = count(sw <= lindep_thresh)
+          if (info /= 0 .or. nd == 0) then
+            ! no removed vector: exactly as before
+            call dsygv(1, 'V', 'U', nfuc, Fr, nfuc, Sr, nfuc, w, work, lwork, info)
+          else
+            nk = nfuc - nd                                   ! dsyev: ascending, kept = last nk
+            do j = 1, nk
+              Xr(:,j) = Xr(:,nd+j) / sqrt(sw(nd+j))
+            end do
+            Fp(1:nk,1:nk) = matmul(transpose(Xr(:,1:nk)), matmul(Fr, Xr(:,1:nk)))
+            call dsyev('V', 'U', nk, Fp(1:nk,1:nk), nk, w(1:nk), work, lwork, info)
+            Cr = 0.0d0
+            Cr(:,1:nk) = matmul(Xr(:,1:nk), Fp(1:nk,1:nk))
+            Fr = Cr                                          ! removed orbitals: zero coefficients
+            w(nk+1:nfuc) = lindep_shift                      ! and energy 1e4, as in the HF
+          end if
           de = maxval(abs(w - e(b1:b2)))
           if (info /= 0 .or. dimF > 1.0d-8 .or. de > 1.0d-8) then
             ok = .false.
