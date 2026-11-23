@@ -6,9 +6,14 @@
 !   (STO-3G, H chains: ~1e-11) but NOT for very tight primitives:     !
 !   cc-pVTZ carbon (exponents 8236, 1235) gave 1.7e-4 Eh in HF.       !
 !                                                                     !
-!   Here the nuclear attraction matrix and a sample of ERI shell      !
-!   quartets are computed with both rules (V is the most sensitive:  !
-!   point nucleus = infinite exponent). ERI sample:                   !
+!   Here a sample of nuclear attraction elements and a sample of ERI  !
+!   shell quartets are computed with both rules (V is the most        !
+!   sensitive: point nucleus = infinite exponent).                    !
+!   [Nov 2026] V sample (was: the whole matrix twice, too expensive   !
+!   for large cells, e.g. 1728 atoms): every diagonal V(i,i) of the   !
+!   unit cell (always includes the tightest functions, at most 2000), !
+!   200 random pairs inside the unit cell and 200 random pairs        !
+!   (i in the unit cell, j anywhere). ERI sample:                     !
 !   every on-site quartet (SI SI|SI SI) of the unit cell (this always !
 !   includes the tightest shells) plus up to 300 pseudo-random        !
 !   quartets. If the largest difference exceeds tol, fast_quad is     !
@@ -51,8 +56,11 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
       integer, allocatable :: qs(:,:)
       double precision, allocatable :: buf(:)
       integer          :: ntot, off, nb
-      double precision, allocatable :: V1(:,:), V2(:,:)
+      double precision, allocatable :: V1(:), V2(:)
       double precision :: dV
+      integer, parameter :: nv_rand = 200
+      integer          :: npv, ip
+      integer, allocatable :: pv(:,:), lxv(:,:)
 
       if (.not. fast_quad) return
 
@@ -122,7 +130,24 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
       end do
       allocate(buf(ntot))
 
-      allocate(V1(nBas,nBas), V2(nBas,nBas))
+      ! ---- sample of nuclear attraction elements (i <= nfuc) ---- !
+      npv = min(nfuc, 2000) + 2*nv_rand
+      allocate(pv(2,npv), V1(npv), V2(npv), lxv(3,nBas))
+      do i = 1 , nBas
+        call orbital_to_lxyz(AO(i)%orbital, lxv(:,i))
+      end do
+      do ip = 1 , min(nfuc, 2000)
+        pv(:,ip) = ip                                                    ! diagonal V(i,i)
+      end do
+      do ip = min(nfuc, 2000) + 1 , npv
+        pv(1,ip) = 1 + int(mod(next(), int(nfuc,8)))
+        if (ip <= min(nfuc, 2000) + nv_rand) then
+          pv(2,ip) = 1 + int(mod(next(), int(nfuc,8)))                  ! same unit cell
+        else
+          pv(2,ip) = 1 + int(mod(next(), int(nBas,8)))                  ! anywhere
+        end if
+      end do
+
       fast_quad = .true.  ; nquad_point = nq_fast
       call setup_t_tables(ncap, ndp)
       call nuclear_attraction(V1)
@@ -143,7 +168,7 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
       call setup_t_tables(ncap, ndp)
       call nuclear_attraction(V2)
       dV = maxval(abs(V1 - V2))
-      deallocate(V1, V2)
+      deallocate(V1, V2, pv, lxv)
       rys_on = .false.
       dmax = 0.d0 ; off = 0
       do it = 1 , ns
@@ -169,23 +194,34 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
       rys_on = rys_save
 
       write(outfile,'(a,i0,a,es9.2,a,es9.2,a)') ' fast_quad self-check: ', ns, ' ERI shell quartets, largest difference ', &
-            dmax, ' ; nuclear attraction ', dV, merge(' -> fast_quad ON                                ', &
+            dmax, ' ; nuclear attraction (sample) ', dV, merge(' -> fast_quad ON                                ', &
                                                      ' -> above 1e-10: fast_quad OFF, full tables used', ok)
       write(*,'(a,i0,a,es9.2,a,es9.2,a)') ' fast_quad self-check: ', ns, ' ERI shell quartets, largest difference ', &
-            dmax, ' ; nuclear attraction ', dV, merge(' -> fast_quad ON                                ', &
+            dmax, ' ; nuclear attraction (sample) ', dV, merge(' -> fast_quad ON                                ', &
                                                      ' -> above 1e-10: fast_quad OFF, full tables used', ok)
       flush(outfile)
       deallocate(sh_first, sh_n, qs)
 
 contains
 
+      ! [Nov 2026] only the sampled elements (pv), with the t-tables in place (same
+      ! table size as the nuclear attraction matrix routines: same ncap rule)
       subroutine nuclear_attraction(Vm)
-        double precision, intent(out) :: Vm(nBas,nBas)
-        select case (ndp)
-          case (1) ; call nuclear_attraction_matrix_toroidal_1D(n_atoms,nBas,geometry,atoms,AO,Vm)
-          case (2) ; call nuclear_attraction_matrix_toroidal_2D(n_atoms,nBas,geometry,atoms,AO,Vm)
-          case (3) ; call nuclear_attraction_matrix_toroidal_3D(n_atoms,nBas,geometry,atoms,AO,Vm)
-        end select
+        double precision, intent(out) :: Vm(npv)
+        double precision :: r1(3), r2(3)
+        integer :: k, a, b
+        !$omp parallel do default(shared) private(k,a,b,r1,r2) schedule(dynamic,4)
+        do k = 1 , npv
+          a = pv(1,k) ; b = pv(2,k)
+          r1 = (/ AO(a)%x , AO(a)%y , AO(a)%z /)
+          r2 = (/ AO(b)%x , AO(b)%y , AO(b)%z /)
+          select case (ndp)
+            case (1) ; call nuclear_attraction_integral_toroidal_1D(lxv(:,a),lxv(:,b),n_atoms,geometry,atoms,r1,r2,AO(a),AO(b),Vm(k))
+            case (2) ; call nuclear_attraction_integral_toroidal_2D(lxv(:,a),lxv(:,b),n_atoms,geometry,atoms,r1,r2,AO(a),AO(b),Vm(k))
+            case (3) ; call nuclear_attraction_integral_toroidal_3D(lxv(:,a),lxv(:,b),n_atoms,geometry,atoms,r1,r2,AO(a),AO(b),Vm(k))
+          end select
+        end do
+        !$omp end parallel do
       end subroutine nuclear_attraction
 
       integer(8) function next()

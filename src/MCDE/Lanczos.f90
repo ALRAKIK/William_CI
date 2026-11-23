@@ -26,6 +26,7 @@ subroutine Lanczos_Haydock(heff_matrix, nSpace1, nSpace3, heffbas, it, a, b)
       allocate(w(heffbas,1))
       allocate(alpha(heffbas,1))
       allocate(beta(heffbas,1))
+      alpha = 0.0d0 ; beta = 0.0d0    ! [Nov 2026] the last b (beta(f+1)) was read uninitialized
       do i = 1, nSpace1
          s0(i,1) = 1.0d0
       enddo
@@ -45,7 +46,9 @@ subroutine Lanczos_Haydock(heff_matrix, nSpace1, nSpace3, heffbas, it, a, b)
       beta(2,1)=NORM2(w)
       Krylov(2,:,:)=w/beta(2,1)
 
-      do i = 2, (it-1)
+      ! [Nov 2026] at most heffbas Lanczos vectors (alpha, beta, Krylov have heffbas rows):
+      ! it > heffbas wrote out of bounds
+      do i = 2, (min(it, heffbas-1)-1)
          v_prec=Krylov(i-1,:,:)
          v_curr=Krylov(i,:,:)
          w0=Transpose(matmul(heff_matrix,v_curr))
@@ -86,7 +89,7 @@ subroutine Lanczos_spectral_function(e_min,e_max,delta,a,b,A_w,eta)
       integer                                             :: steps
       integer                                             :: i
       double precision, allocatable                       :: omega(:)
-      complex, allocatable                                :: z(:), result(:)
+      complex(8), allocatable                             :: z(:), result(:)   ! [Nov 2026] was single precision
       double precision, parameter                         :: PI = 4*atan(1.0d0)
 
       steps = int((e_max-e_min)/delta)
@@ -97,13 +100,15 @@ subroutine Lanczos_spectral_function(e_min,e_max,delta,a,b,A_w,eta)
       do i = 1,steps
          omega(i)=(i-1)*delta+e_min
       enddo
-      z = cmplx(omega,eta)
-      write(*,*)'z = ', z
+      z = cmplx(omega,eta,kind=8)
       result = z-a(size(a))
       do i = size(b), 1, -1
          result = z - a(i) - b(i)**2 / result
       end do
-      result = -PI*AIMAG(1/result)
+      ! [Nov 2026] A(w) = -1/pi Im G(w) (was -pi Im G: a factor pi^2 too large).
+      ! Note: one normalized start vector sum_i e_i/sqrt(n) gives the AVERAGE (1/n) of the
+      ! n diagonal elements G_ii (+ off-diagonal terms), dsyevd and block_lanczos give the SUM.
+      result = -AIMAG(1.0d0/result)/PI
       A_w(:,1) = omega
       A_w(:,2) = result
 

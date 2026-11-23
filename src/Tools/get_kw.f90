@@ -28,6 +28,12 @@ subroutine  get_keywords(keyword)
       c_DIIS        = any(keyword == 'DIIS'      )     
       c_MCDE        = any(keyword == 'MCDE'      )     ! 20
       c_block_lanczos = any(keyword == 'blanczos')     ! [Nov 2026] input word: block_lanczos
+      ! [Nov 2026] MCDE options: the input words were read (keyword(50:52)) but never set
+      c_Lanczos     = any(keyword == 'Lanczos'   )     ! MCDE: Haydock Lanczos spectral function
+      c_Spin_adapt  = any(keyword == 'Spin'      )     ! MCDE: spin-adapted 3-particle space
+      c_screen      = any(keyword == 'screen'    )     ! MCDE: screened effective Hamiltonian
+      ! [Nov 2026] MP2 is closed shell (RHF orbitals): MP2 after UHF printed NaN
+      if (c_UHF .and. c_MP2) error stop 'keywords UHF and MP2: MP2 after UHF is not implemented (no UMP2)'
       c_nquad_128   = any(keyword == 'nquad_128' )
       c_fast_quad   = any(keyword == 'fast_quad' )
       c_prim_screen = any(keyword == 'primscreen')     ! input word: prim_screen
@@ -61,7 +67,8 @@ subroutine  get_keywords(keyword)
       c_direct      = any(keyword == 'direct'   )
       if (c_direct) then
         if (.not. c_SAO) error stop 'keyword direct needs SAO (toroidal RHF)'
-        if (c_ccsdt .or. c_cholesky .or. c_cc_disk .or. c_MCDE .or. c_UHF) &
+        ! [Nov 2026] fast_ccsdt / fast_ccsdt_real tested too: they only set c_ccsdt further down
+        if (c_ccsdt .or. c_fast_ccsdt .or. c_fast_real .or. c_cholesky .or. c_cc_disk .or. c_MCDE .or. c_UHF) &
           error stop 'keyword direct: only RHF (SAO) and MP2 (no ccsdt, fast_ccsdt, cholesky, CC_to_disk, MCDE, UHF)'
       end if
       ! [Nov 2026] keyword density_fitting: fitted J/K and (ov|ov), no 4-index ERIs stored

@@ -128,11 +128,16 @@ program CI
         read(1, '(A)',iostat=io_stat) line
         if (io_stat /= 0) then
           close(1)
-          stop
+          error stop 'keyword UHF: the line UHF was not found in unitcell.mol'   ! [Nov 2026] was a silent stop
         end if
 
         if (trim(line) == 'UHF') then
           read(1, *,iostat=io_stat) n_alpha , n_beta
+          ! [Nov 2026] without this line the run went on with 0 electrons
+          if (io_stat /= 0 .or. n_alpha < 0 .or. n_beta < 0 .or. n_alpha + n_beta == 0) then
+            write(*,'(a)') ' ERROR: keyword UHF must be followed by a line "n_alpha n_beta" (e.g. "5 5")'
+            error stop 'keyword UHF: missing or wrong line "n_alpha n_beta" after UHF'
+          end if
           exit
         end if
 

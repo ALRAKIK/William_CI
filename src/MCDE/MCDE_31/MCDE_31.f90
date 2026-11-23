@@ -55,6 +55,36 @@ subroutine MCDE_3_1(nBas, nOcc, energies, ERI, lanczos, spin, screen)
       double precision, allocatable       :: A_w(:,:)
       double precision, allocatable       :: complex_energies(:)
 
+      ! [Nov 2026] explicit interfaces: these routines have allocatable or assumed-shape
+      ! dummy arguments, so calling them without an interface crashed (SIGSEGV) as soon
+      ! as the keywords Lanczos / Spin were really switched on (they were never set before)
+      interface
+        subroutine Lanczos_Haydock(heff_matrix, nSpace1, nSpace3, heffbas, it, a, b)
+          integer         , intent(in)               :: nSpace1, nSpace3, heffbas
+          double precision, intent(in)               :: heff_matrix(heffbas, heffbas)
+          integer         , intent(in)               :: it
+          double precision, allocatable, intent(out) :: a(:)
+          double precision, allocatable, intent(out) :: b(:)
+        end subroutine Lanczos_Haydock
+        subroutine Lanczos_spectral_function(e_min, e_max, delta, a, b, A_w, eta)
+          double precision, intent(in)               :: e_min, e_max, delta
+          double precision, intent(in)               :: a(:), b(:)
+          double precision, intent(in)               :: eta
+          double precision, allocatable, intent(out) :: A_w(:,:)
+        end subroutine Lanczos_spectral_function
+        subroutine spin_adapt(nBas, nOcc, energies, ERI, heffMatrix, g03space, heffbas, nSpace)
+          integer         , intent(in)    :: nBas, nOcc, nSpace, heffbas
+          double precision, intent(in)    :: energies(:)
+          integer         , intent(in)    :: g03space(:,:)
+          double precision, intent(in)    :: ERI(:,:,:,:)
+          double precision, intent(inout) :: heffMatrix(:,:)
+        end subroutine spin_adapt
+        subroutine get_g3space_spin_adapted(nBas, nOcc, nSpace, g03space)
+          integer, intent(in)  :: nBas, nOcc, nSpace
+          integer, intent(out) :: g03space(:,:)
+        end subroutine get_g3space_spin_adapted
+      end interface
+
       write(*,*)
       write(*,*) '---------------------------------------------------'
       write(*,*) '            |  (3,1)-MCDE Routine |'

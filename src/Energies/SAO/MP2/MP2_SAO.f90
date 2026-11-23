@@ -25,6 +25,8 @@ subroutine kMP2_calc(N_cell, blk, p_lo, p_hi, q_lo, q_hi, ERI_kMO, ENuc, EHF,EcM
       integer, allocatable           :: coord(:,:)
       
       real(dp)                       :: Dijab
+      integer(8)                     :: nzero             ! [Nov 2026] zero denominators (zero gap)
+      real(dp)                       :: gzero
       real(dp)                       :: E2d, E2x
       complex(dpc)                   :: g_direct, g_exch
 
@@ -53,6 +55,7 @@ subroutine kMP2_calc(N_cell, blk, p_lo, p_hi, q_lo, q_hi, ERI_kMO, ENuc, EHF,EcM
 
       E2d = 0.0_dp
       E2x = 0.0_dp
+      nzero = 0 ; gzero = 0.0_dp
 
       ! Loop over independent momentum vectors
       do ki = 1, N_cell
@@ -85,6 +88,14 @@ subroutine kMP2_calc(N_cell, blk, p_lo, p_hi, q_lo, q_hi, ERI_kMO, ENuc, EHF,EcM
                     ! Direct: (i ki, a ka | j kj, b kb)
                     g_direct = ERI_kMO(i, a, j, b, ki, ka, kj)
 
+                    ! [Nov 2026] zero gap (occupied and virtual levels degenerate): the term
+                    ! is 0/0 or x/0; it is left out and reported (MP2 diverges for metals)
+                    if (abs(Dijab) < 1.0d-8) then
+                      nzero = nzero + 1
+                      gzero = max(gzero, abs(g_direct))
+                      cycle
+                    end if
+
                     ! Exchange: (i ki, b kb | j kj, a ka)
                     g_exch   = ERI_kMO(i, b, j, a, ki, kb, kj)
 
@@ -105,6 +116,13 @@ subroutine kMP2_calc(N_cell, blk, p_lo, p_hi, q_lo, q_hi, ERI_kMO, ENuc, EHF,EcM
       end do
 
       EcMP2  = 2.0_dp * E2d - E2x
+
+      if (nzero > 0) then
+        write(outfile,'(a,i0,a,es9.2,a)') ' WARNING MP2: ', nzero, &
+             ' terms with a zero denominator (degenerate occupied/virtual levels: zero HOMO-LUMO gap)'// &
+             ' left out, largest integral ', gzero, ' (MP2 is not defined for a zero-gap system)'
+        write(*,'(a,i0,a)') ' WARNING MP2: ', nzero, ' terms with a zero denominator left out (zero HOMO-LUMO gap)'
+      end if
 
 
       write(*,*)
