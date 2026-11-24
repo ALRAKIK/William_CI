@@ -4,7 +4,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
 
       use files 
       use keywords
-      use eri_direct, only : direct_JK, direct_sym_P   ! [Nov 2026] keyword direct (+ symmetry)
+      use eri_direct, only : direct_JK   ! [Nov 2026] keyword direct (+ symmetry)
       use df_toroidal, only : df_JK             ! [Nov 2026] keyword density_fitting
       use constants_module
       use unitcell_module
@@ -178,8 +178,9 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       
       ! --------------------------------------------------------------- !
 
-      ! [Nov 2026] keyword symmetry + direct: symmetric guess density (see eri_direct)
-      if (c_direct .and. c_symmetry .and. .not. c_df) call direct_sym_P(nBas, P, outfile)
+      ! [Nov 2026] no averaging of the guess density: the guess is periodic by
+      ! construction (degenerate level at the cut filled fractionally, see
+      ! guess_occupy_cut in guess_Huckel_SAO.f90)
 
       ! Initialization
   

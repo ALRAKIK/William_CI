@@ -2,8 +2,42 @@
 !                                                                     !
 !   module symmetry_clifford   [Nov 2026]   keyword symmetry          !
 !                                                                     !
-!   Step 1 of the geometric symmetry: DETECTION and CHECK only.       !
-!   Nothing in the calculation uses it yet (no time saved yet).       !
+!   Geometric (point) symmetry of the Clifford Gaussian integrals.    !
+!   Works for Tori1D, Tori2D and Tori3D (same code, ndp = 1, 2, 3).   !
+!                                                                     !
+!   Where it is used (keyword symmetry)                               !
+!   ------------------------------------                              !
+!   Tori1D/2D/3D.f90                                                  !
+!     sym_setup        operations (R,t) + AO maps + AO-pair orbits;   !
+!                      called BEFORE any integral                     !
+!     V                only the representative AO pair of each orbit  !
+!                      is computed (sym_pair_is_rep), the others are  !
+!                      copies with a sign (sym_pair_fill)             !
+!     ERI stored       ERI_toroidal.f90: only the smallest shell      !
+!                      quartet of each orbit (8-fold x translations x !
+!                      point operations); its images are written with !
+!                      the sign s_i s_j s_k s_l                       !
+!     direct           eri_direct.f90 (dsym_init): skeleton J/K over  !
+!                      the unique quartets, then J = 1/|G| sum_g g.J  !
+!     density_fitting  df_toroidal.f90: symmetric Cholesky fitting   !
+!                      set, B(k1,k2) stored for irreducible k2 only   !
+!   main.f90                                                          !
+!     sym_run          report + numerical check of S, T, V (and the   !
+!                      stored ERIs); computes nothing new             !
+!   S and T are cheap: always computed for every pair.                !
+!                                                                     !
+!   Allowed operations per dimension (see candidate_R)                !
+!   ---------------------------------------------------               !
+!   A periodic axis may only go to a periodic axis of the SAME length !
+!   and the same number of cells; a real axis only to a real axis.    !
+!     Tori1D (x periodic)   : x -> +-x ; y,z -> +-y,+-z or +-z,+-y    !
+!                             at most 16 R (D4h about the chain axis) !
+!     Tori2D (x,y periodic) : z -> +-z ; x,y -> +-x,+-y, and x <-> y  !
+!                             only if Lx = Ly and nx = ny             !
+!                             at most 16 R (D4h, axis normal to plane)!
+!     Tori3D                : all 48 if Lx = Ly = Lz (Oh), fewer else !
+!   Along a real (non-periodic) axis the translation must be exact,   !
+!   along a periodic axis it is taken modulo the cell length.         !
 !                                                                     !
 !   Which operations can be used with Clifford (toroidal) Gaussians   !
 !   ---------------------------------------------------------------   !
@@ -79,13 +113,18 @@ module symmetry_clifford
 contains
 
       !---------------------------------------------------------------!
-      ! driver: detect, build AO maps, check S, T, V, ERI, print      !
+      ! report, called from main.f90 AFTER the integrals: prints the  !
+      ! operations and checks S, T, V (and stored ERIs) against them. !
+      ! The operations themselves are built earlier by sym_setup.     !
       !---------------------------------------------------------------!
       subroutine sym_run(calc_type, n_atoms, geometry, charge, nBas, nfuc_in, AO, S, T, V, &
                          ERI, n1, have_eri, iout)
+        
         use classification_ERI, only: ERI_function
         use unitcell_module   , only: nx, ny, nz
         use omp_lib           , only: omp_get_wtime
+
+
         character(len=*)  , intent(in) :: calc_type
         integer           , intent(in) :: n_atoms, nBas, nfuc_in, n1, iout
         double precision  , intent(in) :: geometry(n_atoms,3)
@@ -115,7 +154,7 @@ contains
 
         write(iout,*)
         write(iout,'(a)') ' ============================================================================='
-        write(iout,'(a)') '   Geometric symmetry (keyword symmetry)   [detection + check only]'
+        write(iout,'(a)') '   Geometric symmetry (keyword symmetry)   [report + integral check]'
         write(iout,'(a)') ' ============================================================================='
         write(iout,'(a,i0,a,i0,a)') '   periodic directions: ', ndp, '    atoms per cell: ', nauc
         write(iout,'(a)') '   usable operations: signed permutations of x, y, z (+ translation)'

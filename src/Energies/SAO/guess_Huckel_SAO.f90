@@ -44,7 +44,9 @@ subroutine guess_Huckel_RHF_SAO(nBas,c_details,nO,HC,X,ENuc,S,T,V,P)
 
       ct(:,:) = transpose(c)
 
-      P(:,:) = 2d0 * matmul(c(:,1:nO), transpose(c(:,1:nO)))
+      ! [Nov 2026] occupation with equal fractional filling of a degenerate
+      !            level at the HOMO/LUMO cut (keeps P translation invariant)
+      call guess_occupy_cut(nBas, nO, e, c, P)
 
       ! --------------------------------------------------------------- !
       !                          Print                                  !
@@ -118,3 +120,64 @@ subroutine guess_Huckel_RHF_SAO(nBas,c_details,nO,HC,X,ENuc,S,T,V,P)
 
 
 end subroutine guess_Huckel_RHF_SAO
+
+! [Nov 2026] ---------------------------------------------------------- !
+! P = sum_i occ_i c_i c_i^T  (eigenvalues e ascending).                  !
+! If the level at the cut (index nO) is degenerate with levels above it, !
+! the whole degenerate set [lo,hi] gets the same occupation              !
+!   occ = 2 (nO-lo+1)/(hi-lo+1),  levels below lo get 2.                 !
+! An eigenspace of a translation-invariant matrix is itself invariant,   !
+! so P is periodic; picking nO vectors out of it is arbitrary and not.   !
+! --------------------------------------------------------------------- !
+subroutine guess_occupy_cut(nBas, nO, e, c, P)
+
+      use files
+
+      implicit none
+
+      integer         , intent(in)  :: nBas, nO
+      double precision, intent(in)  :: e(nBas), c(nBas,nBas)
+      double precision, intent(out) :: P(nBas,nBas)
+
+      double precision, parameter   :: deg_tol = 1.d-8
+      double precision              :: tol, occ
+      double precision, allocatable :: cw(:,:)
+      integer                       :: lo, hi, i
+
+      P(:,:) = 0.d0
+      if (nO <= 0) return
+
+      tol = deg_tol * max(1.d0, abs(e(nO)))
+      lo = nO
+      do while (lo > 1)
+        if (abs(e(lo-1) - e(nO)) >= tol) exit
+        lo = lo - 1
+      end do
+      hi = nO
+      do while (hi < nBas)
+        if (abs(e(hi+1) - e(nO)) >= tol) exit
+        hi = hi + 1
+      end do
+
+      if (hi == nO) then
+        P(:,:) = 2d0 * matmul(c(:,1:nO), transpose(c(:,1:nO)))
+        return
+      end if
+
+      occ = 2.d0 * dble(nO - lo + 1) / dble(hi - lo + 1)
+
+      allocate(cw(nBas,hi))
+      cw(:,1:lo-1) = c(:,1:lo-1) * sqrt(2.d0)
+      cw(:,lo:hi)  = c(:,lo:hi)  * sqrt(occ)
+      P(:,:) = matmul(cw, transpose(cw))
+      deallocate(cw)
+
+      write(outfile,'(a)') ""
+      write(outfile,'(a,i0,a,i0,a,f20.12)') &
+        "      Guess: degenerate level at the cut, orbitals ", lo, " - ", hi, &
+        "   e = ", e(nO)
+      write(outfile,'(a,i0,a,i0,a,f12.8)') &
+        "      Guess: ", 2*(nO-lo+1), " electrons spread over ", hi-lo+1, &
+        " orbitals, occupation = ", occ
+
+end subroutine guess_occupy_cut

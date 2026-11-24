@@ -39,7 +39,8 @@ subroutine guess_AO_RHF_SAO(nBas,c_details,nO,HC,X,ENuc,S,T,V,P)
 
       ct(:,:) = transpose(c)
 
-      P(:,:) = 2d0 * matmul(c(:,1:nO), transpose(c(:,1:nO)))
+      ! [Nov 2026] same occupation rule as the Huckel guess (guess_occupy_cut)
+      call guess_occupy_cut(nBas, nO, e, c, P)
 
       ! --------------------------------------------------------------- !
       !                          Print                                  !

@@ -145,7 +145,20 @@ subroutine nuclear_attraction_matrix_toroidal_3D(number_of_atoms,nBas,geometry,a
       call setup_t_tables(ncap, 3)
 
       NA = 0.d0
-      use_sp = c_symmetry .and. sym_pairs_on                ! [Nov 2026] only the symmetry-unique pairs
+      ! [Nov 2026] keyword symmetry (point group, see symmetry_clifford.f90)
+      !   The integral of one pair (nuclear_attraction_integral_toroidal_3D) is
+      !   NOT changed. The symmetry only decides WHICH pairs are computed:
+      !   1) sym_setup (called in Tori3D before this routine) has put every pair
+      !      (i in cell 0, j) in an orbit under: point operations x lattice
+      !      translations x (i <-> j), and chosen one representative per orbit.
+      !   2) Here only the representatives are computed (sym_pair_is_rep).
+      !   3) sym_pair_fill copies the rest: V(i,j) = s_i s_j V(i_rep,j_rep),
+      !      s = +-1 from the parity of the AO under the operation (x -> -x
+      !      changes the sign of a p_x, d_xy, ... function).
+      !   4) fill_with_symmetry then builds the rows of the other cells.
+      !   Without the keyword (or if sym_setup found nothing) use_sp = .false.
+      !   and every pair is computed, exactly as before.
+      use_sp = c_symmetry .and. sym_pairs_on
       !$omp parallel do default(shared) private(i,j,r1,r2) schedule(dynamic,4) collapse(2)
       do i = 1 , nfuc
         do j = 1 , nBas

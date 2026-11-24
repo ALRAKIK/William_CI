@@ -38,9 +38,6 @@ module atom_basis
         
       end type atom
 
-      ! [Nov 2026] number of Cartesian basis functions of each atom of the
-      ! (super)molecule, filled in main after the basis is read; used by the
-      ! Mulliken analysis (the functions of an atom are consecutive)
       integer, allocatable :: nao_atom(:)
 
 end module 

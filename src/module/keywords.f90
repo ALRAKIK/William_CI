@@ -28,8 +28,6 @@ module keywords
       public  :: c_debug
 
 
-
-
       public  :: c_Spin_adapt
       public  :: c_Lanczos
       public  :: c_screen
@@ -46,17 +44,15 @@ module keywords
       logical :: c_DIIS
       logical :: c_MCDE
       logical :: c_nquad_128
-      logical :: c_fast_quad = .false.
-      logical :: c_prim_screen = .false.
-      logical :: c_cholesky = .false.                 ! [Nov 2026] keyword cholesky
-      double precision :: cholesky_tol = 1.0d-6
-      logical :: c_cc_disk = .false.                  ! [Nov 2026] keyword CC_to_disk
-      logical :: c_direct  = .false.                  ! [Nov 2026] keyword direct
-      logical :: c_df      = .false.                  ! [Nov 2026] keyword density_fitting
-      logical :: c_symmetry = .false.                 ! [Nov 2026] keyword symmetry: detect + check (step 1)
-      logical :: c_df_etb  = .false.                  ! [Nov 2026] keyword df_etb: even-tempered aux basis instead of Cholesky fitting
-      double precision :: df_cd_tol = 1.0d-8          ! [Nov 2026] Cholesky fitting tolerance (df_cd_6: 1e-6, df_cd_10: 1e-10)
-      double precision :: s_eig_min = 1.0d0           ! [Nov 2026] smallest overlap eigenvalue (set in check_the_overlap)
+      logical :: c_fast_quad   = .true.
+      logical :: c_prim_screen = .true.
+      logical :: c_cholesky    = .false.
+      
+      logical :: c_cc_disk  = .false.                                    ! [Nov 2026] keyword CC_to_disk
+      logical :: c_direct   = .false.                                    ! [Nov 2026] keyword direct
+      logical :: c_df       = .false.                                    ! [Nov 2026] keyword density_fitting
+      logical :: c_symmetry = .false.                                    ! [Nov 2026] keyword symmetry: point symmetry used in V, ERIs, direct J/K, DF
+      logical :: c_df_etb   = .false.                                    ! [Nov 2026] keyword df_etb: even-tempered aux basis instead of Cholesky fitting
       logical :: c_physicist
       logical :: c_ccsdt
       logical :: c_fast_ccsdt 
@@ -64,7 +60,7 @@ module keywords
       logical :: c_frozen_core
       logical :: c_checkpoint = .false., c_restart = .false.
       logical :: ckpt_orb_ok  = .false.
-      character(len=512) :: ckpt_dir = './checkpoint'
+      
       logical :: c_debug
 
 
@@ -72,7 +68,12 @@ module keywords
       logical :: c_Spin_adapt
       logical :: c_Lanczos
       logical :: c_screen
-      logical :: c_block_lanczos = .false.    ! [Nov 2026] keyword block_lanczos
+      logical :: c_block_lanczos = .false.                               ! [Nov 2026] keyword block_lanczos
+
+      double precision   :: cholesky_tol = 1.0d-6
+      double precision   :: df_cd_tol = 1.0d-8                           ! [Nov 2026] Cholesky fitting tolerance (df_cd_6: 1e-6, df_cd_10: 1e-10)
+      double precision   :: s_eig_min = 1.0d0                            ! [Nov 2026] smallest overlap eigenvalue (set in check_the_overlap)
+      character(len=512) :: ckpt_dir = './checkpoint'
 
 
 end module keywords

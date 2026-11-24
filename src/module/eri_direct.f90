@@ -47,7 +47,7 @@ module eri_direct
       public :: d_nsh, d_nshuc, d_sh_first, d_sh_n, d_ready
       public :: d_Q, d_Qsh                    ! [Nov 2026] used by df_toroidal (density_fitting)
       public :: set_ps                        ! [Nov 2026] used by df_toroidal (Cholesky fitting)
-      public :: direct_sym_P, d_sym           ! [Nov 2026] keyword symmetry: symmetric guess density
+      public :: d_sym                         ! [Nov 2026] keyword symmetry
 
       logical, save :: d_ready = .false.
       integer, save :: d_ndp = 0, d_nBas = 0, d_nsh = 0, d_nshuc = 0, d_ncl(3) = 1
@@ -59,8 +59,6 @@ module eri_direct
 
       ! [Nov 2026] keyword symmetry in the direct path (tables built in dsym_init)
       logical, save :: d_sym = .false., d_sym_warned = .false.
-      integer, save :: d_ncall = 0
-      integer, parameter :: d_nsym_early = 8        ! SCF iterations with averaged density if needed
       integer, save :: d_nG = 1, d_ncell = 1, d_nbra = 0
       integer(8), save :: d_nkp = 0
       integer, allocatable, save :: ds_scell(:), ds_sloc(:), ds_fcell(:), ds_floc(:), ds_relc(:,:)
@@ -109,7 +107,6 @@ contains
         amin  = minval(a_dir(1:ndp))
         ncap = bessel_nmax_estimate(4.d0*emax/(amin*amin)) + 2*lmax + 1
         call setup_t_tables(ncap, ndp)
-        call rys_self_check(ndp, nBas, AO)        ! [Nov 2026] keyword rys_quad (no-op otherwise)
 
         ! shells (same rule as the driver)
         if (allocated(d_sh_first)) deallocate(d_sh_first, d_sh_n)
@@ -279,25 +276,14 @@ contains
         integer(8), allocatable :: hkey(:)
         integer, allocatable :: tq(:,:), used(:)
         integer :: nsh, nshuc
-        double precision, allocatable :: Pw(:,:)
 
         if (.not. d_ready) error stop 'direct_JK: direct_init not called'
-        ! [Nov 2026] keyword symmetry: skeleton J/K when the density is symmetric.
-        ! During the first d_nsym_early SCF iterations a non-symmetric density (partly
-        ! filled degenerate level of the guess / first Fock matrices, seen for LiH 3x3x3)
-        ! is replaced by its symmetry average for J/K; later the exact non-symmetric
-        ! J/K is used (fallback, slow) as long as the density stays non-symmetric.
+        ! [Nov 2026] keyword symmetry: skeleton J/K when the density is symmetric,
+        ! else the exact J/K without point symmetry (slow, WARNING once).
+        ! No averaging of the density.
         if (d_sym) then
-          d_ncall = d_ncall + 1
           if (p_invariant(nBas, P)) then
             call direct_JK_sym(nBas, P, J, K)
-            return
-          else if (d_ncall <= d_nsym_early) then
-            allocate(Pw(nBas,nBas))
-            Pw = P
-            call direct_sym_P(nBas, Pw, -1)
-            call direct_JK_sym(nBas, Pw, J, K)
-            deallocate(Pw)
             return
           end if
         end if
@@ -405,7 +391,7 @@ contains
         logical :: ok
 
         call dsym_free()
-        d_sym = .false. ; d_ncall = 0 ; d_sym_warned = .false.
+        d_sym = .false. ; d_sym_warned = .false.
         if (.not. sym_ready) return
         if (sym_nop <= 1) return
         if (size(sym_perm,1) /= d_nBas) return
@@ -601,44 +587,6 @@ contains
       end subroutine dsym_free
 
       !-----------------------------------------------------------------!
-      ! [Nov 2026] P <- 1/|G| sum_g g.P   (guess density only)           !
-      ! A guess that fills only part of a degenerate set (e.g. a star of !
-      ! k points at the Fermi level of the Huckel guess, seen for LiH    !
-      ! 3x3x3) breaks the symmetry, and direct_JK_sym could not be used. !
-      ! The averaged guess is symmetric; the SCF then stays symmetric    !
-      ! as long as the occupied levels are not partly filled degenerate  !
-      ! sets (else direct_JK falls back, with a WARNING).                !
-      !-----------------------------------------------------------------!
-      subroutine direct_sym_P(nBas, P, iout)
-        use symmetry_clifford, only : sym_perm, sym_sign
-        integer         , intent(in)    :: nBas, iout
-        double precision, intent(inout) :: P(nBas,nBas)
-        double precision, allocatable   :: Ps(:,:)
-        integer :: ig, m, n
-        double precision :: dev
-        if (.not. d_sym) return
-        allocate(Ps(nBas,nBas))
-        Ps = 0.d0
-        !$omp parallel do default(shared) private(ig,m,n) schedule(static)
-        do n = 1 , nBas
-          do ig = 1 , d_nG
-            do m = 1 , nBas
-              Ps(m,n) = Ps(m,n) + dble(sym_sign(m,ig)*sym_sign(n,ig))*P(sym_perm(m,ig),sym_perm(n,ig))
-            end do
-          end do
-        end do
-        !$omp end parallel do
-        Ps = Ps/dble(d_nG)
-        dev = maxval(abs(Ps - P))
-        P = Ps
-        deallocate(Ps)
-        if (iout > 0) then
-          write(iout,'(a,es9.2,a)') ' symmetry (direct): guess density averaged over the operations (max change ', dev, ')'
-          flush(iout)
-        end if
-      end subroutine direct_sym_P
-
-      !-----------------------------------------------------------------!
       ! is P invariant under every operation? |s_m s_n P(gm,gn)-P(m,n)| !
       ! (rows m <= nfuc). If not, the normal direct_JK is used.          !
       !-----------------------------------------------------------------!
@@ -661,12 +609,6 @@ contains
         end do
         !$omp end parallel do
         p_invariant = (dev <= 1.d-6)
-        if (.not. p_invariant .and. d_ncall <= d_nsym_early) then
-          write(outfile,'(a,i0,a,es9.2,a)') ' symmetry (direct): SCF call ', d_ncall, ', density not symmetric (max dev ', &
-                                            dev, '): J/K from its symmetry average'
-          flush(outfile)
-          return
-        end if
         if (.not. p_invariant .and. .not. d_sym_warned) then
           write(outfile,'(a,es9.2,a)') ' WARNING symmetry (direct): the density is not symmetric (max dev ', dev, &
                                        '): J/K without point symmetry (slow) as long as it stays so'

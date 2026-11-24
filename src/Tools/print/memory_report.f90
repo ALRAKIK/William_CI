@@ -89,7 +89,16 @@ subroutine memory_report(calculation_type, nBas, nfuc_in, N_cell_in, nO)
 
         ! ------------------------- SAO path ------------------------- !
 
-        if (c_df) then
+        if (c_df .and. c_symmetry .and. .not. (c_MP2 .or. c_ccsdt)) then
+          ! [Nov 2026] density_fitting + symmetry (HF): B(k1,k2) for the IRREDUCIBLE k2 only
+          ! (number known after the symmetry detection: printed in the density fitting section).
+          ! Upper bound here: all k2 (no symmetry), nau ~ 20*nfuc (symmetric Cholesky set).
+          thr = 20.d0*f
+          call add("Integrals (DF + symmetry)", "B(k1,k2) all k2 = UPPER bound (/ n_k/n_irr)", &
+                   z*f*f*thr*C*C + d*f*N*thr + d*N*N*9.d0)
+          call add("RHF (SAO, DF + symmetry)", "B(k1,k2) upper bound + 2 k2 slices + B(k2=0)", &
+                   z*f*f*thr*C*C + 2.d0*z*f*f*thr*C + d*f*N*thr + 7.d0*d*N2 + 5.d0*z*N2 + 2.d0*d*N2*max_diis)
+        else if (c_df) then
           ! [Nov 2026] density_fitting: no ERI; 3-index B(nfuc, nBas, naux), naux = nau*N_cell.
           ! nau (aux per cell) is only known after df_init: estimate 15*nfuc (Cholesky aux set,
           ! 14.5*nfuc measured for LiH STO-3G); T3 and B coexist while B is built, plus the
@@ -212,7 +221,9 @@ subroutine memory_report(calculation_type, nBas, nfuc_in, N_cell_in, nO)
                                                   "    N_cell = ", max(N_cell_in,1), "    nO = ", nO
       write(outfile,'(a)')""
       if (c_SAO) then
-        if (c_df) then
+        if (c_df .and. c_symmetry .and. .not. (c_MP2 .or. c_ccsdt)) then
+          write(outfile,'(6x,a)') "path : SAO + density_fitting + symmetry (B(k1,k2) for the irreducible k2)"
+        else if (c_df) then
           write(outfile,'(6x,a)') "path : SAO + density_fitting (no ERI stored; 3-index B ~ nfuc^2 nau N_cell^2)"
         else if (c_direct) then
           write(outfile,'(6x,a)') "path : SAO + direct (no ERI stored)"

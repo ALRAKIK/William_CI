@@ -5,9 +5,10 @@
 !                                                                     !
 !   1) Torus_def                        (Lx, ax, ...)                !
 !   2) normalize_AO_toroidal_2D         (local copy of AO)           !
+!      sym_setup  [keyword symmetry]   operations + AO maps          !
 !   3) overlap_matrix_toroidal_2D            -> OV                   !
 !      kinetic_matrix_toroidal_2D            -> K                    !
-!      nuclear_attraction_matrix_toroidal_2D -> NA                   !
+!      nuclear_attraction_matrix_toroidal_2D -> NA (unique pairs)    !
 !      ERI_integral_toroidal (ndp = 2)       -> ERI                  !
 !                                                                     !
 !   files: src/Toroidal/2D/2D_Overlap_toroidal.f90                    !
@@ -77,7 +78,8 @@ subroutine Tori2D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
       allocate(AOn(nBas))
       AOn = AO
       call normalize_AO_toroidal_2D(nBas, AOn, .false.)                   ! normalize the basis functions
-      ! [Nov 2026] keyword symmetry: point operations (used by V, the ERIs and direct J/K)
+      ! [Nov 2026] keyword symmetry: find the point operations and the AO maps NOW,
+      ! before any integral, because V, the ERIs, direct J/K and DF use them.
       if (c_symmetry) call sym_setup(2,n_atoms,geometry,atoms(:)%charge,nBas,AOn)
       call fast_quad_self_check(2,nBas,AOn,n_atoms,geometry,atoms)                       ! [Nov 2026] keyword fast_quad: accuracy check (no-op otherwise)
 

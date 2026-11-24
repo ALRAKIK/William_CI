@@ -367,7 +367,7 @@ subroutine read_keywords(keyword)
         if (trim(line) == 'df_etb')      keyword(38) = 'df_etb'       ! [Nov 2026] DF with the even-tempered aux basis (not Cholesky fitting)
         if (trim(line) == 'df_cd_6')     keyword(39) = 'df_cd_6'      ! [Nov 2026] Cholesky fitting tolerance 1e-6 (default 1e-8)
         if (trim(line) == 'df_cd_10')    keyword(40) = 'df_cd_10'     ! [Nov 2026] Cholesky fitting tolerance 1e-10
-        if (trim(line) == 'rys_quad')    keyword(41) = 'rys_quad'     ! [Nov 2026] Rys-type t quadrature for localized ERI quartets
+        if (trim(line) == 'rys_quad')    keyword(41) = 'rys_quad'     ! [Nov 2026] removed: only read to print a note
         if (trim(line) == 'symmetry')    keyword(42) = 'symmetry'     ! [Nov 2026] geometric symmetry: detection + integral check
 
 

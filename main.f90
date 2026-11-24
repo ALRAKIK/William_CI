@@ -53,36 +53,26 @@ program CI
       double precision  ,allocatable  ::                coeff(:,:)
 
       complex(dpc)      ,allocatable  ::            coeff_SAO(:,:)
-      integer           ,allocatable  ::                occ_tab(:,:)
-      integer                         ::     p_lo , p_hi , q_lo , q_hi
+      integer           ,allocatable  ::              occ_tab(:,:)
+      integer                         ::               p_lo , p_hi
+      integer                         ::               q_lo , q_hi
       double precision                ::          w_start , w_end
       complex(dpc)      ,allocatable  ::    ERI_kMO(:,:,:,:,:,:,:)
-      complex(dpc)      ,allocatable  ::    ERI_kMO_h(:,:,:,:,:)     ! [Nov 2026] fast_ccsdt compact g
-      real(dp)          ,allocatable  ::    ERI_kMO_r(:,:,:,:,:)     ! [Nov 2026] fast_ccsdt_real: real compact g
-      logical                         ::    real_path                ! [Nov 2026]
-      real(dp)                        ::    g_imax, g_rmax           ! [Nov 2026]
-      integer                         ::    k_r, fourth_k_r          ! [Nov 2026]
-      integer                         ::    fourth_k
-      type(K_block)     ,allocatable  ::    blk_save(:)              ! [Nov 2026] frozen core: full bands
-      integer                         ::    n_fc, n_act, nfuc_save   ! [Nov 2026] frozen core
-      integer                         ::    n_core_orbitals          ! [Nov 2026]
-      interface                                                      ! [Nov 2026]
-        subroutine reduce_kmo_to_active(nf, nfc, ns, g)
-          use constants_module, only: dpc
-          integer     , intent(in)                 :: nf, nfc, ns
-          complex(dpc), allocatable, intent(inout) :: g(:,:,:,:,:)
-        end subroutine reduce_kmo_to_active
-        subroutine reduce_go_active(n1, nf, nfc, ns, g)               ! [Nov 2026] CC_to_disk
-          use constants_module, only: dpc
-          integer, intent(in) :: n1, nf, nfc, ns
-          complex(dpc), allocatable, intent(inout) :: g(:,:,:,:,:)
-        end subroutine reduce_go_active
-      end interface
-      type(K_block)     ,allocatable  ::                    blk(:)
+      complex(dpc)      ,allocatable  ::      ERI_kMO_h(:,:,:,:,:)       ! [Nov 2026] fast_ccsdt compact g
+      real(dp)          ,allocatable  ::      ERI_kMO_r(:,:,:,:,:)       ! [Nov 2026] fast_ccsdt_real: real compact g
+      logical                         ::                real_path        ! [Nov 2026]
+      real(dp)                        ::           g_imax, g_rmax        ! [Nov 2026]
+      integer                         ::          k_r, fourth_k_r        ! [Nov 2026]
+      integer                         ::                 fourth_k
+      type(K_block)     ,allocatable  ::              blk_save(:)        ! [Nov 2026] frozen core: full bands
+      integer                         ::              n_fc, n_act
+      integer                         ::                nfuc_save        ! [Nov 2026] frozen core
+      integer                         ::          n_core_orbitals        ! [Nov 2026] 
+      type(K_block)     ,allocatable  ::                   blk(:)
 
-      double precision                ::               E_nuc , EHF
-      double precision                ::               E_MP2
-      double precision                ::            start,end,time
+      double precision                ::              E_nuc , EHF
+      double precision                ::                    E_MP2
+      double precision                ::           start,end,time
 
       character(len=10)               ::          calculation_type 
       character(len=2),allocatable    ::                  label(:)
@@ -97,6 +87,20 @@ program CI
       double precision                :: elapsed
 
       logical                         :: transformation
+
+      interface                                                          ! [Nov 2026]
+        subroutine reduce_kmo_to_active(nf, nfc, ns, g)
+          use constants_module, only: dpc
+          integer     , intent(in)                 :: nf, nfc, ns
+          complex(dpc), allocatable, intent(inout) :: g(:,:,:,:,:)
+        end subroutine reduce_kmo_to_active
+        subroutine reduce_go_active(n1, nf, nfc, ns, g)                  ! [Nov 2026] CC_to_disk
+          use constants_module, only: dpc
+          integer, intent(in) :: n1, nf, nfc, ns
+          complex(dpc), allocatable, intent(inout) :: g(:,:,:,:,:)
+        end subroutine reduce_go_active
+      end interface
+     
 
       !-----------------------------------------------------------------!
       !                        END variables                            !
@@ -236,11 +240,14 @@ program CI
       call basis(n_atoms,charge,atoms)
 
       ! [Nov 2026] number of basis functions of every atom (Mulliken analysis)
+
       allocate(nao_atom(n_atoms))
       do i = 1 , n_atoms
-        nao_atom(i) =       atoms(i)%num_s_function + 3 *atoms(i)%num_p_function &
-                    + 6  *  atoms(i)%num_d_function + 10*atoms(i)%num_f_function &
-                    + 15 *  atoms(i)%num_g_function
+        nao_atom(i) =         atoms(i)%num_s_function & 
+                      + 3  *  atoms(i)%num_p_function &
+                      + 6  *  atoms(i)%num_d_function & 
+                      + 10 *  atoms(i)%num_f_function &
+                      + 15 *  atoms(i)%num_g_function
       end do
 
       ! --------------------------------------------------------------- !
@@ -285,9 +292,10 @@ program CI
       end do
 
       ! ---- non-periodic (OBC/Ring/OBC2D): no unit cell, no SAO ---- !
+
       if (.not. any(calculation_type == ["Tori1D","Tori2D","Tori3D"])) then   
         if (c_SAO) then
-          write(outfile,'(6x,A)') 'WARNING: SAO keyword ignored for non-periodic calculation ('//trim(calculation_type)//')'
+          write(outfile,'(6x,A)') ' WARNING: SAO keyword ignored for non-periodic calculation ('//trim(calculation_type)//')'
           write(*,'(A)')          ' WARNING: SAO keyword ignored for non-periodic calculation ('//trim(calculation_type)//')'
           c_SAO = .false.
         end if
@@ -327,7 +335,7 @@ program CI
       !                    print  The orbital table                     !
       ! --------------------------------------------------------------- !
       
-        call print_shell_table(AO,nBas)      
+      call print_shell_table(AO,nBas)      
 
       ! --------------------------------------------------------------- !
       !           print  Informations from the Basis set                !
@@ -373,17 +381,17 @@ program CI
 
       allocate(coeff_SAO(nBas,nBas))
 
-      if (c_SAO) then 
+      if (c_SAO) then
         if (c_direct) then
-          allocate(ERI(1,1,1,1))            ! [Nov 2026] keyword direct: no ERIs stored
+          allocate(ERI(1,1,1,1))
         else
-        allocate(ERI (nfuc,nBas,nBas,nBas))
+          allocate(ERI (nfuc,nBas,nBas,nBas))
         end if
-        allocate(blk(N_cell))
-        ERI_size = nfuc
+          allocate(blk(N_cell))
+          ERI_size = nfuc
       else 
-        allocate(ERI  (nBas,nBas,nBas,nBas))
-        ERI_size = nBas 
+          allocate(ERI  (nBas,nBas,nBas,nBas))
+          ERI_size = nBas 
       end if
 
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -414,8 +422,17 @@ program CI
 
         Hc(:,:) = T(:,:) + V(:,:)
 
-        ! [Nov 2026] keyword symmetry: detect the usable point operations and check
-        ! that S, T, V and the ERIs are invariant under them (nothing uses them yet)
+        ! [Nov 2026] keyword symmetry: REPORT + CHECK only (no integral is computed here).
+        !   The point operations were already found and USED inside calculation_type_select:
+        !     Tori1D/2D/3D -> sym_setup          (operations + AO maps, before any integral)
+        !                  -> V                  (only the symmetry-unique AO pairs computed)
+        !                  -> ERI (stored)       (only the symmetry-unique shell quartets)
+        !                  -> direct_init        (tables for the skeleton J/K in the SCF)
+        !                  -> df_init            (symmetric fitting set, B for irreducible k)
+        !   sym_run prints the operation table and checks, for every operation g, that
+        !   S, T, V (and the stored ERIs) satisfy  s_m s_n M(g m, g n) = M(m, n).
+        !   ERIs not stored (direct / density_fitting): the ERI check is skipped.
+        
         if (c_symmetry) call sym_run(calculation_type, n_atoms, geometry, atoms(:)%charge, nBas, nfuc, &
                                      AO, S, T, V, ERI, ERI_size, .not. c_direct, outfile)
 

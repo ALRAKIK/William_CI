@@ -1,27 +1,27 @@
-!=====================================================================!
-!                                                                     !
-!          1D toroidal : NUCLEAR ATTRACTION INTEGRALS                !
-!                                                                     !
-!  1/|r-C|_E = 2/sqrt(pi) Int_0^inf exp(-t^2 |r-C|_E^2) dt            !
-!                                                                     !
-!  x (Clifford): exp(-t^2 |x-xC|_E^2) = sum_n Ĩ_n(C_t) e^{i n a(x-xC)}!
-!     C_t = 2t^2/a^2 ,  Ĩ_n = e^{-C} I_n  -> precomputed table t_bessel   !
-!     The pair  g_A g_B = kx a^-(i+l) sum_k d_k e^{iku} e^{A cos u},   !
-!     u = a(x-xP), gives, ONCE per primitive pair (t-independent):    !
-!        G_n = sum_k d_k Ĩ_{|n+k|}(A)                                 !
-!     and per nucleus  F_n = Re[ e^{i n a(xP-xC)} G_n ], so that      !
-!        Ix(t) = kx a^-(i+l) L [ F_0 Ĩ_0(C_t) + 2 sum_n F_n Ĩ_n(C_t) ]!
-!     i.e. a dot product with the precomputed column of t.            !
-!                                                                     !
-!  y,z (real): Gaussian product with exp(-t^2 (y-yC)^2):              !
-!     exp(-p eta yPC^2) * S_real(j,m; p+t^2, yPA-eta yPC, yPB-eta yPC) !
-!     eta = t^2/(p+t^2)                                               !
-!                                                                     !
-!  t-integral: same nodes/weights as the ERIs (64 or 128 points).     !
-!                                                                     !
-!  nuclear_attraction_integral_toroidal_1D  one pair, all nuclei      !
-!  nuclear_attraction_matrix_toroidal_1D    full matrix (OpenMP)      !
-!=====================================================================!
+      !=====================================================================!
+      !                                                                     !
+      !          1D toroidal : NUCLEAR ATTRACTION INTEGRALS                 !
+      !                                                                     !
+      !  1/|r-C|_E = 2/sqrt(pi) Int_0^inf exp(-t^2 |r-C|_E^2) dt            !
+      !                                                                     !
+      !  x (Clifford): exp(-t^2 |x-xC|_E^2) = sum_n Ĩ_n(C_t) e^{i n a(x-xC)}!
+      !     C_t = 2t^2/a^2 ,  Ĩ_n = e^{-C} I_n  -> precomputed table t_bessel   !
+      !     The pair  g_A g_B = kx a^-(i+l) sum_k d_k e^{iku} e^{A cos u},  !
+      !     u = a(x-xP), gives, ONCE per primitive pair (t-independent):    !
+      !        G_n = sum_k d_k Ĩ_{|n+k|}(A)                                 !
+      !     and per nucleus  F_n = Re[ e^{i n a(xP-xC)} G_n ], so that      !
+      !        Ix(t) = kx a^-(i+l) L [ F_0 Ĩ_0(C_t) + 2 sum_n F_n Ĩ_n(C_t) ]!
+      !     i.e. a dot product with the precomputed column of t.            !
+      !                                                                     !
+      !  y,z (real): Gaussian product with exp(-t^2 (y-yC)^2):              !
+      !     exp(-p eta yPC^2) * S_real(j,m; p+t^2, yPA-eta yPC, yPB-eta yPC)!
+      !     eta = t^2/(p+t^2)                                               !
+      !                                                                     !
+      !  t-integral: same nodes/weights as the ERIs (64 or 128 points).     !
+      !                                                                     !
+      !  nuclear_attraction_integral_toroidal_1D  one pair, all nuclei      !
+      !  nuclear_attraction_matrix_toroidal_1D    full matrix (OpenMP)      !
+      !=====================================================================!
 
 subroutine nuclear_attraction_integral_toroidal_1D(l1,l2,n_atoms,geometry,atoms,r1,r2,AO1,AO2,V)
 
@@ -220,7 +220,20 @@ subroutine nuclear_attraction_matrix_toroidal_1D(number_of_atoms,nBas,geometry,a
         end do
       end do
 
-      use_sp = c_symmetry .and. sym_pairs_on                ! [Nov 2026] only the symmetry-unique pairs
+      ! [Nov 2026] keyword symmetry (point group, see symmetry_clifford.f90)
+      !   The integral of one pair (nuclear_attraction_integral_toroidal_1D) is
+      !   NOT changed. The symmetry only decides WHICH pairs are computed:
+      !   1) sym_setup (called in Tori1D before this routine) has put every pair
+      !      (i in cell 0, j) in an orbit under: point operations x lattice
+      !      translations x (i <-> j), and chosen one representative per orbit.
+      !   2) Here only the representatives are computed (sym_pair_is_rep).
+      !   3) sym_pair_fill copies the rest: V(i,j) = s_i s_j V(i_rep,j_rep),
+      !      s = +-1 from the parity of the AO under the operation (x -> -x
+      !      changes the sign of a p_x, d_xy, ... function).
+      !   4) fill_with_symmetry then builds the rows of the other cells.
+      !   Without the keyword (or if sym_setup found nothing) use_sp = .false.
+      !   and every pair is computed, exactly as before.
+      use_sp = c_symmetry .and. sym_pairs_on
       !$omp parallel do default(shared) private(ij,i,j,r1,r2,val) schedule(dynamic,4)
       do ij = 1, total_ij_pairs
         i  = i_index(ij)

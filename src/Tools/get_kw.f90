@@ -1,7 +1,6 @@
 subroutine  get_keywords(keyword)
 
       use keywords
-      use clifford_tools, only : rys_req
 
       implicit none 
 
@@ -35,10 +34,14 @@ subroutine  get_keywords(keyword)
       ! [Nov 2026] MP2 is closed shell (RHF orbitals): MP2 after UHF printed NaN
       if (c_UHF .and. c_MP2) error stop 'keywords UHF and MP2: MP2 after UHF is not implemented (no UMP2)'
       c_nquad_128   = any(keyword == 'nquad_128' )
-      c_fast_quad   = any(keyword == 'fast_quad' )
-      c_prim_screen = any(keyword == 'primscreen')     ! input word: prim_screen
-      rys_req       = any(keyword == 'rys_quad'  )     ! [Nov 2026] Rys-type t quadrature (clifford_tools)
-      c_symmetry    = any(keyword == 'symmetry'  )     ! [Nov 2026] geometric symmetry: detection + check
+      ! [Nov 2026] fast_quad and prim_screen are always on (no keyword any more);
+      ! the fast_quad self-check still switches to the full t tables if it is not accurate
+      c_fast_quad   = .true.
+      c_prim_screen = .true.
+      if (any(keyword == 'fast_quad' )) write(*,'(a)') ' note: keyword fast_quad is the default now (ignored)'
+      if (any(keyword == 'primscreen')) write(*,'(a)') ' note: keyword prim_screen is the default now (ignored)'
+      if (any(keyword == 'rys_quad'  )) write(*,'(a)') ' note: keyword rys_quad was removed (ignored)'
+      c_symmetry    = any(keyword == 'symmetry'  )     ! [Nov 2026] geometric symmetry (see symmetry_clifford.f90)
       c_physicist   = any(keyword == 'physicist' )
       c_ccsdt       = any(keyword == 'ccsdt'     )
       c_debug       = any(keyword == 'debug'     )     ! 25 

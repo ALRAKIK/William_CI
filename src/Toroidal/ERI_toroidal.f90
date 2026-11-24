@@ -43,8 +43,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       use unitcell_module
       use debug_tools
       use clifford_tools, only : init_clifford, orbital_to_lxyz, setup_t_tables, bessel_nmax_estimate, &
-                                 ps_on, ps_noscreen, ps_qp, ps_bra, ps_ket, pair_cache_free, &
-                                 rys_on, rys_nq_used, rys_nq_total
+                                 ps_on, ps_noscreen, ps_qp, ps_bra, ps_ket, pair_cache_free
       use symmetry_clifford, only : sym_ready, sym_nop, sym_perm, sym_sign, sym_eri_note   ! [Nov 2026]
 
       implicit none
@@ -102,7 +101,6 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       amin  = minval(a_dir(1:ndp))
       ncap = bessel_nmax_estimate(4.d0*emax/(amin*amin)) + 2*lmax + 1
       call setup_t_tables(ncap, ndp)
-      call rys_self_check(ndp, nBas, AO)          ! [Nov 2026] keyword rys_quad (no-op otherwise)
 
       ! ---- shells: consecutive Cartesian components, same centre and exponents ---- !
       allocate(sh_first(nBas), sh_n(nBas))
@@ -462,12 +460,6 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
                ' shell quartets computed instead of ', n_old, '  (', dble(n_old)/dble(n_new), 'x fewer)'
           write(outfile,'(a)') ' symmetry: '//trim(sym_eri_note)
           write(*,'(a)') ' symmetry: '//trim(sym_eri_note)
-        end if
-        if (rys_on) then
-          write(outfile,'(a,i0,a,i0,a)') ' rys_quad: ', rys_nq_used, ' of ', rys_nq_total, &
-                                         ' primitive quartets used the Rys-type nodes'
-          write(*,'(a,i0,a,i0,a)') ' rys_quad: ', rys_nq_used, ' of ', rys_nq_total, &
-                                   ' primitive quartets used the Rys-type nodes'
         end if
 
       else

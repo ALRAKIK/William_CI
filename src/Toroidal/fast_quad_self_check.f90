@@ -33,7 +33,7 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
       use torus_init,         only : ax, ay, az
       use keywords,           only : c_nquad_128
       use precomputed_bessel, only : fast_quad, nquad_point
-      use clifford_tools,     only : rys_on, orbital_to_lxyz, init_clifford, setup_t_tables, &
+      use clifford_tools,     only : orbital_to_lxyz, init_clifford, setup_t_tables, &
                                      bessel_nmax_estimate
 
       implicit none
@@ -51,7 +51,7 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
       integer          :: i, j, nsh, nshuc, lxyz(3), lt, ncomp, q(4), ns, it, lmax, ncap
       integer          :: nq_fast, nq_full
       integer(8)       :: seed
-      logical          :: same, rys_save, ok
+      logical          :: same, ok
       double precision :: dmax, emax, amin, a_dir(3)
       integer, allocatable :: qs(:,:)
       double precision, allocatable :: buf(:)
@@ -66,7 +66,6 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
 
       nq_fast = nquad_point
       nq_full = merge(128, 64, c_nquad_128)
-      rys_save = rys_on
 
       ! ---- same table size as the ERI driver ---- !
       call init_clifford()
@@ -151,7 +150,6 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
       fast_quad = .true.  ; nquad_point = nq_fast
       call setup_t_tables(ncap, ndp)
       call nuclear_attraction(V1)
-      rys_on = .false.
       off = 0
       do it = 1 , ns
         q = qs(:,it)
@@ -169,7 +167,6 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
       call nuclear_attraction(V2)
       dV = maxval(abs(V1 - V2))
       deallocate(V1, V2, pv, lxv)
-      rys_on = .false.
       dmax = 0.d0 ; off = 0
       do it = 1 , ns
         q = qs(:,it)
@@ -191,7 +188,6 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
         fast_quad = .false. ; nquad_point = nq_full
       end if
       call setup_t_tables(ncap, ndp)
-      rys_on = rys_save
 
       write(outfile,'(a,i0,a,es9.2,a,es9.2,a)') ' fast_quad self-check: ', ns, ' ERI shell quartets, largest difference ', &
             dmax, ' ; nuclear attraction (sample) ', dV, merge(' -> fast_quad ON                                ', &

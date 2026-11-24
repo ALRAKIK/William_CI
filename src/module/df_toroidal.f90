@@ -37,6 +37,7 @@ module df_toroidal
 
       private
       public :: df_init, df_JK, df_kMO, df_ready, df_build_chol
+      public :: df_sym                        ! [Nov 2026] density_fitting + symmetry (HF)
 
       logical, save :: df_ready = .false.
       integer, save :: df_nau = 0, df_naux = 0, df_ncell = 0
@@ -48,6 +49,14 @@ module df_toroidal
       integer, save :: df_nkh = 0
       integer, allocatable, save :: df_kh(:), df_khi(:)
       complex(8), allocatable, save :: df_phase(:,:)
+      ! [Nov 2026] density_fitting + symmetry (df_init_sym / df_JK_sym)
+      logical, save :: df_sym = .false.
+      integer, save :: dfs_npiv = 0, dfs_nirr = 0
+      complex(8), allocatable, save :: dfs_big(:,:)          ! Bh(a,q,b,k1) for the irreducible k2
+      double precision, allocatable, save :: dfs_B0(:,:)     ! B(mu0, nu, Q; k2 = 0), real
+      integer, allocatable, save :: dfs_kirr(:), dfs_krep(:), dfs_kg(:), dfs_kcj(:), dfs_kslot(:), dfs_krot(:,:)
+      integer, allocatable, save :: dfs_aqp(:,:), dfs_aqc(:,:), dfs_aop(:,:), dfs_aoc(:,:)
+      integer(1), allocatable, save :: dfs_aqs(:,:), dfs_aos(:,:)
       double precision, parameter :: metric_tol_aux = 1.0d-10   ! [Nov 2026] pivoted Cholesky of (P|Q), Gaussian aux basis
       double precision, parameter :: metric_tol_cd  = 1.0d-12   ! [Nov 2026] same, Cholesky fitting set
       double precision, parameter :: df_schwarz    = 1.0d-13
@@ -338,6 +347,8 @@ contains
         use unitcell_module, only: nfuc, nx, ny, nz, N_cell
         use torus_init     , only: ax, ay, az
         use keywords       , only: c_df_etb, df_cd_tol, s_eig_min   ! [Nov 2026]
+        use keywords       , only: c_symmetry, c_MP2, c_ccsdt, c_fast_ccsdt   ! [Nov 2026] density_fitting + symmetry
+        use symmetry_clifford, only: sym_ready, sym_nop
         use clifford_tools , only: orbital_to_lxyz, setup_t_tables, bessel_nmax_estimate, ps_on
         use eri_direct     , only: d_nsh, d_nshuc, d_sh_first, d_sh_n, d_Q, d_Qsh
         use constants_module, only: pi
@@ -418,6 +429,20 @@ contains
         inquire(file=trim(fname), exist=use_file)
         cdmode = .not. (use_file .or. present(fname_in) .or. c_df_etb)
         cd_tol_eff = min(df_cd_tol, 1.d-4*s_eig_min**2)
+        ! [Nov 2026] keywords density_fitting + symmetry (HF): symmetric Cholesky fitting set,
+        ! B(k1,k2) for the irreducible k2 only (see df_init_sym)
+        df_sym = .false.
+        if (cdmode .and. .not. present(fname_in) .and. c_symmetry .and. sym_ready) then
+          if (sym_nop > 1) then
+            if (c_MP2 .or. c_ccsdt .or. c_fast_ccsdt) then
+              write(iout,'(a)') ' density_fitting + symmetry: MP2/CC need the full B -> fitting WITHOUT symmetry'
+            else
+              call df_init_sym(ndp, nBas, AO, ncell, phase, cd_tol_eff, iout)
+              deallocate(phase)
+              return
+            end if
+          end if
+        end if
         allocate(aat(n_atoms))
         if (cdmode) then
           call cd_build(ndp, nBas, AO, ncell, cd_tol_eff, iout, nau, cd_Vm, cd_T3)
@@ -807,6 +832,10 @@ contains
         integer :: ik, kk, k1, k2, mk1, no, nmax, n, i, info
 
         if (.not. df_ready) error stop 'df_JK: df_init not called'
+        if (df_sym) then                              ! [Nov 2026] density_fitting + symmetry
+          call df_JK_sym(nBas, P, J, K)
+          return
+        end if
         nau = df_nau ; naux = df_naux ; ncell = df_ncell ; nb = nfuc*nBas
         J = 0.d0 ; K = 0.d0
 
@@ -1434,5 +1463,675 @@ contains
         end interface
         call openblas_set_num_threads(int(max(n,1), c_int))
       end subroutine blas_restore
+
+
+      !=================================================================!
+      !                                                                 !
+      ! [Nov 2026] density_fitting + symmetry (HF)                      !
+      !                                                                 !
+      ! Same fitting as the default Cholesky fitting set (cd_build),    !
+      ! but the set of products is closed under the point operations   !
+      ! (whole orbits are added), and the k-space B is stored only for  !
+      ! the irreducible k2 (point operations + time reversal):          !
+      !                                                                 !
+      !   Bh(a,q,b;k1,k2) = sum_{R1,R2} B(a0, b R1, q R2) e^{i k1 R1}   !
+      !                                               e^{i k2 R2}       !
+      !   B = T3 V^-1/2 (symmetric V^-1/2 per k2: covariant)            !
+      !                                                                 !
+      ! An operation g: a0 -> (pa, ca), sign sa (AO), q0 -> (pq, cq),   !
+      ! sign sq (aux product) gives                                     !
+      !   Bh(pa,pq,pb; Rk1,Rk2) = sa sb sq e^{i Rk1.(cb-ca)}            !
+      !                           e^{i Rk2.(cq-ca)} Bh(a,q,b;k1,k2)     !
+      !   Bh(k1,k2) = conj Bh(-k1,-k2)                                  !
+      ! so every k2 slice is rebuilt from a stored one when K needs it. !
+      !                                                                 !
+      ! Memory: Bh for the irreducible k2 only                          !
+      !   (nfuc * nau * nfuc * N_cell * n_irr complex) + B(k2=0) real.  !
+      ! No real-space B (nfuc*nBas*nau*N_cell), no T3 copies, no full   !
+      ! columns kept: the columns of the orbit representatives are      !
+      ! computed twice (selection, then T3), images by permutation.     !
+      !                                                                 !
+      ! J = from B(k2 = 0) only, K = one k2 slice at a time.            !
+      ! Exact for any density (no symmetric-P requirement).             !
+      !=================================================================!
+      subroutine df_init_sym(ndp, nBas, AO, ncell, phase, tol, iout)
+        use unitcell_module  , only: nfuc
+        use eri_direct       , only: d_nsh, d_nshuc, d_sh_first, d_sh_n, d_Q, d_Qsh, set_ps
+        use clifford_tools   , only: ps_on
+        use keywords         , only: c_prim_screen
+        use symmetry_clifford, only: sym_nop, sym_perm, sym_sign, sym_R
+        use omp_lib
+        integer           , intent(in) :: ndp, nBas, ncell, iout
+        type(ERI_function), intent(in) :: AO(nBas)
+        complex(8)        , intent(in) :: phase(ncell,ncell)
+        double precision  , intent(in) :: tol
+
+        integer :: nG, ncand, ii, p, q, r, g, a, b, k, kk, m, nr, i, j, SA, SB, SC, SD, nC, nD, cc, dd, it
+        integer :: nsp, JJ, nsl, ksl, npiv, kL, maxp, nb, ik, nirr, mm, xa_, ya_, xr_, yr_, cshift, s1, ninfo
+        integer, allocatable :: fc(:), fl(:), trT(:,:), sh_of(:), invp(:,:), imgr(:,:), cslot(:), sp(:,:)
+        integer(1), allocatable :: isg(:,:)
+        integer, allocatable :: pcand(:), prep(:), pg(:), pswap(:), pividx(:), mlist(:), mg(:)
+        logical, allocatable :: known(:), isrep_sp(:), sel(:)
+        double precision, allocatable :: D(:), L(:,:), cst(:,:), cvec(:), blk(:,:,:,:), colw(:,:,:)
+        double precision, allocatable :: X(:,:), Vout(:,:,:), Xr(:,:), Xi(:,:), Cph(:,:), Sph(:,:), ew(:), rwork(:)
+        complex(8), allocatable :: Vk(:,:), Vih(:,:), Wk(:,:), Wt(:,:,:,:), work(:)
+        double precision :: dj, w0, t_d, t_a, t_b, t_c, dmax0, dep_tol, eig_cut, lmin, lmax
+        integer :: nkeep, ndep, nrep_sp, nrep_c, lwork, info
+        logical :: isnew
+
+        w0 = omp_get_wtime()
+        nG = sym_nop ; ncand = nfuc*nBas ; nb = ncand
+        write(iout,'(a)') ''
+        write(iout,'(a)') '------------------------------------------------------------'
+        write(iout,'(a)') ' Density fitting with symmetry (keywords density_fitting + symmetry)'
+        write(iout,'(a)') '------------------------------------------------------------'
+        write(iout,'(a,i0,a)') ' point operations used: ', nG, ' (with their translations)'
+        flush(iout)
+
+        ! ---- cell tables ---- !
+        allocate(fc(nBas), fl(nBas), trT(nBas,ncell), sh_of(nBas), invp(nBas,nG))
+        do m = 1, nBas
+          fc(m) = (m-1)/nfuc + 1 ; fl(m) = mod(m-1,nfuc) + 1
+        end do
+        do r = 1, ncell
+          do m = 1, nBas
+            trT(m,r) = (csub(fc(m), r)-1)*nfuc + fl(m)          ! m shifted by -R(r)
+          end do
+        end do
+        do SA = 1, d_nsh
+          sh_of(d_sh_first(SA):d_sh_first(SA)+d_sh_n(SA)-1) = SA
+        end do
+        do g = 1, nG
+          do m = 1, nBas
+            invp(sym_perm(m,g), g) = m
+          end do
+        end do
+
+        ! ---- candidate products ii = (q-1)*nfuc + p : images and swap ---- !
+        allocate(imgr(ncand,nG), isg(ncand,nG))
+        !$omp parallel do default(shared) private(ii,p,q,g,a,b) schedule(static)
+        do ii = 1, ncand
+          p = mod(ii-1,nfuc) + 1 ; q = (ii-1)/nfuc + 1
+          do g = 1, nG
+            a = sym_perm(p,g) ; b = sym_perm(q,g)
+            imgr(ii,g) = (trT(b, fc(a))-1)*nfuc + fl(a)
+            isg(ii,g)  = int(sym_sign(p,g)*sym_sign(q,g), 1)
+          end do
+        end do
+        !$omp end parallel do
+
+        ! ---- diagonal D(ii) = sum_R (I_-R | I_0), shell pairs representative under G ---- !
+        t_d = omp_get_wtime()
+        allocate(D(ncand), known(ncand), isrep_sp(d_nshuc*d_nsh))
+        D = 0.d0 ; known = .false. ; isrep_sp = .false.
+        allocate(sp(2, d_nshuc*d_nsh)) ; nsp = 0 ; nrep_sp = 0
+        do SA = 1, d_nshuc
+          do SB = 1, d_nsh
+            if (dble(ncell)*d_Qsh(SA,SB)**2 < tol) cycle
+            if (.not. sp_is_rep(SA, SB)) cycle
+            nsp = nsp + 1 ; sp(:,nsp) = (/ SA, SB /)
+          end do
+        end do
+        nrep_sp = nsp
+        !$omp parallel do default(shared) private(it,SA,SB,r,SC,SD,blk,a,b,ii) schedule(dynamic,1)
+        do it = 1, nsp
+          SA = sp(1,it) ; SB = sp(2,it)
+          allocate(blk(d_sh_n(SA),d_sh_n(SB),d_sh_n(SA),d_sh_n(SB)))
+          do r = 1, ncell
+            SC = sh_of(trT(d_sh_first(SA), r)) ; SD = sh_of(trT(d_sh_first(SB), r))
+            call ERI_shell_block_toroidal(ndp, d_sh_n(SA), AO(d_sh_first(SC):), d_sh_n(SB), AO(d_sh_first(SD):), &
+                                               d_sh_n(SA), AO(d_sh_first(SA):), d_sh_n(SB), AO(d_sh_first(SB):), blk)
+            do b = 1, d_sh_n(SB)
+              do a = 1, d_sh_n(SA)
+                ii = (d_sh_first(SB)+b-2)*nfuc + d_sh_first(SA)+a-1
+                D(ii) = D(ii) + blk(a,b,a,b)
+              end do
+            end do
+          end do
+          do b = 1, d_sh_n(SB)
+            do a = 1, d_sh_n(SA)
+              known((d_sh_first(SB)+b-2)*nfuc + d_sh_first(SA)+a-1) = .true.
+            end do
+          end do
+          deallocate(blk)
+        end do
+        !$omp end parallel do
+        deallocate(sp)
+        ! the other candidates: images (and swaps) of the computed ones; candidates of shell pairs
+        ! below the Schwarz bound stay 0
+        do ii = 1, ncand
+          if (.not. known(ii)) cycle
+          if (.not. (sp_rep_of(ii))) cycle
+          do g = 1, nG
+            r = imgr(ii,g)
+            if (.not. known(r)) then
+              D(r) = D(ii) ; known(r) = .true.
+            end if
+            r = swapc(r)
+            if (.not. known(r)) then
+              D(r) = D(ii) ; known(r) = .true.
+            end if
+          end do
+        end do
+        do ii = 1, ncand                                   ! only canonical products are candidates
+          if (swapc(ii) < ii) D(ii) = 0.d0
+        end do
+        t_d = omp_get_wtime() - t_d
+        dmax0 = maxval(D)
+
+        ! ---- pivoted Cholesky with whole orbits ---- !
+        t_a = omp_get_wtime()
+        dep_tol = 1.d-3*tol
+        maxp = ncand                                   ! at most every canonical product
+        allocate(L(ncand, 64), cvec(ncand), cslot(ncand), cst(ncand, 16), sel(ncand))
+        allocate(pcand(maxp), prep(maxp), pg(maxp), pswap(maxp), pividx(ncand), mlist(nG), mg(nG))
+        cslot = 0 ; nsl = 0 ; sel = .false. ; pividx = 0
+        kL = 0 ; npiv = 0 ; ndep = 0 ; nrep_c = 0
+        do
+          JJ = maxloc(D, 1) ; dj = D(JJ)
+          if (dj < tol) exit
+          ! c-vectors of the shell pair of JJ (computed once, kept)
+          if (cslot(JJ) == 0) call pair_cvecs(JJ)
+          nrep_c = nrep_c + 1
+          ! orbit members (canonical), JJ first
+          mm = 0
+          do g = 1, nG
+            r = imgr(JJ,g) ; m = min(r, swapc(r))
+            if (sel(m)) cycle
+            isnew = .true.
+            do i = 1, mm
+              if (mlist(i) == m) isnew = .false.
+            end do
+            if (.not. isnew) cycle
+            mm = mm + 1 ; mlist(mm) = m ; mg(mm) = g
+          end do
+          do i = 1, mm
+            m = mlist(i) ; g = mg(i)
+            ! c-vector of the member: permutation of the one of JJ
+            !$omp parallel do default(shared) private(ii) schedule(static)
+            do ii = 1, ncand
+              cvec(imgr(ii,g)) = dble(isg(ii,g)*isg(JJ,g))*cst(ii, cslot(JJ))
+            end do
+            !$omp end parallel do
+            if (kL > 0) call dgemv('N', ncand, kL, -1.d0, L, ncand, L(m,1), ncand, 1.d0, cvec, 1)
+            npiv = npiv + 1
+            pcand(npiv) = m ; prep(npiv) = JJ ; pg(npiv) = g
+            pswap(npiv) = merge(1, 0, m /= imgr(JJ,g))
+            pividx(m) = npiv ; sel(m) = .true.
+            if (D(m) > dep_tol) then
+              kL = kL + 1
+              if (kL > size(L,2)) call grow2(L)
+              L(:,kL) = cvec/dsqrt(D(m))
+              D = D - L(:,kL)**2
+            else
+              ndep = ndep + 1
+            end if
+            D(m) = 0.d0
+          end do
+        end do
+        t_a = omp_get_wtime() - t_a
+        deallocate(L, cvec, cst, cslot, D, known)
+        write(iout,'(a,i10)')     ' products in the fitting set (per cell): ', npiv
+        write(iout,'(a,i10,a)')   '   of which nearly dependent orbit members: ', ndep, ' (kept for the symmetry)'
+        write(iout,'(a,i10)')     ' orbits selected (columns computed)    : ', nrep_c
+        write(iout,'(a,i10)')     ' representative shell pairs (diagonal) : ', nrep_sp
+        write(iout,'(a,es10.2)')  ' Cholesky tolerance                    : ', tol
+        flush(iout)
+
+        ! ---- irreducible k points ---- !
+        call df_kirr(ncell, nG, nirr)
+        write(iout,'(a,i0,a,i0)') ' k points: ', ncell, '   irreducible (point operations + time reversal): ', nirr
+        flush(iout)
+
+        ! ---- aux maps for the operations ---- !
+        if (allocated(dfs_aqp)) deallocate(dfs_aqp, dfs_aqc, dfs_aqs, dfs_aop, dfs_aoc, dfs_aos)
+        allocate(dfs_aqp(npiv,nG), dfs_aqc(npiv,nG), dfs_aqs(npiv,nG))
+        allocate(dfs_aop(nfuc,nG), dfs_aoc(nfuc,nG), dfs_aos(nfuc,nG))
+        ninfo = 0
+        do g = 1, nG
+          do a = 1, nfuc
+            dfs_aop(a,g) = fl(sym_perm(a,g)) ; dfs_aoc(a,g) = fc(sym_perm(a,g))
+            dfs_aos(a,g) = int(sym_sign(a,g),1)
+          end do
+          do k = 1, npiv
+            ii = pcand(k) ; p = mod(ii-1,nfuc) + 1 ; q = (ii-1)/nfuc + 1
+            r = imgr(ii,g) ; m = min(r, swapc(r))
+            dfs_aqp(k,g) = pividx(m)
+            if (pividx(m) == 0) ninfo = ninfo + 1
+            if (m == r) then
+              dfs_aqc(k,g) = fc(sym_perm(p,g))
+            else
+              dfs_aqc(k,g) = fc(sym_perm(q,g))
+            end if
+            dfs_aqs(k,g) = isg(ii,g)
+          end do
+        end do
+        if (ninfo > 0) error stop 'density_fitting + symmetry: the fitting set is not closed (bug)'
+
+        ! ---- T3(k2) for the irreducible k2, V(R) ---- !
+        t_b = omp_get_wtime()
+        if (allocated(dfs_big)) deallocate(dfs_big)
+        allocate(dfs_big(nb*npiv, nirr)) ; dfs_big = (0.d0,0.d0)
+        allocate(Vout(npiv, npiv, ncell), X(nb, ncell), Xr(nb, nirr), Xi(nb, nirr), Cph(ncell,nirr), Sph(ncell,nirr))
+        do ik = 1, nirr
+          do r = 1, ncell
+            Cph(r,ik) = dble(phase(dfs_kirr(ik),r)) ; Sph(r,ik) = aimag(phase(dfs_kirr(ik),r))
+          end do
+        end do
+        ! representative candidates (one column computation per shell pair)
+        if (allocated(colw)) deallocate(colw)
+        it = 0                                                ! shell pair of the columns in colw
+        do k = 1, npiv
+          if (prep(k) /= pcand(k) .or. pg(k) /= 1) cycle      ! k is the representative of its orbit
+          JJ = pcand(k)
+          SC = sh_of(mod(JJ-1,nfuc)+1) ; SD = sh_of((JJ-1)/nfuc+1)
+          if (it /= (SD-1)*d_nsh + SC) then
+            call pair_cols(JJ)                                ! colw(:,:,component of JJ)
+            it = (SD-1)*d_nsh + SC
+          end if
+          cc = mod(JJ-1,nfuc)+1 - d_sh_first(SC) + 1
+          dd = (JJ-1)/nfuc+1 - d_sh_first(SD) + 1
+          s1 = (dd-1)*d_sh_n(SC) + cc
+          do kk = 1, npiv
+            if (prep(kk) /= JJ) cycle
+            g = pg(kk) ; ii = pcand(kk)
+            p = mod(JJ-1,nfuc) + 1 ; q = (JJ-1)/nfuc + 1
+            if (pswap(kk) == 0) then
+              cshift = fc(sym_perm(p,g))
+            else
+              cshift = fc(sym_perm(q,g))
+            end if
+            ! X(mu0 nu, R) = (mu_-R nu_-R | m_0) = s_x s_y s_J col_J(x,y), x = g^-1(x' + c)
+            !$omp parallel do default(shared) private(r,ii,p,q,xr_,yr_,xa_,ya_) schedule(static)
+            do r = 1, ncell
+              do ii = 1, ncand
+                p = mod(ii-1,nfuc) + 1 ; q = (ii-1)/nfuc + 1
+                xr_ = trT(p, r) ; yr_ = trT(q, r)
+                xa_ = invp((cadd(fc(xr_),cshift)-1)*nfuc + fl(xr_), g)
+                ya_ = invp((cadd(fc(yr_),cshift)-1)*nfuc + fl(yr_), g)
+                X(ii, r) = dble(sym_sign(xa_,g)*sym_sign(ya_,g)*isg(JJ,g))*colw(xa_, ya_, s1)
+              end do
+            end do
+            !$omp end parallel do
+            do kL = 1, npiv
+              Vout(kL, kk, :) = X(pcand(kL), :)
+            end do
+            call dgemm('N','N', nb, nirr, ncell, 1.d0, X, nb, Cph, ncell, 0.d0, Xr, nb)
+            call dgemm('N','N', nb, nirr, ncell, 1.d0, X, nb, Sph, ncell, 0.d0, Xi, nb)
+            do ik = 1, nirr
+              dfs_big((kk-1)*nb+1:kk*nb, ik) = cmplx(Xr(:,ik), Xi(:,ik), kind=8)
+            end do
+          end do
+        end do
+        if (allocated(colw)) deallocate(colw)
+        deallocate(X, Xr, Xi, Cph, Sph)
+        t_b = omp_get_wtime() - t_b
+
+        ! ---- per irreducible k2: V^-1/2 (eigenvalues > eig_cut), W = T3 V^-1/2, Bh slice ---- !
+        t_c = omp_get_wtime()
+        eig_cut = 1.d-2*tol
+        allocate(Vk(npiv,npiv), Vih(npiv,npiv), ew(npiv), rwork(3*npiv), work(1))
+        call zheev('V','U', npiv, Vk, npiv, ew, work, -1, rwork, info)
+        lwork = max(1, int(dble(work(1)))) ; deallocate(work) ; allocate(work(lwork))
+        allocate(Wk(nb,npiv), Wt(nfuc,npiv,nfuc,ncell))
+        if (allocated(dfs_B0)) deallocate(dfs_B0)
+        allocate(dfs_B0(nb, npiv))
+        lmin = huge(1.d0) ; lmax = 0.d0 ; nkeep = npiv
+        do ik = 1, nirr
+          kk = dfs_kirr(ik)
+          Vk = (0.d0,0.d0)
+          do r = 1, ncell
+            Vk = Vk + Vout(:,:,r)*phase(kk,r)
+          end do
+          Vk = 0.5d0*(Vk + conjg(transpose(Vk)))
+          call zheev('V','U', npiv, Vk, npiv, ew, work, lwork, rwork, info)
+          if (info /= 0) error stop 'df_init_sym: zheev of V(k) failed'
+          Vih = (0.d0,0.d0)
+          do i = 1, npiv
+            if (ew(i) > eig_cut) then
+              lmin = min(lmin, ew(i))
+              do j = 1, npiv
+                Vih(:,j) = Vih(:,j) + Vk(:,i)*conjg(Vk(j,i))/dsqrt(ew(i))
+              end do
+            end if
+          end do
+          nkeep = min(nkeep, count(ew > eig_cut)) ; lmax = max(lmax, maxval(ew))
+          call zgemm('N','N', nb, npiv, npiv, (1.d0,0.d0), dfs_big(1,ik), nb, Vih, npiv, (0.d0,0.d0), Wk, nb)
+          if (kk == 1) dfs_B0 = dble(Wk)                     ! k2 = 0: real
+          ! Wt(mu,Q,nu0,R1) = W(mu0, nu0 R1, Q) ; Bh(.,k1) = sum_R1 Wt(.,R1) e^{i k1 R1}
+          !$omp parallel do default(shared) private(r,b,q) collapse(2)
+          do r = 1, ncell
+            do b = 1, nfuc
+              do q = 1, npiv
+                Wt(:,q,b,r) = Wk((r-1)*nfuc*nfuc + (b-1)*nfuc + 1 : (r-1)*nfuc*nfuc + b*nfuc, q)
+              end do
+            end do
+          end do
+          !$omp end parallel do
+          call zgemm('N','T', nfuc*npiv*nfuc, ncell, ncell, (1.d0,0.d0), Wt, nfuc*npiv*nfuc, phase, ncell, &
+                     (0.d0,0.d0), dfs_big(1,ik), nfuc*npiv*nfuc)
+        end do
+        deallocate(Vk, Vih, ew, rwork, work, Wk, Wt, Vout)
+        t_c = omp_get_wtime() - t_c
+
+        dfs_npiv = npiv ; dfs_nirr = nirr ; df_nau = npiv ; df_naux = npiv*ncell
+        df_sym = .true. ; df_ready = .true.
+        deallocate(fc, fl, trT, sh_of, invp, imgr, isg, isrep_sp, sel, pcand, prep, pg, pswap, pividx, mlist, mg)
+        write(iout,'(a,2es12.4)') ' eigenvalues of V(k) kept (min, max)  : ', lmin, lmax
+        write(iout,'(a,es10.2,a,i0)') ' eigenvalue cut ', eig_cut, ' ; smallest number kept over k: ', nkeep
+        write(iout,'(a,f10.2,a)') ' wall time diagonal                   : ', t_d, ' s'
+        write(iout,'(a,f10.2,a)') ' wall time selection (columns)        : ', t_a, ' s'
+        write(iout,'(a,f10.2,a)') ' wall time T3(k) (columns again)      : ', t_b, ' s'
+        write(iout,'(a,f10.2,a)') ' wall time V^-1/2 and B(k1,k2)        : ', t_c, ' s'
+        write(iout,'(a,f10.3,a)') ' memory of B(k1,k2), irreducible k2   : ', &
+             16.d0*dble(nb)*dble(npiv)*dble(nirr)/1024.d0**3, ' GB'
+        write(iout,'(a,f10.3,a)') '   (all k2 would be                   : ', &
+             16.d0*dble(nb)*dble(npiv)*dble(ncell)/1024.d0**3, ' GB)'
+        write(iout,'(a,f10.2,a)') ' wall time density fitting setup      : ', omp_get_wtime()-w0, ' s'
+        write(iout,'(a)') '------------------------------------------------------------'
+        flush(iout)
+
+      contains
+
+        integer function swapc(i0)                      ! (p0, q R) -> (q0, p -R)
+          integer, intent(in) :: i0
+          integer :: p0, q0
+          p0 = mod(i0-1,nfuc) + 1 ; q0 = (i0-1)/nfuc + 1
+          swapc = (trT(p0, fc(q0))-1)*nfuc + fl(q0)
+        end function swapc
+
+        ! shell-pair key, normalized so that the first shell is in cell 0
+        integer function pkey(xa, xb)
+          integer, intent(in) :: xa, xb
+          pkey = (sh_of(trT(xb, fc(xa)))-1)*d_nshuc + sh_of(trT(xa, fc(xa)))
+        end function pkey
+
+        logical function sp_is_rep(S1, S2)
+          integer, intent(in) :: S1, S2
+          integer :: g0, k0, a0, b0
+          k0 = (S2-1)*d_nshuc + S1
+          sp_is_rep = .false.
+          do g0 = 1, nG
+            a0 = sym_perm(d_sh_first(S1), g0) ; b0 = sym_perm(d_sh_first(S2), g0)
+            if (pkey(a0,b0) < k0 .or. pkey(b0,a0) < k0) return
+          end do
+          sp_is_rep = .true.
+        end function sp_is_rep
+
+        logical function sp_rep_of(i0)                 ! candidate belongs to a computed (rep) shell pair
+          integer, intent(in) :: i0
+          sp_rep_of = known(i0)
+        end function sp_rep_of
+
+        subroutine grow2(A)
+          double precision, allocatable, intent(inout) :: A(:,:)
+          double precision, allocatable :: tt(:,:)
+          allocate(tt(size(A,1), 2*size(A,2)))
+          tt(:,1:size(A,2)) = A
+          call move_alloc(tt, A)
+        end subroutine grow2
+
+        ! c(ii) = sum_R (ii_-R | J_0) for every component J of the shell pair of J0
+        subroutine pair_cvecs(J0)
+          integer, intent(in) :: J0
+          integer :: S_C, S_D, n_C, n_D, c_, d_, comp, Jc, i_, p_, q_, r_
+          call pair_cols(J0)
+          S_C = sh_of(mod(J0-1,nfuc)+1) ; S_D = sh_of((J0-1)/nfuc+1)
+          n_C = d_sh_n(S_C) ; n_D = d_sh_n(S_D)
+          do d_ = 1, n_D
+            do c_ = 1, n_C
+              comp = (d_-1)*n_C + c_
+              Jc = (d_sh_first(S_D)+d_-2)*nfuc + d_sh_first(S_C)+c_-1
+              if (cslot(Jc) /= 0) cycle
+              nsl = nsl + 1
+              if (nsl > size(cst,2)) call grow2(cst)
+              cslot(Jc) = nsl
+              !$omp parallel do default(shared) private(i_,p_,q_,r_) schedule(static)
+              do i_ = 1, ncand
+                p_ = mod(i_-1,nfuc) + 1 ; q_ = (i_-1)/nfuc + 1
+                cst(i_, nsl) = 0.d0
+                do r_ = 1, ncell
+                  cst(i_, nsl) = cst(i_, nsl) + colw(trT(p_,r_), trT(q_,r_), comp)
+                end do
+              end do
+              !$omp end parallel do
+            end do
+          end do
+          deallocate(colw) ; allocate(colw(1,1,1))
+        end subroutine pair_cvecs
+
+        ! colw(a, b, comp) = (a b | c d) , a, b in the supercell, (c,d) the components of the
+        ! shell pair of J0 (c in cell 0); quartets moved so that their first shell is in cell 0
+        subroutine pair_cols(J0)
+          integer, intent(in) :: J0
+          integer :: S_C, S_D, n_C, n_D, S1, S2, x_, y_, c_, d_, r1_, T1, T2, TC, TD, fx, fy, comp
+          double precision, allocatable :: bk(:,:,:,:)
+          S_C = sh_of(mod(J0-1,nfuc)+1) ; S_D = sh_of((J0-1)/nfuc+1)
+          n_C = d_sh_n(S_C) ; n_D = d_sh_n(S_D)
+          if (allocated(colw)) deallocate(colw)
+          allocate(colw(nBas, nBas, n_C*n_D)) ; colw = 0.d0
+          ps_on = c_prim_screen
+          !$omp parallel do default(shared) private(S1,S2,bk,x_,y_,c_,d_,r1_,T1,T2,TC,TD,fx,fy,comp) &
+          !$omp schedule(dynamic,1)
+          do S1 = 1, d_nsh
+            do S2 = S1, d_nsh
+              if (d_Qsh(S1,S2)*d_Qsh(S_C,S_D) < 1.d-15) cycle
+              allocate(bk(d_sh_n(S1),d_sh_n(S2),n_C,n_D))
+              r1_ = fc(d_sh_first(S1))
+              T1 = sh_of(trT(d_sh_first(S1), r1_)) ; T2 = sh_of(trT(d_sh_first(S2), r1_))
+              TC = sh_of(trT(d_sh_first(S_C), r1_)) ; TD = sh_of(trT(d_sh_first(S_D), r1_))
+              if (ps_on) call set_ps(T1, T2, TC, TD)
+              call ERI_shell_block_toroidal(ndp, d_sh_n(S1), AO(d_sh_first(T1):), d_sh_n(S2), AO(d_sh_first(T2):), &
+                                                 n_C, AO(d_sh_first(TC):), n_D, AO(d_sh_first(TD):), bk)
+              do d_ = 1, n_D
+                do c_ = 1, n_C
+                  comp = (d_-1)*n_C + c_
+                  do y_ = 1, d_sh_n(S2)
+                    fy = d_sh_first(S2)+y_-1
+                    do x_ = 1, d_sh_n(S1)
+                      fx = d_sh_first(S1)+x_-1
+                      colw(fx, fy, comp) = bk(x_,y_,c_,d_)
+                      colw(fy, fx, comp) = bk(x_,y_,c_,d_)
+                    end do
+                  end do
+                end do
+              end do
+              deallocate(bk)
+            end do
+          end do
+          !$omp end parallel do
+          ps_on = .false.
+        end subroutine pair_cols
+
+      end subroutine df_init_sym
+
+      !-----------------------------------------------------------------!
+      ! irreducible k points: dfs_kirr(1:nirr) representatives (Gamma   !
+      ! first), and for every k: k = (conj ? -1 : 1) * R_g k_rep         !
+      !-----------------------------------------------------------------!
+      subroutine df_kirr(ncell, nG, nirr)
+        use symmetry_clifford, only: sym_R
+        integer, intent(in)  :: ncell, nG
+        integer, intent(out) :: nirr
+        integer :: k, g, kr, kneg
+        character(len=8) :: envv
+        if (allocated(dfs_kirr)) deallocate(dfs_kirr, dfs_krep, dfs_kg, dfs_kcj, dfs_kslot, dfs_krot)
+        allocate(dfs_kirr(ncell), dfs_krep(ncell), dfs_kg(ncell), dfs_kcj(ncell), dfs_kslot(ncell), dfs_krot(ncell,nG))
+        do g = 1, nG
+          do k = 1, ncell
+            dfs_krot(k,g) = cell_of(matmul(sym_R(:,:,g), df_coord(:,k)))
+          end do
+        end do
+        dfs_krep = 0 ; dfs_kslot = 0 ; nirr = 0
+        ! test switch: CIPOP_DFSYM_ALLK=1 stores every k2 (no reconstruction by symmetry)
+        call get_environment_variable('CIPOP_DFSYM_ALLK', envv)
+        if (trim(envv) == '1') then
+          do k = 1, ncell
+            nirr = nirr + 1 ; dfs_kirr(nirr) = k ; dfs_kslot(k) = nirr
+            dfs_krep(k) = k ; dfs_kg(k) = 1 ; dfs_kcj(k) = 0
+          end do
+          return
+        end if
+        do k = 1, ncell
+          if (dfs_krep(k) /= 0) cycle
+          nirr = nirr + 1 ; dfs_kirr(nirr) = k ; dfs_kslot(k) = nirr
+          do g = 1, nG                                   ! the star of k (+ time reversal)
+            kr = dfs_krot(k,g)
+            if (dfs_krep(kr) == 0) then
+              dfs_krep(kr) = k ; dfs_kg(kr) = g ; dfs_kcj(kr) = 0
+            end if
+          end do
+          do g = 1, nG
+            kneg = csub(1, dfs_krot(k,g))
+            if (dfs_krep(kneg) == 0) then
+              dfs_krep(kneg) = k ; dfs_kg(kneg) = g ; dfs_kcj(kneg) = 1
+            end if
+          end do
+        end do
+      end subroutine df_kirr
+
+      !-----------------------------------------------------------------!
+      ! slice S(a,q,b,k1) = Bh(a,q,b;k1,k2) for any k2, from the stored  !
+      ! irreducible slice (see df_init_sym)                              !
+      !-----------------------------------------------------------------!
+      subroutine dfs_slice(nfuc, nau, ncell, k2, S)
+        integer   , intent(in)  :: nfuc, nau, ncell, k2
+        complex(8), intent(out) :: S(nfuc, nau, nfuc, ncell)
+        complex(8), allocatable :: T(:,:,:,:)
+        integer :: kr, g, a, b, q, k1, k1r, pa, pb, pq, ca, cb, cq, ktgt
+        double precision :: sgn
+        complex(8) :: ph2a
+        kr = dfs_krep(k2) ; g = dfs_kg(k2)
+        if (kr == k2 .and. dfs_kslot(k2) /= 0) then
+          call copy_slot(dfs_kslot(k2))
+          return
+        end if
+        ! target T = Bh(.; R k1', R kr) from the stored slice of kr
+        allocate(T(nfuc, nau, nfuc, ncell))
+        ktgt = dfs_krot(kr, g)
+        !$omp parallel do default(shared) private(k1,k1r,a,b,q,pa,pb,pq,ca,cb,cq,sgn,ph2a) schedule(static)
+        do k1 = 1, ncell
+          k1r = dfs_krot(k1, g)
+          do b = 1, nfuc
+            pb = dfs_aop(b,g) ; cb = dfs_aoc(b,g)
+            do q = 1, nau
+              pq = dfs_aqp(q,g) ; cq = dfs_aqc(q,g)
+              do a = 1, nfuc
+                pa = dfs_aop(a,g) ; ca = dfs_aoc(a,g)
+                sgn = dble(dfs_aos(a,g)*dfs_aos(b,g)*dfs_aqs(q,g))
+                ph2a = df_phase(k1r, csub(cb,ca))*df_phase(ktgt, csub(cq,ca))
+                T(pa,pq,pb,k1r) = sgn*ph2a*bigval(a,q,b,k1)
+              end do
+            end do
+          end do
+        end do
+        !$omp end parallel do
+        if (dfs_kcj(k2) == 0) then
+          S = T
+        else                                               ! Bh(k1,k2) = conj Bh(-k1,-k2), -k2 = ktgt
+          do k1 = 1, ncell
+            S(:,:,:,k1) = conjg(T(:,:,:,csub(1,k1)))
+          end do
+        end if
+        deallocate(T)
+      contains
+        complex(8) function bigval(a_, q_, b_, k_)
+          integer, intent(in) :: a_, q_, b_, k_
+          integer(8) :: idx
+          idx = int(a_,8) + int(nfuc,8)*(int(q_-1,8) + int(nau,8)*(int(b_-1,8) + int(nfuc,8)*int(k_-1,8)))
+          bigval = dfs_big(idx, dfs_kslot(kr))
+        end function bigval
+        subroutine copy_slot(sl)
+          integer, intent(in) :: sl
+          integer(8) :: n8
+          n8 = int(nfuc,8)*int(nau,8)*int(nfuc,8)*int(ncell,8)
+          call zcopy_big(n8, dfs_big(1,sl), S)
+        end subroutine copy_slot
+      end subroutine dfs_slice
+
+      subroutine zcopy_big(n8, src, dst)
+        integer(8), intent(in) :: n8
+        complex(8), intent(in) :: src(n8)
+        complex(8), intent(out) :: dst(n8)
+        dst = src
+      end subroutine zcopy_big
+
+      !-----------------------------------------------------------------!
+      ! J and K with the symmetric fitting (rows mu <= nfuc)             !
+      !-----------------------------------------------------------------!
+      subroutine df_JK_sym(nBas, P, J, K)
+        use unitcell_module, only: nfuc
+        integer         , intent(in)  :: nBas
+        double precision, intent(in)  :: P(nBas,nBas)
+        double precision, intent(out) :: J(nBas,nBas), K(nBas,nBas)
+        integer :: nau, ncell, nb, r, k1, k2, kk, ik, no, nmax, n, i, info
+        double precision, allocatable :: gam(:), Jv(:), wk(:,:), ew(:), rw(:)
+        complex(8), allocatable :: pk(:,:), ck(:,:,:), Kt(:,:,:), S(:,:,:,:), L(:,:,:), Lw(:,:,:), zw(:)
+        integer, allocatable :: nok(:)
+
+        nau = dfs_npiv ; ncell = df_ncell ; nb = nfuc*nBas
+        J = 0.d0 ; K = 0.d0
+
+        ! ---- J : gamma_Q = sum_{l0,si} B0(l0,si,Q) P(l0,si) ; J(mu0,nu) = sum_Q B0 gamma ---- !
+        allocate(gam(nau), Jv(nb))
+        call dgemv('T', nb, nau, 1.d0, dfs_B0, nb, P(1:nfuc,1:nBas), 1, 0.d0, gam, 1)
+        call dgemv('N', nb, nau, 1.d0, dfs_B0, nb, gam, 1, 0.d0, Jv, 1)
+        J(1:nfuc,1:nBas) = reshape(Jv, (/ nfuc, nBas /))
+        deallocate(gam, Jv)
+
+        ! ---- K : Kt(K) = -1/(2N) sum_{k1} M P(k1) M^H , M = Bh(k1, K-k1), one k2 slice at a time ---- !
+        allocate(pk(nfuc,nfuc), ck(nfuc,nfuc,ncell), wk(nfuc,ncell), nok(ncell), ew(nfuc), &
+                 rw(3*nfuc), zw(4*nfuc), Kt(nfuc,nfuc,ncell))
+        do ik = 1, ncell
+          pk = (0.d0,0.d0)
+          do r = 1, ncell
+            pk = pk + P(1:nfuc, (r-1)*nfuc+1:r*nfuc)*df_phase(ik,r)
+          end do
+          pk = 0.5d0*(pk + conjg(transpose(pk)))
+          call zheev('V','U', nfuc, pk, nfuc, ew, zw, 4*nfuc, rw, info)
+          if (info /= 0) error stop 'df_JK_sym: zheev failed for P(k)'
+          n = 0
+          do i = 1, nfuc
+            if (dabs(ew(i)) > 1.d-10) then
+              n = n + 1 ; ck(:,n,ik) = pk(:,i) ; wk(n,ik) = ew(i)
+            end if
+          end do
+          nok(ik) = n
+        end do
+        nmax = max(1, maxval(nok))
+        Kt = (0.d0,0.d0)
+        allocate(S(nfuc, nau, nfuc, ncell))
+        do k2 = 1, ncell
+          call dfs_slice(nfuc, nau, ncell, k2, S)
+          nb_saved = blas_serial()
+          !$omp parallel default(shared) private(k1,kk,no,L,Lw,i)
+          allocate(L(nfuc,nau,nmax), Lw(nfuc,nau,nmax))
+          !$omp do schedule(dynamic,1)
+          do k1 = 1, ncell
+            no = nok(k1) ; if (no == 0) cycle
+            kk = cadd(k1, k2)
+            call zgemm('N','N', nfuc*nau, no, nfuc, (1.d0,0.d0), S(1,1,1,k1), nfuc*nau, ck(1,1,k1), nfuc, &
+                       (0.d0,0.d0), L, nfuc*nau)
+            do i = 1, no
+              Lw(:,:,i) = L(:,:,i)*wk(i,k1)
+            end do
+            call zgemm('N','C', nfuc, nfuc, nau*no, cmplx(-0.5d0/dble(ncell),0.d0,kind=8), Lw, nfuc, L, nfuc, &
+                       (1.d0,0.d0), Kt(1,1,kk), nfuc)
+          end do
+          !$omp end do
+          deallocate(L, Lw)
+          !$omp end parallel
+          call blas_restore(nb_saved)
+        end do
+        deallocate(S)
+        do r = 1, ncell
+          pk = (0.d0,0.d0)
+          do kk = 1, ncell
+            pk = pk + Kt(:,:,kk)*conjg(df_phase(kk,r))
+          end do
+          K(1:nfuc, (r-1)*nfuc+1:r*nfuc) = dble(pk)/dble(ncell)
+        end do
+        deallocate(pk, ck, wk, nok, ew, rw, zw, Kt)
+      end subroutine df_JK_sym
 
 end module df_toroidal
