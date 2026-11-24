@@ -44,6 +44,7 @@ module clifford_tools
 
       private
       public :: NMAX_CLIFF, init_clifford
+      public :: tstep_reset, tstep, tstep_print      ! [Nov 2026] wall time per integral step
       public :: clifford_bessel_ratios, Icliff_from_R
       public :: overlap_1D_clifford, overlap_1D_clifford_ext, overlap_1D_real
       public :: kinetic_1D_clifford, kinetic_1D_real
@@ -103,6 +104,15 @@ module clifford_tools
       double precision, save :: binom(0:NM, 0:NM)
       double precision, save :: dfact(-1:2*NM)
       logical,          save :: initialized = .false.
+
+      ! [Nov 2026] wall-time table of the integral steps (Tori1D/2D/3D, ERI driver).
+      ! tstep_reset starts the clock, tstep('label') stores the time since the
+      ! previous mark under that label, tstep_print writes the table.
+      integer, parameter        :: TS_MAX = 40
+      integer, save             :: ts_n = 0
+      double precision, save    :: ts_last = 0.d0, ts_first = 0.d0
+      double precision, save    :: ts_t(TS_MAX)
+      character(len=40), save   :: ts_lab(TS_MAX)
 
 contains
 
@@ -799,5 +809,46 @@ subroutine orbital_to_lxyz(label, lxyz)
 
 end subroutine orbital_to_lxyz
 
+
+      !-----------------------------------------------------------------!
+      ! [Nov 2026] wall time per step of the integrals                  !
+      !-----------------------------------------------------------------!
+      subroutine tstep_reset()
+        use omp_lib, only : omp_get_wtime
+        ts_n = 0
+        ts_last  = omp_get_wtime()
+        ts_first = ts_last
+      end subroutine tstep_reset
+
+      subroutine tstep(label)
+        use omp_lib, only : omp_get_wtime
+        character(len=*), intent(in) :: label
+        double precision :: now
+        now = omp_get_wtime()
+        if (ts_n < TS_MAX) then
+          ts_n = ts_n + 1
+          ts_lab(ts_n) = label
+          ts_t(ts_n)   = now - ts_last
+        end if
+        ts_last = now
+      end subroutine tstep
+
+      subroutine tstep_print(iout, title)
+        integer         , intent(in) :: iout
+        character(len=*), intent(in) :: title
+        double precision :: tot
+        integer :: i
+        tot = ts_last - ts_first
+        write(iout,*)
+        write(iout,'(a)') '   Wall time per step: '//trim(title)
+        write(iout,'(a)') '   ----------------------------------------------------------------'
+        do i = 1, ts_n
+          write(iout,'(3x,a40,f12.3,a,f7.1,a)') ts_lab(i), ts_t(i), ' s', 100.d0*ts_t(i)/max(tot,1.d-12), ' %'
+        end do
+        write(iout,'(a)') '   ----------------------------------------------------------------'
+        write(iout,'(3x,a40,f12.3,a)') 'total', tot, ' s'
+        write(iout,*)
+        flush(iout)
+      end subroutine tstep_print
 
 end module clifford_tools

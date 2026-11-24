@@ -9,17 +9,20 @@
 !   Here a sample of nuclear attraction elements and a sample of ERI  !
 !   shell quartets are computed with both rules (V is the most        !
 !   sensitive: point nucleus = infinite exponent).                    !
-!   [Nov 2026] V sample (was: the whole matrix twice, too expensive   !
-!   for large cells, e.g. 1728 atoms): every diagonal V(i,i) of the   !
-!   unit cell (always includes the tightest functions, at most 2000), !
-!   200 random pairs inside the unit cell and 200 random pairs        !
-!   (i in the unit cell, j anywhere). ERI sample:                     !
-!   every on-site quartet (SI SI|SI SI) of the unit cell (this always !
-!   includes the tightest shells) plus up to 300 pseudo-random        !
-!   quartets. If the largest difference exceeds tol, fast_quad is     !
-!   switched off for the whole run (nuclear attraction and ERIs) and  !
-!   the usual 64/128 point tables are used. A note is printed in      !
-!   both cases. Nothing to set by hand.                               !
+!   [Nov 2026] V sample (smaller since 24 Nov 2026: 95% of the check  !
+!   time was V, each element sums over ALL nuclei of the supercell):  !
+!     - V(i,i) for the FIRST function of every shell of the unit cell !
+!       (one per exponent set: always includes the tightest ones;     !
+!       the other components of a shell use the same primitives)      !
+!     - 20 random pairs inside the unit cell                          !
+!     - 20 random pairs (i in the unit cell, j anywhere)              !
+!   (was: every V(i,i) of the cell up to 2000 + 200 + 200 pairs)      !
+!   ERI sample: every on-site quartet (SI SI|SI SI) of the unit cell  !
+!   (always includes the tightest shells) plus 50 pseudo-random       !
+!   quartets (was 300). If the largest difference exceeds tol,        !
+!   fast_quad is switched off for the whole run (nuclear attraction   !
+!   and ERIs) and the usual 64/128 point tables are used. A note is   !
+!   printed in both cases. Nothing to set by hand.                    !
 !                                                                     !
 !   Call: after normalisation of the AOs and Torus_def, before the    !
 !   nuclear attraction (Tori1D / Tori2D / Tori3D).                    !
@@ -45,7 +48,7 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
       type(atom)        , intent(in) :: atoms(n_atoms)
 
       double precision, parameter :: tol = 1.d-10
-      integer,          parameter :: nrand = 300
+      integer,          parameter :: nrand = 50          ! [Nov 2026] was 300
       integer,          allocatable :: sh_first(:), sh_n(:)
       double precision, allocatable :: b1(:,:,:,:), b2(:,:,:,:)
       integer          :: i, j, nsh, nshuc, lxyz(3), lt, ncomp, q(4), ns, it, lmax, ncap
@@ -58,8 +61,8 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
       integer          :: ntot, off, nb
       double precision, allocatable :: V1(:), V2(:)
       double precision :: dV
-      integer, parameter :: nv_rand = 200
-      integer          :: npv, ip
+      integer, parameter :: nv_rand = 20             ! [Nov 2026] was 200
+      integer          :: npv, ip, npv_out
       integer, allocatable :: pv(:,:), lxv(:,:)
 
       if (.not. fast_quad) return
@@ -130,17 +133,18 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
       allocate(buf(ntot))
 
       ! ---- sample of nuclear attraction elements (i <= nfuc) ---- !
-      npv = min(nfuc, 2000) + 2*nv_rand
+      ! [Nov 2026] diagonal: first function of each unit-cell shell (nshuc of them)
+      npv = nshuc + 2*nv_rand
       allocate(pv(2,npv), V1(npv), V2(npv), lxv(3,nBas))
       do i = 1 , nBas
         call orbital_to_lxyz(AO(i)%orbital, lxv(:,i))
       end do
-      do ip = 1 , min(nfuc, 2000)
-        pv(:,ip) = ip                                                    ! diagonal V(i,i)
+      do ip = 1 , nshuc
+        pv(:,ip) = sh_first(ip)                                          ! diagonal V(i,i), one per shell
       end do
-      do ip = min(nfuc, 2000) + 1 , npv
+      do ip = nshuc + 1 , npv
         pv(1,ip) = 1 + int(mod(next(), int(nfuc,8)))
-        if (ip <= min(nfuc, 2000) + nv_rand) then
+        if (ip <= nshuc + nv_rand) then
           pv(2,ip) = 1 + int(mod(next(), int(nfuc,8)))                  ! same unit cell
         else
           pv(2,ip) = 1 + int(mod(next(), int(nBas,8)))                  ! anywhere
@@ -166,6 +170,7 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
       call setup_t_tables(ncap, ndp)
       call nuclear_attraction(V2)
       dV = maxval(abs(V1 - V2))
+      npv_out = npv
       deallocate(V1, V2, pv, lxv)
       dmax = 0.d0 ; off = 0
       do it = 1 , ns
@@ -189,11 +194,11 @@ subroutine fast_quad_self_check(ndp, nBas, AO, n_atoms, geometry, atoms)
       end if
       call setup_t_tables(ncap, ndp)
 
-      write(outfile,'(a,i0,a,es9.2,a,es9.2,a)') ' fast_quad self-check: ', ns, ' ERI shell quartets, largest difference ', &
-            dmax, ' ; nuclear attraction (sample) ', dV, merge(' -> fast_quad ON                                ', &
+      write(outfile,'(a,i0,a,es9.2,a,i0,a,es9.2,a)') ' fast_quad self-check: ', ns, ' ERI shell quartets, largest difference ', &
+            dmax, ' ; nuclear attraction (sample of ', npv_out, ') ', dV, merge(' -> fast_quad ON                                ', &
                                                      ' -> above 1e-10: fast_quad OFF, full tables used', ok)
-      write(*,'(a,i0,a,es9.2,a,es9.2,a)') ' fast_quad self-check: ', ns, ' ERI shell quartets, largest difference ', &
-            dmax, ' ; nuclear attraction (sample) ', dV, merge(' -> fast_quad ON                                ', &
+      write(*,'(a,i0,a,es9.2,a,i0,a,es9.2,a)') ' fast_quad self-check: ', ns, ' ERI shell quartets, largest difference ', &
+            dmax, ' ; nuclear attraction (sample of ', npv_out, ') ', dV, merge(' -> fast_quad ON                                ', &
                                                      ' -> above 1e-10: fast_quad OFF, full tables used', ok)
       flush(outfile)
       deallocate(sh_first, sh_n, qs)

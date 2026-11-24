@@ -28,6 +28,7 @@ subroutine Tori1D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
       use unitcell_module
       use debug_tools
       use omp_lib
+      use clifford_tools, only : tstep_reset, tstep, tstep_print   ! [Nov 2026] wall time per step
       use eri_direct, only : direct_init                ! [Nov 2026] keyword direct
       use df_toroidal, only : df_init                   ! [Nov 2026] keyword density_fitting
       use symmetry_clifford, only : sym_setup           ! [Nov 2026] keyword symmetry
@@ -72,24 +73,32 @@ subroutine Tori1D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
 
       call cpu_time(start)
       w0 = omp_get_wtime()
+      call tstep_reset()                                                    ! [Nov 2026]
 
       ! $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ !
 
       allocate(AOn(nBas))
       AOn = AO
       call normalize_AO_toroidal_1D(nBas, AOn, .false.)                   ! normalize the basis functions
+      call tstep('normalization')
       ! [Nov 2026] keyword symmetry: find the point operations and the AO maps NOW,
       ! before any integral, because V, the ERIs, direct J/K and DF use them.
       if (c_symmetry) call sym_setup(1,n_atoms,geometry,atoms(:)%charge,nBas,AOn)
+      if (c_symmetry) call tstep('symmetry: operations + AO maps')
       call fast_quad_self_check(1,nBas,AOn,n_atoms,geometry,atoms)                       ! [Nov 2026] keyword fast_quad: accuracy check (no-op otherwise)
+      call tstep('fast_quad self-check')
 
       ! $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ !
 
 
       call overlap_matrix_toroidal_1D(nBas,AOn,OV)
+      call tstep('S  overlap')
       call check_the_overlap(nBas,OV)
+      call tstep('S  diagonalization (check)')
       call kinetic_matrix_toroidal_1D(nBas,AOn,K)
+      call tstep('T  kinetic')
       call nuclear_attraction_matrix_toroidal_1D(n_atoms,nBas,geometry,atoms,AOn,NA)
+      call tstep('V  nuclear attraction')
 
       if (c_debug) call check_symmetric('S', OV, outfile)
       if (c_debug) call check_symmetric('T', K, outfile)
@@ -99,9 +108,12 @@ subroutine Tori1D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
         ERI = 0.d0
       else if (c_direct) then
         call direct_init(1,nBas,AOn)                      ! [Nov 2026] keyword direct: nothing stored
+        call tstep('ERI direct: Schwarz + tables')
         if (c_df) call df_init(1,n_atoms,atoms,geometry,nBas,AOn,outfile)   ! [Nov 2026] density fitting
+        if (c_df) call tstep('density fitting: B tensors')
       else
         call ERI_integral_toroidal(1,nBas,AOn,ERI)          ! ndp = 1 periodic direction
+        call tstep('ERI: other')                             ! the ERI sub-steps are marked inside
       end if
 
       call cpu_time(end)
@@ -117,6 +129,7 @@ subroutine Tori1D(n_atoms,nBas,atoms,AO,geometry,OV,K,NA,ERI)
       write(outfile,'(A65,5X,I0,a,I0,a,I0,a,I0,4x,a)') 'Total CPU time for integrals = ',days,":",hours,":",minutes,":",seconds, "days:hour:min:sec"
       write(outfile,*)
       write(outfile,'(A65,5X,F12.3,a)') 'Wall time for integrals = ', w1 - w0, " s"
+      call tstep_print(outfile, 'integrals')                ! [Nov 2026]
       write(outfile,*)
       flush(outfile)
 

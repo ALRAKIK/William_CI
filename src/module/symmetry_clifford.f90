@@ -70,8 +70,8 @@
 !                                                                     !
 !   AO representation: every operation is a SIGNED PERMUTATION of the !
 !   Cartesian AOs (same atom shell, permuted lxyz, sign above).       !
-!   Check: max |s_m s_n M(pm,pn) - M(m,n)| for S, T, V and the same   !
-!   for the ERIs (all, or random quartets: ~2e7 checks in total).    !
+!   Check: max |s_m s_n M(pm,pn) - M(m,n)| for S, T, V (all pairs)   !
+!   and for a SAMPLE of the ERIs (see eri_dev).                       !
 !                                                                     !
 !=====================================================================!
 
@@ -164,7 +164,7 @@ contains
                           '   dS        dT        dV        dERI     ok'
         nbad = 0
         do k = 1, sym_nop
-          eS = mat_dev(nBas, S, k) ; eT = mat_dev(nBas, T, k) ; eV = mat_dev(nBas, V, k)
+          eS = mat_dev(nBas, nfuc_in, S, k) ; eT = mat_dev(nBas, nfuc_in, T, k) ; eV = mat_dev(nBas, nfuc_in, V, k)
           eE = -1.d0
           if (have_eri) eE = eri_dev(nBas, nfuc_in, n1, ERI, k)
           sym_ok(k) = max(eS, eT, eV, eE) <= chk_tol .and. all(sym_perm(:,k) > 0)
@@ -179,6 +179,8 @@ contains
         write(iout,'(a,i0,a,i0)') '   space-group operations mod lattice translations: ', sym_nop, &
                                   '   x lattice translations: ', nx*ny*nz
         if (.not. have_eri) write(iout,'(a)') '   (ERIs not stored: ERI check skipped, dERI = -1)'
+        if (have_eri) write(iout,'(a)') '   dERI: sample per operation = quartets of cell 0 (all, or 20000 random) +'// &
+                                        ' 50 non-negligible random quartets per AO of cell 0'
         if (len_trim(sym_eri_note) > 0) write(iout,'(a)') '   ERIs: '//trim(sym_eri_note)
         if (nbad == 0) then
           write(iout,'(a,es8.1,a)') '   symmetry check: all operations OK (tolerance ', chk_tol, ' Eh)'
@@ -576,8 +578,11 @@ contains
       !---------------------------------------------------------------!
       ! max |s_m s_n M(Pm,Pn) - M(m,n)|                               !
       !---------------------------------------------------------------!
-      double precision function mat_dev(nBas, M, k)
-        integer, intent(in) :: nBas, k
+      double precision function mat_dev(nBas, nrow, M, k)
+        ! [Nov 2026] rows i <= nrow (= nfuc) only: these are the rows that are
+        ! computed; the other rows are copies by translation (fill_with_symmetry).
+        ! (was: all nBas rows, N_cell times more work for the same information)
+        integer, intent(in) :: nBas, nrow, k
         double precision, intent(in) :: M(nBas,nBas)
         integer :: i, j
         double precision :: d
@@ -587,7 +592,7 @@ contains
         end if
         !$omp parallel do default(shared) private(i,j) reduction(max:d)
         do j = 1, nBas
-          do i = 1, nBas
+          do i = 1, min(nrow, nBas)
             d = max(d, abs(sym_sign(i,k)*sym_sign(j,k)*M(sym_perm(i,k),sym_perm(j,k)) - M(i,j)))
           end do
         end do
@@ -599,52 +604,74 @@ contains
       ! ERI check. ERI(n1,nBas,nBas,nBas): n1 = nBas (all indices) or  !
       ! n1 = nfuc (SAO: first index in cell 0; the image quartet is    !
       ! translated back so that its first index is in cell 0).         !
-      ! All quartets if n1*nBas^3 <= max(2e5, 2e7/nop), else as many   !
-      ! random ones.                                                   !
+      ! [Nov 2026] sampled: cell-0 quartets + non-negligible random    !
+      ! quartets for every AO of cell 0 (details in the function).     !
       !---------------------------------------------------------------!
       double precision function eri_dev(nBas, nfuc, n1, ERI, k)
+        ! [Nov 2026] SAMPLED check (was: up to 2e7 random quartets, ~1 s, mostly
+        ! negligible integrals that test nothing). An operation that is wrong
+        ! is wrong for a whole class of functions (a sign of p_x, a swapped
+        ! d component, a wrong atom image), so a sample that contains every
+        ! function of the unit cell in the first index, with LARGE integrals,
+        ! finds it. Per operation:
+        !   a) all quartets with the 4 indices in cell 0 (the largest ones),
+        !      if n1*nfuc^3 <= ERI_CHK_CELL0, else ERI_CHK_CELL0 random ones;
+        !   b) for each AO p of cell 0: random (q in cell 0, r anywhere, s in
+        !      the cell of r), kept only if
+        !      |ERI| > 1e-8, until ERI_CHK_PER_P are kept (at most 5x tries).
+        ! Random numbers: fixed seed per operation (reproducible).
         integer, intent(in) :: nBas, nfuc, n1, k
         double precision, intent(in) :: ERI(n1,nBas,nBas,nBas)
-        integer :: p, q, r, s, pp(4), it
-        integer(8) :: ntot, nsamp
-        double precision :: d, val
-        double precision, allocatable :: rnd(:,:)
+        integer, parameter :: ERI_CHK_CELL0 = 20000, ERI_CHK_PER_P = 50
+        double precision, parameter :: big = 1.d-8
+        integer :: p, q, r, s, pp(4), it, nkeep, ntry, nc
+        integer(8) :: seed
+        double precision :: d, val, x
         if (any(sym_perm(:,k) == 0)) then
           eri_dev = huge(1.d0) ; return
         end if
         d = 0.d0
-        ntot  = int(n1,8)*int(nBas,8)**3
-        nsamp = max(200000_8, 20000000_8/int(max(sym_nop,1),8))    ! <= ~2e7 quartets in total
-        if (ntot <= nsamp) then
-          !$omp parallel do default(shared) private(p,q,r,s,pp,val) reduction(max:d) collapse(2)
-          do s = 1, nBas
-            do r = 1, nBas
-              do q = 1, nBas
-                do p = 1, n1
-                  call image_quartet(p, q, r, s, pp, val)
-                  d = max(d, abs(val*ERI(pp(1),pp(2),pp(3),pp(4)) - ERI(p,q,r,s)))
-                end do
-              end do
-            end do
-          end do
-          !$omp end parallel do
+        nc = min(nfuc, nBas)
+        seed = 12345_8 + 7919_8*int(k,8)            ! in [1, 2^31-2]
+        ! a) cell 0
+        if (int(n1,8)*int(nc,8)**3 <= ERI_CHK_CELL0) then
+          do s = 1, nc ; do r = 1, nc ; do q = 1, nc ; do p = 1, min(n1,nc)
+            call image_quartet(p, q, r, s, pp, val)
+            d = max(d, abs(val*ERI(pp(1),pp(2),pp(3),pp(4)) - ERI(p,q,r,s)))
+          end do ; end do ; end do ; end do
         else
-          allocate(rnd(4,nsamp))
-          call random_number(rnd)
-          !$omp parallel do default(shared) private(it,p,q,r,s,pp,val) reduction(max:d)
-          do it = 1, int(nsamp)
-            p = min(n1,   1 + int(rnd(1,it)*n1))
-            q = min(nBas, 1 + int(rnd(2,it)*nBas))
-            r = min(nBas, 1 + int(rnd(3,it)*nBas))
-            s = min(nBas, 1 + int(rnd(4,it)*nBas))
+          do it = 1, ERI_CHK_CELL0
+            p = 1 + int(rnd()*min(n1,nc)) ; q = 1 + int(rnd()*nc)
+            r = 1 + int(rnd()*nc)          ; s = 1 + int(rnd()*nc)
             call image_quartet(p, q, r, s, pp, val)
             d = max(d, abs(val*ERI(pp(1),pp(2),pp(3),pp(4)) - ERI(p,q,r,s)))
           end do
-          !$omp end parallel do
-          deallocate(rnd)
         end if
+        ! b) every AO of cell 0 with random non-negligible partners
+        do p = 1, min(n1, nc)
+          nkeep = 0 ; ntry = 0
+          do while (nkeep < ERI_CHK_PER_P .and. ntry < 5*ERI_CHK_PER_P)
+            ntry = ntry + 1
+            ! (pq| local: q in cell 0 ; |rs) local: r anywhere, s in the cell of r.
+            ! Such quartets are non-negligible (Coulomb 1/R) and span the supercell;
+            ! fully random (q,r,s) are almost always ~0 and test nothing.
+            q = 1 + int(rnd()*nc)
+            r = 1 + int(rnd()*nBas)
+            s = ((r-1)/nc)*nc + 1 + int(rnd()*nc)
+            if (s > nBas) s = r
+            call image_quartet(p, q, r, s, pp, val)
+            x = ERI(pp(1),pp(2),pp(3),pp(4))
+            if (abs(ERI(p,q,r,s)) < big .and. abs(x) < big) cycle
+            nkeep = nkeep + 1
+            d = max(d, abs(val*x - ERI(p,q,r,s)))
+          end do
+        end do
         eri_dev = d
       contains
+        double precision function rnd()          ! 0 <= rnd < 1, Park-Miller LCG, fixed seed (no overflow)
+          seed = mod(seed*48271_8, 2147483647_8)
+          rnd = dble(seed - 1) / 2147483646.d0
+        end function rnd
         subroutine image_quartet(p, q, r, s, pp, sg)
           integer, intent(in) :: p, q, r, s
           integer, intent(out) :: pp(4)

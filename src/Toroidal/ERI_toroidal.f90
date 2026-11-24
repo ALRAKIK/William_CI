@@ -43,7 +43,8 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       use unitcell_module
       use debug_tools
       use clifford_tools, only : init_clifford, orbital_to_lxyz, setup_t_tables, bessel_nmax_estimate, &
-                                 ps_on, ps_noscreen, ps_qp, ps_bra, ps_ket, pair_cache_free
+                                 ps_on, ps_noscreen, ps_qp, ps_bra, ps_ket, pair_cache_free, &
+                                 tstep                        ! [Nov 2026] wall time per step
       use symmetry_clifford, only : sym_ready, sym_nop, sym_perm, sym_sign, sym_eri_note   ! [Nov 2026]
 
       implicit none
@@ -235,6 +236,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       end do
 
       ! ---- symmetry-unique shell quartets (translation x 8-fold) ---- !
+      call tstep('ERI: shell tables + Schwarz')           ! [Nov 2026]
       if (sym_ok) then
 
         Qmax = maxval(Qsh)
@@ -288,6 +290,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
                sym_nop-1, ' operations: max dev ', dev_pg, '   (', w_pg1-w_pg0, ' s)'
           if (.not. use_pg) write(outfile,'(a)') ' symmetry: '//trim(sym_eri_note)
         end if
+        if (use_pg) call tstep('ERI: symmetry self-check')
         n_old = 0 ; n_new = 0
 
         ! ---- keyword prim_screen: primitive-pair Schwarz table ---- !
@@ -332,7 +335,9 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
           ps_noscreen = .false.
           ps_on = .true.
         end if
+        call tstep('ERI: primitive Schwarz table')
         call zero_eri_parallel(ERI_size, nBas, two_electron_integrals)   ! [Nov 2026] OpenMP first touch (was 2.5 s for 3.7 GB)
+        call tstep('ERI: zero the ERI array')
 
         !$omp parallel do default(shared) private(SI,SJ,SK,SL,blk,a,b,c,d,i,j,k,l,val,q4,qc,pp,ii,iperm,ab,t4,r4,ip8) &
         !$omp private(ig,gq,g4,i2,j2,k2,l2,val2) reduction(+:n_old,n_new) &
@@ -453,6 +458,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
           end do
         end do
         !$omp end parallel do
+        call tstep('ERI: quartets computed + written')
         ps_on = .false.
         if (allocated(ps_qp)) deallocate(ps_qp)
         if (use_pg .and. n_new > 0) then
@@ -486,6 +492,7 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       ! SAO : the output IS (nfuc,nBas,nBas,nBas) ; normal : the rows
       ! i > nfuc are filled afterwards by translation (in place).
       call zero_eri_parallel(ERI_size, nBas, two_electron_integrals)   ! [Nov 2026] OpenMP first touch
+      call tstep('ERI: zero the ERI array')
 
       !$omp parallel do default(shared) private(ip,SI,SJ,SK,SL,blk,a,b,c,d,i,j,k,l,val) schedule(dynamic,1)
       do ip = 1 , npair
@@ -539,9 +546,11 @@ subroutine ERI_integral_toroidal(ndp,nBas,AO,two_electron_integrals)
       deallocate(ip_I, ip_J)
 
       end if   ! sym_ok
+      if (.not. sym_ok) call tstep('ERI: quartets computed + written')
 
       if (.not. c_SAO) then
         call symmetry_of_integrals_ERI(nBas,nfuc,two_electron_integrals)        ! rows i > nfuc, in place
+        call tstep('ERI: rows of the other cells (no SAO)')
         if (c_debug) call check_eri_symmetry(nBas, two_electron_integrals, outfile)
       end if
 
