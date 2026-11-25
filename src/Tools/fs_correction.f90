@@ -48,15 +48,20 @@ subroutine fs_correction_3D(nBas, AO, n_atoms, geometry, charge, P, EHF)
       double precision  , intent(in) :: P(nBas,nBas)
       double precision  , intent(in) :: EHF      ! total HF energy of the supercell (electronic + nuclear)
 
-      integer, parameter :: NG_EL = 10                 ! electrons: |n_i| <= NG_EL
-      integer, parameter :: NGN(5) = (/ 30, 40, 50, 60, 70 /)   ! nuclei: several cutoffs, extrapolated
+      ! [Nov 2026] adaptive G cutoff for the electrons: a primitive pair (exponent p) contributes
+      ! up to |G_d| = 10 sqrt(p) (its transform ~ exp(-G^2/4p) < 1e-11); NG = max over pairs,
+      ! capped at NG_CAP. Before: fixed |n| <= 10, too small for large cells (e.g. atom in a box).
+      integer, parameter :: NG_CAP = 200
+      integer, parameter :: NR_MAX = 16                ! exact-kernel remainder: |n_i| <= min(NG, NR_MAX)
       type(ERI_function), allocatable :: AOn(:)
-      integer :: nbes, Kc(3), lq(3,nBas), mu, nu, ip, jp, d, k, n, m, Mm, nmx, i1, i2, i3, nat_cell, j, nG
+      integer :: nbes, Kc(3), lq(3,nBas), mu, nu, ip, jp, d, k, n, m, Mm, nmx, i1, i2, i3, nat_cell, j
+      integer :: NG, NR, NGN(5), nl(3), npair_cap, nthr
+      double precision :: pmax, neglect
       double precision :: Lv(3), av(3), cell(3), Omega, pe(3), cen(3), r1(3), r2(3), pref, ex1, ex2, A
-      double precision :: G(3), G2, dv, e_nn, e_ne, e_ee, nel0, wmax, w0
-      double precision :: e_nn_cut(5), xf(3), coef(3), r_nn, r_ne, r_ee
-      double precision :: Rg(0:NG_EL,0:NG_EL,0:NG_EL)
-      complex(8), allocatable :: rho_el(:,:,:), rho_nuc(:,:,:), cm(:,:), dco(:)
+      double precision :: G(3), dv, e_nn, e_ne, e_ee, nel0, w0, e_nn_in, e_nn_tail
+      double precision :: e_nn_cut(5), coef(3), r_nn, r_ne, r_ee
+      double precision, allocatable :: Rg(:,:,:)
+      complex(8), allocatable :: rho_el(:,:,:), cm(:,:), dco(:)
       double precision, allocatable :: Iv(:)
       complex(8) :: zn, ze, ph
 
@@ -76,12 +81,33 @@ subroutine fs_correction_3D(nBas, AO, n_atoms, geometry, charge, P, EHF)
         call orbital_to_lxyz(AOn(mu)%orbital, lq(:,mu))
       end do
 
-      ! ---------------- electrons: rho_el(n1,n2,n3) ---------------- !
-      allocate(rho_el(-NG_EL:NG_EL,-NG_EL:NG_EL,-NG_EL:NG_EL))
+      ! ---------------- G cutoff for the electrons ---------------- !
+      NG = 4 ; npair_cap = 0 ; pmax = 0.d0
+      do mu = 1, nfuc
+        do ip = 1, size(AOn(mu)%exponent)
+          do jp = 1, size(AOn(mu)%exponent)        ! tightest pairs are on the same function / atom
+            ex1 = AOn(mu)%exponent(ip) + AOn(mu)%exponent(jp)
+            pmax = max(pmax, ex1)
+            do d = 1, 3
+              n = ceiling(10.d0*dsqrt(ex1)*cell(d)/(2.d0*acos(-1.d0))) + 2*lq(d,mu)
+              if (n > NG_CAP) npair_cap = npair_cap + 1
+              NG = max(NG, min(n, NG_CAP))
+            end do
+          end do
+        end do
+      end do
+      NR = min(NG, NR_MAX)
+      ! largest neglected transform factor exp(-G^2/4p) at the cutoff (1e-11 if not capped)
+      neglect = dexp(-(2.d0*acos(-1.d0)*dble(NG)/maxval(cell))**2/(4.d0*pmax))
+      ! the reduction copies one grid per thread: limit to ~2 GB in total
+      nthr = max(1, min(omp_get_max_threads(), int(2.d9/(16.d0*dble(2*NG+1)**3))))
+
+      ! ---------------- electrons: rho_el(n1,n2,n3), |n_i| <= NG ---------------- !
+      allocate(rho_el(-NG:NG,-NG:NG,-NG:NG))
       rho_el = (0.d0,0.d0)
-      nmx = NG_EL*maxval(Kc) + 12
-      !$omp parallel default(shared) private(nbes,mu,nu,ip,jp,d,k,n,m,Mm,pe,cen,r1,r2,pref,ex1,ex2,A,cm,dco,Iv,i1,i2,i3,ph,coef)
-      allocate(cm(-NG_EL:NG_EL,3), dco(-8:8), Iv(0:4000))
+      nmx = NG*maxval(Kc) + 12
+      !$omp parallel num_threads(nthr) default(shared) private(nbes,mu,nu,ip,jp,d,k,n,m,Mm,pe,cen,r1,r2,pref,ex1,ex2,A,cm,dco,Iv,i1,i2,i3,ph,coef,nl)
+      allocate(cm(-NG:NG,3), dco(-8:8), Iv(0:40000))
       !$omp do schedule(dynamic,8) reduction(+:rho_el)
       do mu = 1, nfuc
         do nu = 1, nBas
@@ -95,13 +121,18 @@ subroutine fs_correction_3D(nBas, AO, n_atoms, geometry, charge, P, EHF)
               call clifford_pair(3, ex1, ex2, r1, r2, pe, cen)
               pref = P(mu,nu)*AOn(mu)%coefficient(ip)*AOn(nu)%coefficient(jp)
               do d = 1, 3
+                coef(d) = Lv(d)*dexp(-2.d0*(ex1+ex2-pe(d))/av(d)**2)/av(d)**(lq(d,mu)+lq(d,nu))
+              end do
+              if (abs(pref*coef(1)*coef(2)*coef(3)) < 1.d-14) cycle
+              do d = 1, 3
                 Mm = lq(d,mu) + lq(d,nu)
-                coef(d) = Lv(d)*dexp(-2.d0*(ex1+ex2-pe(d))/av(d)**2)/av(d)**Mm
+                ! this pair's own cutoff along d (transform ~ exp(-G^2/4p))
+                nl(d) = min(NG, ceiling(10.d0*dsqrt(ex1+ex2)*cell(d)/(2.d0*acos(-1.d0))) + Mm)
                 A = 2.d0*pe(d)/av(d)**2
                 call fourier_sin_product(lq(d,mu), lq(d,nu), av(d)*(cen(d)-r1(d)), av(d)*(cen(d)-r2(d)), dco(-Mm:Mm))
-                nbes = min(4000, max(nmx+Mm, Mm + 40 + int(10.d0*dsqrt(A))))   ! [Nov 2026] backward recurrence start
+                nbes = min(40000, max(nl(d)*Kc(d)+12+Mm, Mm + 40 + int(10.d0*dsqrt(A))))   ! backward recurrence start
                 call bessel_scaled_vector_fast(nbes, A, Iv(0:nbes))
-                do n = -NG_EL, NG_EL
+                do n = -nl(d), nl(d)
                   m = n*Kc(d)
                   cm(n,d) = (0.d0,0.d0)
                   do k = -Mm, Mm
@@ -110,11 +141,10 @@ subroutine fs_correction_3D(nBas, AO, n_atoms, geometry, charge, P, EHF)
                   cm(n,d) = coef(d)*cm(n,d)*exp(dcmplx(0.d0, -dble(m)*av(d)*cen(d)))
                 end do
               end do
-              if (pref*coef(1)*coef(2)*coef(3) == 0.d0) cycle
-              do i3 = -NG_EL, NG_EL
-                do i2 = -NG_EL, NG_EL
+              do i3 = -nl(3), nl(3)
+                do i2 = -nl(2), nl(2)
                   ph = pref*cm(i2,2)*cm(i3,3)
-                  do i1 = -NG_EL, NG_EL
+                  do i1 = -nl(1), nl(1)
                     rho_el(i1,i2,i3) = rho_el(i1,i2,i3) + ph*cm(i1,1)
                   end do
                 end do
@@ -128,12 +158,15 @@ subroutine fs_correction_3D(nBas, AO, n_atoms, geometry, charge, P, EHF)
       !$omp end parallel
       nel0 = dble(rho_el(0,0,0))
 
-      ! ---------------- nuclei ---------------- !
-      ! cross and el-el terms with |n| <= NG_EL ; nuc-nuc with large cutoffs (extrapolated)
-      e_ne = 0.d0 ; e_ee = 0.d0
-      do i3 = -NG_EL, NG_EL
-        do i2 = -NG_EL, NG_EL
-          do i1 = -NG_EL, NG_EL
+      ! ---------------- sums over G ---------------- !
+      ! |n_i| <= NG : full rho = rho_nuc - rho_el (a^2 kernel)
+      ! |n_i| >  NG : nuclei only (electrons have decayed): point-charge tail, from
+      !               cutoffs NGN(1..5) extrapolated c0 + c1/n + c2/n^2, minus the part <= NG
+      e_nn_in = 0.d0 ; e_ne = 0.d0 ; e_ee = 0.d0
+      !$omp parallel do default(shared) private(i1,i2,i3,G,dv,zn,ze,j) reduction(+:e_nn_in,e_ne,e_ee) collapse(2)
+      do i3 = -NG, NG
+        do i2 = -NG, NG
+          do i1 = -NG, NG
             if (i1 == 0 .and. i2 == 0 .and. i3 == 0) cycle
             G = 2.d0*acos(-1.d0)*(/ dble(i1), dble(i2), dble(i3) /)/cell
             dv = dvG(G)
@@ -142,40 +175,29 @@ subroutine fs_correction_3D(nBas, AO, n_atoms, geometry, charge, P, EHF)
               zn = zn + dble(charge(j))*exp(dcmplx(0.d0, -sum(G*geometry(j,:))))
             end do
             ze = rho_el(i1,i2,i3)
+            e_nn_in = e_nn_in + dv*dble(zn*conjg(zn))
             e_ne = e_ne + dv*(-2.d0*dble(zn*conjg(ze)))
             e_ee = e_ee + dv*dble(ze*conjg(ze))
           end do
         end do
       end do
+      !$omp end parallel do
+      NGN = max(30, NG+10)*(/ 3, 4, 5, 6, 7 /)/3
       do k = 1, 5
-        nG = NGN(k)
-        e_nn_cut(k) = 0.d0
-        !$omp parallel do default(shared) private(i1,i2,i3,G,zn,j) reduction(+:e_nn_cut) collapse(2)
-        do i3 = -nG, nG
-          do i2 = -nG, nG
-            do i1 = -nG, nG
-              if (i1 == 0 .and. i2 == 0 .and. i3 == 0) cycle
-              G = 2.d0*acos(-1.d0)*(/ dble(i1), dble(i2), dble(i3) /)/cell
-              zn = (0.d0,0.d0)
-              do j = 1, nat_cell
-                zn = zn + dble(charge(j))*exp(dcmplx(0.d0, -sum(G*geometry(j,:))))
-              end do
-              e_nn_cut(k) = e_nn_cut(k) + dvG(G)*dble(zn*conjg(zn))
-            end do
-          end do
-        end do
-        !$omp end parallel do
+        e_nn_cut(k) = nuc_sum(NGN(k))
       end do
-      e_nn = extrap(e_nn_cut)
-      e_nn = e_nn/(2.d0*Omega) ; e_ne = e_ne/(2.d0*Omega) ; e_ee = e_ee/(2.d0*Omega)
+      e_nn_tail = extrap(e_nn_cut) - e_nn_in
+      e_nn = (e_nn_in + e_nn_tail)/(2.d0*Omega)
+      e_ne = e_ne/(2.d0*Omega) ; e_ee = e_ee/(2.d0*Omega)
 
-      ! [Nov 2026] higher orders of the kernel: R(G) = dv_exact(G) - dv_a2(G), |n_i| <= NG_EL
-      ! (tail |n_i| > NG_EL of R ~ a^4/G^6 neglected)
+      ! [Nov 2026] higher orders of the kernel: R(G) = dv_exact(G) - dv_a2(G), |n_i| <= NR
+      ! (tail |n_i| > NR of R ~ dv/n^2 neglected)
+      allocate(Rg(0:NR,0:NR,0:NR))
       call es_remainder(Rg)
       r_nn = 0.d0 ; r_ne = 0.d0 ; r_ee = 0.d0
-      do i3 = -NG_EL, NG_EL
-        do i2 = -NG_EL, NG_EL
-          do i1 = -NG_EL, NG_EL
+      do i3 = -NR, NR
+        do i2 = -NR, NR
+          do i1 = -NR, NR
             if (i1 == 0 .and. i2 == 0 .and. i3 == 0) cycle
             G = 2.d0*acos(-1.d0)*(/ dble(i1), dble(i2), dble(i3) /)/cell
             zn = (0.d0,0.d0)
@@ -199,13 +221,16 @@ subroutine fs_correction_3D(nBas, AO, n_atoms, geometry, charge, P, EHF)
       write(outfile,'(a)') ' ------------------------------------------------------------------'
       write(outfile,'(a,3i4)')        '  cells per direction K           : ', Kc
       write(outfile,'(a,f14.8)')      '  electrons per cell (rho_el(0))  : ', nel0
-      write(outfile,'(a,i4)')         '  electrons: G cutoff |n_i| <=    : ', NG_EL
-      write(outfile,'(a,5f14.8)')     '  nuc-nuc, cutoffs 30..70 (x 1/2Omega):', e_nn_cut/(2.d0*Omega)
+      write(outfile,'(a,i4,a,i4)')    '  electrons: G cutoff |n_i| <=    : ', NG, '   remainder: ', NR
+      if (npair_cap > 0) write(outfile,'(a,i4,a,es9.1,a)') '  cutoff capped at ', NG_CAP, &
+                         ': neglected transform factor ', neglect, ' (tightest pair)'
+      write(outfile,'(a,5i5)')        '  nuclei tail: cutoffs            : ', NGN
+      write(outfile,'(a,5f14.8)')     '  nuc-nuc at these cutoffs (x 1/2Omega):', e_nn_cut/(2.d0*Omega)
       write(outfile,'(a,f18.10,a)')   '  dE nuc-nuc (extrapolated)       : ', e_nn, ' Eh/cell'
       write(outfile,'(a,f18.10,a)')   '  dE nuc-el                       : ', e_ne, ' Eh/cell'
       write(outfile,'(a,f18.10,a)')   '  dE el-el                        : ', e_ee, ' Eh/cell'
       write(outfile,'(a,f18.10,a)')   '  dE_ES total                     : ', e_nn+e_ne+e_ee, ' Eh/cell'
-      write(outfile,'(a)')            '  higher orders of the kernel (exact - a^2 term, |n_i| <= 10):'
+      write(outfile,'(a)')            '  higher orders of the kernel (exact - a^2 term):'
       write(outfile,'(a,f18.10,a)')   '    nuc-nuc                       : ', r_nn, ' Eh/cell'
       write(outfile,'(a,f18.10,a)')   '    nuc-el                        : ', r_ne, ' Eh/cell'
       write(outfile,'(a,f18.10,a)')   '    el-el                         : ', r_ee, ' Eh/cell'
@@ -215,7 +240,7 @@ subroutine fs_correction_3D(nBas, AO, n_atoms, geometry, charge, P, EHF)
       write(outfile,'(a,f10.2,a)')    '  wall time                       : ', omp_get_wtime()-w0, ' s'
       write(outfile,'(a)') ' ------------------------------------------------------------------'
       flush(outfile)
-      deallocate(rho_el)
+      deallocate(rho_el, Rg)
 
       ! [Nov 2026] exchange part (localized orbitals, Gaussian model)
       call fs_exchange_3D(nBas, AOn, lq, P, Lv, av, Kc, EHF, e_nn+e_ne+e_ee, e_nn+e_ne+e_ee+r_nn+r_ne+r_ee)
@@ -223,41 +248,41 @@ subroutine fs_correction_3D(nBas, AO, n_atoms, geometry, charge, P, EHF)
 
 contains
 
-      ! [Nov 2026] R(G) = dv_exact(G) - dv_a2(G) for G = 2 pi n / cell, 0 <= n_i <= NG_EL
+      ! [Nov 2026] R(G) = dv_exact(G) - dv_a2(G) for G = 2 pi n / cell, 0 <= n_i <= NR
       !   dv_exact = (2/sqrt pi) int dt [ prod_d L_d I~_{m_d}(z_d) - P0 ],  P0 = pi^3/2 t^-3 exp(-G^2/4t^2)
       !   dv_a2    = (2/sqrt pi) int dt  P0 sum_d eps_d                     (analytic: dvG)
       !   eps_d    = a_d^2/(48 t^2) (G_d^4/(4 t^4) - 3 G_d^2/t^2 + 3),  m_d = n_d K_d,  z_d = 2 t^2/a_d^2
       ! t = exp(s), trapezoid in s.
       subroutine es_remainder(R)
-        double precision, intent(out) :: R(0:NG_EL,0:NG_EL,0:NG_EL)
+        double precision, intent(out) :: R(0:NR,0:NR,0:NR)
         double precision, allocatable :: Ivt(:), fac(:,:)
         double precision :: gmin, gmax, smin, smax, ds, t, wt, z, P0, eps, gv(3), g2, pi
         integer :: ns, is, dd, nb, j1, j2, j3
         pi = acos(-1.d0)
         gmin = 2.d0*pi/maxval(cell)
-        gmax = 2.d0*pi*dble(NG_EL)*dsqrt(sum(1.d0/cell**2))
+        gmax = 2.d0*pi*dble(NR)*dsqrt(sum(1.d0/cell**2))
         smin = dlog(gmin/40.d0) ; smax = dlog(20.d0*gmax)
         ds = 0.01d0 ; ns = int((smax-smin)/ds) + 1
         R = 0.d0
         !$omp parallel default(shared) private(is,t,wt,dd,z,nb,Ivt,fac,j1,j2,j3,gv,g2,P0,eps)
-        allocate(fac(0:NG_EL,3))
+        allocate(fac(0:NR,3))
         !$omp do schedule(dynamic,4) reduction(+:R)
         do is = 0, ns
           t = dexp(smin + dble(is)*ds)
           wt = t*ds ; if (is == 0 .or. is == ns) wt = 0.5d0*wt
           do dd = 1, 3
             z = 2.d0*t*t/av(dd)**2
-            nb = NG_EL*Kc(dd) + 40 + int(10.d0*dsqrt(z))
+            nb = NR*Kc(dd) + 40 + int(10.d0*dsqrt(z))
             allocate(Ivt(0:nb))
             call bessel_scaled_vector_fast(nb, z, Ivt)
-            do j1 = 0, NG_EL
+            do j1 = 0, NR
               fac(j1,dd) = Lv(dd)*Ivt(j1*Kc(dd))
             end do
             deallocate(Ivt)
           end do
-          do j3 = 0, NG_EL
-            do j2 = 0, NG_EL
-              do j1 = 0, NG_EL
+          do j3 = 0, NR
+            do j2 = 0, NR
+              do j1 = 0, NR
                 if (j1 == 0 .and. j2 == 0 .and. j3 == 0) cycle
                 gv = 2.d0*pi*(/ dble(j1), dble(j2), dble(j3) /)/cell
                 g2 = sum(gv**2)
@@ -273,6 +298,29 @@ contains
         !$omp end parallel
         R = 2.d0/dsqrt(pi)*R
       end subroutine es_remainder
+
+      double precision function nuc_sum(nc)       ! sum_{0<|n_i|<=nc} |rho_nuc(G)|^2 dv(G)
+        integer, intent(in) :: nc
+        integer :: q1, q2, q3, jj
+        double precision :: Gq(3)
+        complex(8) :: zq
+        nuc_sum = 0.d0
+        !$omp parallel do default(shared) private(q1,q2,q3,Gq,zq,jj) reduction(+:nuc_sum) collapse(2)
+        do q3 = -nc, nc
+          do q2 = -nc, nc
+            do q1 = -nc, nc
+              if (q1 == 0 .and. q2 == 0 .and. q3 == 0) cycle
+              Gq = 2.d0*acos(-1.d0)*(/ dble(q1), dble(q2), dble(q3) /)/cell
+              zq = (0.d0,0.d0)
+              do jj = 1, nat_cell
+                zq = zq + dble(charge(jj))*exp(dcmplx(0.d0, -sum(Gq*geometry(jj,:))))
+              end do
+              nuc_sum = nuc_sum + dvG(Gq)*dble(zq*conjg(zq))
+            end do
+          end do
+        end do
+        !$omp end parallel do
+      end function nuc_sum
 
       double precision function dvG(Gv)
         double precision, intent(in) :: Gv(3)
@@ -534,7 +582,7 @@ contains
         Ar = 0.d0
         if (present(Ai)) Ai = 0.d0
         !$omp parallel default(shared) private(mu,nu,ip,jp,dd,kk,Mm,nbes,mdir,r1,r2,pe,cen,ex1,ex2,A,coef,pref,dco,cc,val,Iv)
-        allocate(Iv(0:4000))
+        allocate(Iv(0:40000))
         !$omp do schedule(dynamic,4)
         do mu = 1, nBas
           r1 = (/ AOn(mu)%x, AOn(mu)%y, AOn(mu)%z /)
@@ -556,7 +604,7 @@ contains
                   mdir = 0 ; if (dd == dir) mdir = 1
                   A = 2.d0*pe(dd)/av(dd)**2
                   call fourier_sin_product(lq(dd,mu), lq(dd,nu), av(dd)*(cen(dd)-r1(dd)), av(dd)*(cen(dd)-r2(dd)), dco(-Mm:Mm))
-                  nbes = min(4000, Mm + 40 + int(10.d0*dsqrt(A)))   ! backward recurrence: start well above sqrt(A)
+                  nbes = min(40000, Mm + 40 + int(10.d0*dsqrt(A)))  ! backward recurrence: start well above sqrt(A)
                   call bessel_scaled_vector_fast(nbes, A, Iv(0:nbes))
                   cc(dd) = (0.d0,0.d0)
                   do kk = -Mm, Mm
