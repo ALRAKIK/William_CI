@@ -82,6 +82,7 @@ module symmetry_clifford
 
       public :: sym_run, sym_setup, sym_nop, sym_R, sym_t, sym_perm, sym_sign, sym_ok, sym_pg_name
       public :: sym_ready, sym_eri_note
+      public :: sym_maps_list                                  ! [Nov 2026] maps of the DF auxiliary basis
       public :: sym_pairs_on, sym_pair_is_rep, sym_pair_fill   ! [Nov 2026] one-electron matrices
 
       integer         , save              :: sym_nop = 0       ! space-group operations mod lattice translations
@@ -426,6 +427,23 @@ contains
         double precision  , intent(in) :: geometry(nat,3)
         integer           , intent(in) :: nBas
         type(ERI_function), intent(in) :: AO(nBas)
+        if (allocated(sym_perm)) deallocate(sym_perm, sym_sign)
+        allocate(sym_perm(nBas,sym_nop), sym_sign(nBas,sym_nop))
+        call sym_maps_list(geometry, nBas, AO, sym_perm, sym_sign)
+      end subroutine build_ao_maps
+
+      !---------------------------------------------------------------!
+      ! [Nov 2026] the operations as signed permutations of ANY list   !
+      ! of functions on the atoms (the AOs, or the auxiliary basis of  !
+      ! density fitting): perm(m,k) = image function, sgn(m,k) = +-1   !
+      ! (perm = 0 if no image: the list is not symmetric)              !
+      !---------------------------------------------------------------!
+      subroutine sym_maps_list(geometry, nBas, AO, perm, sgn_out)
+        use classification_ERI, only: ERI_function
+        double precision  , intent(in)  :: geometry(nat,3)
+        integer           , intent(in)  :: nBas
+        type(ERI_function), intent(in)  :: AO(nBas)
+        integer           , intent(out) :: perm(nBas,sym_nop), sgn_out(nBas,sym_nop)
         integer, allocatable :: ao_atom(:), first(:), last(:), lx(:,:), occ(:), amap(:)
         integer :: m, a, k, b, n, i, lnew(3), sgn, p(3), s(3), cnt
         integer, allocatable :: chg_dummy(:)
@@ -457,8 +475,6 @@ contains
           end do
         end do
 
-        if (allocated(sym_perm)) deallocate(sym_perm, sym_sign)
-        allocate(sym_perm(nBas,sym_nop), sym_sign(nBas,sym_nop))
         allocate(chg_dummy(nat))
         chg_dummy = 0                                        ! charges already checked in detect
         do k = 1, sym_nop
@@ -474,7 +490,7 @@ contains
             end do
           end do
           do m = 1, nBas
-            sym_perm(m,k) = 0 ; sym_sign(m,k) = 0
+            perm(m,k) = 0 ; sgn_out(m,k) = 0
             a = ao_atom(m)
             if (a == 0) cycle
             b = amap(a)
@@ -490,7 +506,7 @@ contains
                 cnt = cnt + 1
                 if (cnt == occ(m)) then
                   if (same_shell(AO(m), AO(n))) then
-                    sym_perm(m,k) = n ; sym_sign(m,k) = sgn
+                    perm(m,k) = n ; sgn_out(m,k) = sgn
                   end if
                   exit
                 end if
@@ -499,7 +515,7 @@ contains
           end do
         end do
         deallocate(ao_atom, first, last, lx, occ, amap, chg_dummy)
-      end subroutine build_ao_maps
+      end subroutine sym_maps_list
 
       integer function image_atom_nocharge(a, R, t, geometry)
         integer, intent(in) :: a, R(3,3)

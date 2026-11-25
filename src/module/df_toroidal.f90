@@ -8,10 +8,18 @@
 !     (mu nu|la si) ~ sum_Q B^Q_{mu nu} B^Q_{la si}                   !
 !     B^Q_{mu nu}   = sum_P (mu nu|P) [V^-1/2]_{PQ} , V_PQ = (P|Q)    !
 !                                                                     !
-!   Auxiliary basis: file AuxBasis (format of the file Basis), made   !
-!   by tools/make_auxbasis.py with PySCF's rule (JK-fit basis of the  !
-!   orbital basis, e.g. def2-svp-jkfit for sto-3g). Toroidal          !
-!   Cartesian functions, normalized like the AOs.                     !
+!   Auxiliary set [Nov 2026]: chosen by exactly ONE keyword           !
+!     df_etb           even-tempered Gaussian aux basis generated     !
+!                      from the orbital basis (PySCF rule, beta 2)    !
+!     df_auxfile       Gaussian aux basis from the file AuxBasis      !
+!                      (tools/make_auxbasis.py, e.g. def2-svp-jkfit)  !
+!     df_threshold_N   Cholesky fitting set: orbital products of the  !
+!                      integrals themselves, tolerance 1e-N (6,8,10)  !
+!   Gaussian aux functions are toroidal Cartesian functions,          !
+!   normalized like the AOs.                                          !
+!   With keyword symmetry (HF only): df_init_sym (Cholesky set) or    !
+!   df_init_sym_aux (Gaussian aux basis); both store B(k1,k2) for the !
+!   irreducible k2 only and share dfs_finish / df_JK_sym.             !
 !                                                                     !
 !   3- and 2-index integrals: the quartet kernel with a dummy s       !
 !   function of exponent 0 (the constant 1) next to each auxiliary    !
@@ -61,7 +69,7 @@ module df_toroidal
       double precision, parameter :: metric_tol_cd  = 1.0d-12   ! [Nov 2026] same, Cholesky fitting set
       double precision, parameter :: df_schwarz    = 1.0d-13
       double precision, parameter :: etb_beta      = 2.0d0     ! PySCF ETB_BETA
-      ! inputs kept for a rebuild with the MP2-fit basis (file AuxBasis_MP2)
+      ! inputs kept from df_init (sv_aoat: fitting-error report)
       integer, save :: sv_ndp = 0, sv_iout = 6
       type(ERI_function), allocatable, save :: sv_AO(:)
       double precision, allocatable, save :: sv_geom(:,:)
@@ -346,7 +354,7 @@ contains
         use atom_basis
         use unitcell_module, only: nfuc, nx, ny, nz, N_cell
         use torus_init     , only: ax, ay, az
-        use keywords       , only: c_df_etb, df_cd_tol, s_eig_min   ! [Nov 2026]
+        use keywords       , only: c_df_etb, c_df_auxfile, c_df_chol, df_cd_tol, s_eig_min   ! [Nov 2026]
         use keywords       , only: c_symmetry, c_MP2, c_ccsdt, c_fast_ccsdt   ! [Nov 2026] density_fitting + symmetry
         use symmetry_clifford, only: sym_ready, sym_nop
         use clifford_tools , only: orbital_to_lxyz, setup_t_tables, bessel_nmax_estimate, ps_on
@@ -423,11 +431,20 @@ contains
         allocate(df_phase(ncell,ncell)) ; df_phase = phase
 
         ! ---------------- auxiliary functions ---------------- !
-        ! [Nov 2026] default: Cholesky fitting set (orbital products chosen by a
-        ! pivoted Cholesky, tolerance cd_tol_eff). A file AuxBasis in the run folder,
-        ! the MP2 file AuxBasis_MP2, or keyword df_etb select a Gaussian aux basis.
+        ! [Nov 2026] the aux set is chosen by ONE keyword (see get_kw):
+        !   df_threshold_6/8/10 -> Cholesky fitting set (cdmode)
+        !   df_auxfile          -> file AuxBasis
+        !   df_etb              -> even-tempered, generated
+        ! (fname_in: an explicit aux-basis file name; not used at present)
         inquire(file=trim(fname), exist=use_file)
-        cdmode = .not. (use_file .or. present(fname_in) .or. c_df_etb)
+        if (.not. present(fname_in)) then
+          if (c_df_auxfile .and. .not. use_file) &
+            error stop 'keyword df_auxfile: no file AuxBasis in the run folder (tools/make_auxbasis.py)'
+          if (use_file .and. .not. c_df_auxfile) &
+            write(iout,'(a)') ' note: a file AuxBasis is present but NOT used (keyword df_auxfile to use it)'
+          use_file = c_df_auxfile
+        end if
+        cdmode = c_df_chol .and. .not. present(fname_in)
         cd_tol_eff = min(df_cd_tol, 1.d-4*s_eig_min**2)
         ! [Nov 2026] keywords density_fitting + symmetry (HF): symmetric Cholesky fitting set,
         ! B(k1,k2) for the irreducible k2 only (see df_init_sym)
@@ -451,7 +468,6 @@ contains
           allocate(AUX(0), afirst(0), ancp(0))
         else
         naux = 0
-        inquire(file=trim(fname), exist=use_file)
         if (.not. present(fname_in) .and. .not. use_file) fname = 'even-tempered (generated)'
         do i = 1, n_atoms
           aat(i)%charge = atoms(i)%charge
@@ -504,13 +520,27 @@ contains
         if (.not. use_file .and. .not. cdmode) call print_etb(n_atoms, aat, iout)
         if (cdmode) then
           write(iout,'(a)')        ' auxiliary set: orbital products chosen by pivoted Cholesky (Cholesky fitting)'
-          write(iout,'(a,es10.2)') '   requested tolerance (1e-8, df_cd_6: 1e-6, df_cd_10: 1e-10) : ', df_cd_tol
+          write(iout,'(a,es10.2)') '   requested tolerance (df_threshold_6/8/10)                : ', df_cd_tol
           write(iout,'(a,es10.2)') '   smallest overlap eigenvalue lambda_min(S)               : ', s_eig_min
           write(iout,'(a,es10.2)') '   tolerance used = min(requested, 1e-4 lambda_min(S)^2)    : ', cd_tol_eff
         end if
         write(iout,'(a,i10)') ' auxiliary functions per cell     : ', nau
         write(iout,'(a,i10)') ' auxiliary functions (total)      : ', naux
         flush(iout)
+
+        ! [Nov 2026] density_fitting + symmetry with a Gaussian aux basis (HF only)
+        if (.not. cdmode .and. .not. present(fname_in) .and. c_symmetry .and. sym_ready) then
+          if (sym_nop > 1) then
+            if (c_MP2 .or. c_ccsdt .or. c_fast_ccsdt) then
+              write(iout,'(a)') ' density_fitting + symmetry: MP2/CC need the full B -> fitting WITHOUT symmetry'
+            else
+              call df_init_sym_aux(ndp, nBas, AO, ncell, phase, nau, nash, nashuc, AUX, afirst, ancp, &
+                                   n_atoms, geometry, iout)
+              deallocate(phase, AUX, afirst, ancp, aat)
+              return
+            end if
+          end if
+        end if
 
         ! ---------------- metric (P0|Q R) ---------------- !
         w0 = omp_get_wtime()
@@ -966,7 +996,8 @@ contains
 
         if (.not. df_ready) error stop 'df_kMO: df_init not called'
         if (allocated(df_Bh)) deallocate(df_Bh)          ! exchange is done: free the k-space B
-        call df_rebuild_mp2()
+        ! [Nov 2026] MP2 uses the SAME aux set as HF (as PySCF's periodic DF-MP2); the
+        ! automatic rebuild with a file AuxBasis_MP2 was removed
         nau = df_nau ; naux = df_naux ; ncell = df_ncell
         no = p_hi - p_lo + 1 ; nv = q_hi - q_lo + 1
         allocate(phase(ncell,ncell))
@@ -1095,7 +1126,7 @@ contains
         if (.not. df_ready) error stop 'df_build_chol: df_init not called'
         if (allocated(df_Bh)) deallocate(df_Bh)          ! exchange is done: free the k-space B
         w0 = omp_get_wtime()
-        call df_rebuild_mp2()
+        ! [Nov 2026] CC uses the same aux set as HF (no AuxBasis_MP2 rebuild)
         ncell = df_ncell ; nau = df_nau
         allocate(phase(ncell,ncell))
         do k = 1, ncell
@@ -1128,24 +1159,6 @@ contains
         flush(iout)
       end subroutine df_build_chol
 
-      !-----------------------------------------------------------------!
-      ! optional file AuxBasis_MP2 (e.g. the RI/MP2-fit basis, as PySCF's !
-      ! molecular DF-MP2): B is rebuilt with it before the MP2 step      !
-      !-----------------------------------------------------------------!
-      subroutine df_rebuild_mp2()
-        use atom_basis
-        logical :: ex
-        integer :: i
-        type(atom), allocatable :: at(:)
-        inquire(file='AuxBasis_MP2', exist=ex)
-        if (.not. ex) return
-        allocate(at(size(sv_charge)))
-        do i = 1, size(sv_charge)
-          at(i)%charge = sv_charge(i)
-        end do
-        call df_init(sv_ndp, size(sv_charge), at, sv_geom, size(sv_AO), sv_AO, sv_iout, 'AuxBasis_MP2')
-        deallocate(at)
-      end subroutine df_rebuild_mp2
 
 
 
@@ -1770,48 +1783,8 @@ contains
         ! ---- per irreducible k2: V^-1/2 (eigenvalues > eig_cut), W = T3 V^-1/2, Bh slice ---- !
         t_c = omp_get_wtime()
         eig_cut = 1.d-2*tol
-        allocate(Vk(npiv,npiv), Vih(npiv,npiv), ew(npiv), rwork(3*npiv), work(1))
-        call zheev('V','U', npiv, Vk, npiv, ew, work, -1, rwork, info)
-        lwork = max(1, int(dble(work(1)))) ; deallocate(work) ; allocate(work(lwork))
-        allocate(Wk(nb,npiv), Wt(nfuc,npiv,nfuc,ncell))
-        if (allocated(dfs_B0)) deallocate(dfs_B0)
-        allocate(dfs_B0(nb, npiv))
-        lmin = huge(1.d0) ; lmax = 0.d0 ; nkeep = npiv
-        do ik = 1, nirr
-          kk = dfs_kirr(ik)
-          Vk = (0.d0,0.d0)
-          do r = 1, ncell
-            Vk = Vk + Vout(:,:,r)*phase(kk,r)
-          end do
-          Vk = 0.5d0*(Vk + conjg(transpose(Vk)))
-          call zheev('V','U', npiv, Vk, npiv, ew, work, lwork, rwork, info)
-          if (info /= 0) error stop 'df_init_sym: zheev of V(k) failed'
-          Vih = (0.d0,0.d0)
-          do i = 1, npiv
-            if (ew(i) > eig_cut) then
-              lmin = min(lmin, ew(i))
-              do j = 1, npiv
-                Vih(:,j) = Vih(:,j) + Vk(:,i)*conjg(Vk(j,i))/dsqrt(ew(i))
-              end do
-            end if
-          end do
-          nkeep = min(nkeep, count(ew > eig_cut)) ; lmax = max(lmax, maxval(ew))
-          call zgemm('N','N', nb, npiv, npiv, (1.d0,0.d0), dfs_big(1,ik), nb, Vih, npiv, (0.d0,0.d0), Wk, nb)
-          if (kk == 1) dfs_B0 = dble(Wk)                     ! k2 = 0: real
-          ! Wt(mu,Q,nu0,R1) = W(mu0, nu0 R1, Q) ; Bh(.,k1) = sum_R1 Wt(.,R1) e^{i k1 R1}
-          !$omp parallel do default(shared) private(r,b,q) collapse(2)
-          do r = 1, ncell
-            do b = 1, nfuc
-              do q = 1, npiv
-                Wt(:,q,b,r) = Wk((r-1)*nfuc*nfuc + (b-1)*nfuc + 1 : (r-1)*nfuc*nfuc + b*nfuc, q)
-              end do
-            end do
-          end do
-          !$omp end parallel do
-          call zgemm('N','T', nfuc*npiv*nfuc, ncell, ncell, (1.d0,0.d0), Wt, nfuc*npiv*nfuc, phase, ncell, &
-                     (0.d0,0.d0), dfs_big(1,ik), nfuc*npiv*nfuc)
-        end do
-        deallocate(Vk, Vih, ew, rwork, work, Wk, Wt, Vout)
+        call dfs_finish(nb, npiv, nirr, ncell, phase, Vout, eig_cut, lmin, lmax, nkeep)   ! [Nov 2026] shared with the aux-basis path
+        deallocate(Vout)
         t_c = omp_get_wtime() - t_c
 
         dfs_npiv = npiv ; dfs_nirr = nirr ; df_nau = npiv ; df_naux = npiv*ncell
@@ -1944,6 +1917,327 @@ contains
         end subroutine pair_cols
 
       end subroutine df_init_sym
+
+      !=================================================================!
+      ! [Nov 2026] density_fitting + symmetry with a GAUSSIAN auxiliary  !
+      ! basis (df_etb or df_auxfile). Same storage and the same J/K as   !
+      ! df_init_sym (Cholesky set): B(k1,k2) only for the irreducible k2 !
+      ! (point operations + time reversal), the other k2 by symmetry     !
+      ! (dfs_slice). Here the fitting functions are the aux functions of !
+      ! cell 0, mapped by the operations like the AOs (sym_maps_list):   !
+      !   g Q = s_Q * Q'(cell c)  ->  dfs_aqp = Q', dfs_aqc = c, dfs_aqs.!
+      ! Columns (a b|Q_0), a,b in the supercell, are computed only for   !
+      ! the representative aux shell of each orbit; the other aux        !
+      ! functions are images:                                            !
+      !   (x y|Q'_0) = s_Q s_xa s_ya (xa ya|Q_0) , xa = g^-1(x + c)       !
+      ! Metric (P0|Q R): all pairs (cheap). V^-1/2 from the eigenvalues  !
+      ! of V(k) (> metric_tol_aux), see dfs_finish.                      !
+      !=================================================================!
+      subroutine df_init_sym_aux(ndp, nBas, AO, ncell, phase, nau, nash, nashuc, AUX, afirst, ancp, &
+                                 natm, geometry, iout)
+        use unitcell_module  , only: nfuc
+        use eri_direct       , only: d_nsh, d_sh_first, d_sh_n, d_Qsh, set_ps
+        use clifford_tools   , only: ps_on
+        use keywords         , only: c_prim_screen
+        use symmetry_clifford, only: sym_nop, sym_perm, sym_sign, sym_maps_list
+        use omp_lib
+        integer           , intent(in) :: ndp, nBas, ncell, nau, nash, nashuc, natm, iout
+        type(ERI_function), intent(in) :: AO(nBas), AUX(nau*ncell)
+        integer           , intent(in) :: afirst(nash), ancp(nash)
+        complex(8)        , intent(in) :: phase(ncell,ncell)
+        double precision  , intent(in) :: geometry(natm,3)
+
+        integer :: nG, nb, naux, m, r, g, a, k, ik, nirr, SP, SQ, SPr, p, q, ii, c, J, kk, cshift
+        integer :: xr_, yr_, xa_, ya_, nrep, nkeep, ncomp, sl
+        integer, allocatable :: fc(:), fl(:), trT(:,:), invp(:,:), aperm(:,:), asgn(:,:), ash(:), srep(:)
+        integer, allocatable :: mrep(:), mcomp(:), mg(:), sh_of(:)
+        double precision, allocatable :: Vm(:,:), Vout(:,:,:), blk(:,:,:,:), colw(:,:,:), Qa(:)
+        double precision, allocatable :: X(:,:), Xr(:,:), Xi(:,:), Cph(:,:), Sph(:,:)
+        type(ERI_function) :: dumP(1), dumQ(1)
+        double precision :: w0, t_m, t_b, t_c, lmin, lmax, eig_cut
+
+        w0 = omp_get_wtime()
+        nG = sym_nop ; nb = nfuc*nBas ; naux = nau*ncell
+        write(iout,'(a)') ' Density fitting with symmetry, Gaussian auxiliary basis (keywords density_fitting + symmetry)'
+        write(iout,'(a,i0,a)') ' point operations used: ', nG, ' (with their translations)'
+        flush(iout)
+
+        ! ---- orbital cell tables (as df_init_sym) ---- !
+        allocate(fc(nBas), fl(nBas), trT(nBas,ncell), invp(nBas,nG))
+        do m = 1, nBas
+          fc(m) = (m-1)/nfuc + 1 ; fl(m) = mod(m-1,nfuc) + 1
+        end do
+        do r = 1, ncell
+          do m = 1, nBas
+            trT(m,r) = (csub(fc(m), r)-1)*nfuc + fl(m)          ! m shifted by -R(r)
+          end do
+        end do
+        do g = 1, nG
+          do m = 1, nBas
+            invp(sym_perm(m,g), g) = m
+          end do
+        end do
+        allocate(sh_of(nBas))                                 ! AO -> AO shell
+        do m = 1, d_nsh
+          sh_of(d_sh_first(m):d_sh_first(m)+d_sh_n(m)-1) = m
+        end do
+
+        ! ---- the operations on the aux functions ---- !
+        allocate(aperm(naux,nG), asgn(naux,nG))
+        call sym_maps_list(geometry, naux, AUX, aperm, asgn)
+        if (any(aperm(1:nau,:) == 0)) &
+          error stop 'density_fitting + symmetry: the auxiliary basis is not symmetric under the operations'
+        allocate(ash(naux))                                   ! aux function -> aux shell
+        do SP = 1, nash
+          ash(afirst(SP):afirst(SP)+ancp(SP)-1) = SP
+        end do
+
+        call df_kirr(ncell, nG, nirr)
+        write(iout,'(a,i0,a,i0)') ' k points: ', ncell, '   irreducible (point operations + time reversal): ', nirr
+
+        if (allocated(dfs_aqp)) deallocate(dfs_aqp, dfs_aqc, dfs_aqs, dfs_aop, dfs_aoc, dfs_aos)
+        allocate(dfs_aqp(nau,nG), dfs_aqc(nau,nG), dfs_aqs(nau,nG))
+        allocate(dfs_aop(nfuc,nG), dfs_aoc(nfuc,nG), dfs_aos(nfuc,nG))
+        do g = 1, nG
+          do a = 1, nfuc
+            dfs_aop(a,g) = fl(sym_perm(a,g)) ; dfs_aoc(a,g) = fc(sym_perm(a,g))
+            dfs_aos(a,g) = int(sym_sign(a,g),1)
+          end do
+          do q = 1, nau
+            dfs_aqp(q,g) = mod(aperm(q,g)-1,nau) + 1 ; dfs_aqc(q,g) = (aperm(q,g)-1)/nau + 1
+            dfs_aqs(q,g) = int(asgn(q,g),1)
+          end do
+        end do
+
+        ! ---- representative aux shell of each orbit, and for every aux function kk of
+        !      cell 0: (rep function J, operation g) with  g J = s * kk (cell c) ---- !
+        allocate(srep(nashuc), mrep(nau), mcomp(nau), mg(nau))
+        do SP = 1, nashuc
+          srep(SP) = SP
+          do g = 1, nG
+            SQ = mod(ash(aperm(afirst(SP),g))-1, nashuc) + 1     ! image shell, brought to cell 0
+            srep(SP) = min(srep(SP), SQ)
+          end do
+        end do
+        mrep = 0
+        do kk = 1, nau
+          SPr = srep(mod(ash(kk)-1,nashuc)+1)
+          do g = 1, nG
+            do c = 1, ancp(SPr)
+              J = afirst(SPr) + c - 1
+              if (mod(aperm(J,g)-1,nau)+1 == kk) then
+                mrep(kk) = J ; mcomp(kk) = c ; mg(kk) = g
+                exit
+              end if
+            end do
+            if (mrep(kk) /= 0) exit
+          end do
+          if (mrep(kk) == 0) error stop 'density_fitting + symmetry: aux orbit not found (bug)'
+        end do
+        nrep = count([(srep(SP) == SP, SP = 1, nashuc)])
+        write(iout,'(a,i0,a,i0)') ' aux shells per cell: ', nashuc, '   representative (columns computed): ', nrep
+        flush(iout)
+
+        ! ---- metric (P0|Q R) ---- !
+        t_m = omp_get_wtime()
+        allocate(Vm(nau,naux)) ; Vm = 0.d0
+        !$omp parallel do default(shared) private(SP,SQ,blk,dumP,dumQ,p,q) schedule(dynamic,1) collapse(2)
+        do SP = 1, nashuc
+          do SQ = 1, nash
+            call dummy_at(AUX(afirst(SP)), dumP(1))
+            call dummy_at(AUX(afirst(SQ)), dumQ(1))
+            allocate(blk(ancp(SP),1,ancp(SQ),1))
+            call ERI_shell_block_toroidal(ndp, ancp(SP), AUX(afirst(SP):), 1, dumP, &
+                                               ancp(SQ), AUX(afirst(SQ):), 1, dumQ, blk)
+            do q = 1, ancp(SQ)
+              do p = 1, ancp(SP)
+                Vm(afirst(SP)+p-1, afirst(SQ)+q-1) = blk(p,1,q,1)
+              end do
+            end do
+            deallocate(blk)
+          end do
+        end do
+        !$omp end parallel do
+        allocate(Vout(nau,nau,ncell), Qa(naux))
+        do r = 1, ncell
+          Vout(:,:,r) = Vm(:, (r-1)*nau+1:r*nau)
+          do p = 1, nau
+            Qa((r-1)*nau+p) = dsqrt(dabs(Vm(p,p)))
+          end do
+        end do
+        deallocate(Vm)
+        t_m = omp_get_wtime() - t_m
+
+        ! ---- T3(k2) for the irreducible k2: one representative aux shell at a time ---- !
+        t_b = omp_get_wtime()
+        if (allocated(dfs_big)) deallocate(dfs_big)
+        allocate(dfs_big(int(nb,8)*int(nau,8), nirr)) ; dfs_big = (0.d0,0.d0)
+        allocate(X(nb, ncell), Xr(nb, nirr), Xi(nb, nirr), Cph(ncell,nirr), Sph(ncell,nirr))
+        do ik = 1, nirr
+          do r = 1, ncell
+            Cph(r,ik) = dble(phase(dfs_kirr(ik),r)) ; Sph(r,ik) = aimag(phase(dfs_kirr(ik),r))
+          end do
+        end do
+        do SPr = 1, nashuc
+          if (srep(SPr) /= SPr) cycle
+          call aux_cols(SPr)                                  ! colw(a,b,c) = (a b|Q_c 0)
+          do kk = 1, nau
+            if (ash(mrep(kk)) /= SPr) cycle
+            J = mrep(kk) ; c = mcomp(kk) ; g = mg(kk)
+            cshift = (aperm(J,g)-1)/nau + 1                   ! cell of the image of J
+            ! X(mu0 nu, R) = (mu_-R nu_-R | kk_0) = s_J s_xa s_ya colw(xa, ya), xa = g^-1(x_-R + c)
+            !$omp parallel do default(shared) private(r,ii,p,q,xr_,yr_,xa_,ya_) schedule(static)
+            do r = 1, ncell
+              do ii = 1, nb
+                p = mod(ii-1,nfuc) + 1 ; q = (ii-1)/nfuc + 1
+                xr_ = trT(p, r) ; yr_ = trT(q, r)
+                xa_ = invp((cadd(fc(xr_),cshift)-1)*nfuc + fl(xr_), g)
+                ya_ = invp((cadd(fc(yr_),cshift)-1)*nfuc + fl(yr_), g)
+                X(ii, r) = dble(sym_sign(xa_,g)*sym_sign(ya_,g)*asgn(J,g))*colw(xa_, ya_, c)
+              end do
+            end do
+            !$omp end parallel do
+            call dgemm('N','N', nb, nirr, ncell, 1.d0, X, nb, Cph, ncell, 0.d0, Xr, nb)
+            call dgemm('N','N', nb, nirr, ncell, 1.d0, X, nb, Sph, ncell, 0.d0, Xi, nb)
+            do ik = 1, nirr
+              dfs_big(int(kk-1,8)*nb+1:int(kk,8)*nb, ik) = cmplx(Xr(:,ik), Xi(:,ik), kind=8)
+            end do
+          end do
+        end do
+        if (allocated(colw)) deallocate(colw)
+        deallocate(X, Xr, Xi, Cph, Sph)
+        t_b = omp_get_wtime() - t_b
+
+        ! ---- V^-1/2 per irreducible k2, B slices (shared with the Cholesky path) ---- !
+        t_c = omp_get_wtime()
+        eig_cut = metric_tol_aux
+        call dfs_finish(nb, nau, nirr, ncell, phase, Vout, eig_cut, lmin, lmax, nkeep)
+        deallocate(Vout)
+        t_c = omp_get_wtime() - t_c
+
+        dfs_npiv = nau ; dfs_nirr = nirr ; df_nau = nau ; df_naux = naux
+        df_sym = .true. ; df_ready = .true.
+        write(iout,'(a,2es12.4)') ' eigenvalues of V(k) kept (min, max)  : ', lmin, lmax
+        write(iout,'(a,es10.2,a,i0,a,i0)') ' eigenvalue cut ', eig_cut, ' ; smallest number kept over k: ', nkeep, &
+                                         ' of ', nau
+        write(iout,'(a,f10.2,a)') ' wall time metric (P|Q)               : ', t_m, ' s'
+        write(iout,'(a,f10.2,a)') ' wall time T3(k) (representative aux) : ', t_b, ' s'
+        write(iout,'(a,f10.2,a)') ' wall time V^-1/2 and B(k1,k2)        : ', t_c, ' s'
+        write(iout,'(a,f10.3,a)') ' memory of B(k1,k2), irreducible k2   : ', &
+             16.d0*dble(nb)*dble(nau)*dble(nirr)/1024.d0**3, ' GB'
+        write(iout,'(a,f10.3,a)') '   (all k2 would be                   : ', &
+             16.d0*dble(nb)*dble(nau)*dble(ncell)/1024.d0**3, ' GB)'
+        write(iout,'(a,f10.2,a)') ' wall time density fitting setup      : ', omp_get_wtime()-w0, ' s'
+        write(iout,'(a)') '------------------------------------------------------------'
+        flush(iout)
+        deallocate(fc, fl, trT, invp, aperm, asgn, ash, srep, mrep, mcomp, mg, Qa, sh_of)
+
+      contains
+
+        ! colw(a, b, c) = (a b | Q_c 0) for the components c of aux shell SP0 (cell 0),
+        ! a, b in the supercell; quartets moved so that their first shell is in cell 0
+        subroutine aux_cols(SP0)
+          integer, intent(in) :: SP0
+          integer :: S1, S2, x_, y_, c_, r1_, T1, T2, TP, fx, fy, nC
+          double precision, allocatable :: bk(:,:,:,:)
+          type(ERI_function) :: dum(1)
+          nC = ancp(SP0)
+          if (allocated(colw)) deallocate(colw)
+          allocate(colw(nBas, nBas, nC)) ; colw = 0.d0
+          ps_on = .false.
+          !$omp parallel do default(shared) private(S1,S2,bk,x_,y_,c_,r1_,T1,T2,TP,fx,fy,dum) schedule(dynamic,1)
+          do S1 = 1, d_nsh
+            do S2 = S1, d_nsh
+              r1_ = fc(d_sh_first(S1))
+              TP = (csub(1, r1_)-1)*nashuc + SP0                ! aux shell moved by -R(r1)
+              if (d_Qsh(S1,S2)*maxval(Qa(afirst(TP):afirst(TP)+nC-1)) < df_schwarz) cycle
+              T1 = sh_of(trT(d_sh_first(S1), r1_)) ; T2 = sh_of(trT(d_sh_first(S2), r1_))
+              call dummy_at(AUX(afirst(TP)), dum(1))
+              allocate(bk(d_sh_n(S1),d_sh_n(S2),nC,1))
+              call ERI_shell_block_toroidal(ndp, d_sh_n(S1), AO(d_sh_first(T1):), d_sh_n(S2), AO(d_sh_first(T2):), &
+                                                 nC, AUX(afirst(TP):), 1, dum, bk)
+              do c_ = 1, nC
+                do y_ = 1, d_sh_n(S2)
+                  fy = d_sh_first(S2)+y_-1
+                  do x_ = 1, d_sh_n(S1)
+                    fx = d_sh_first(S1)+x_-1
+                    colw(fx, fy, c_) = bk(x_,y_,c_,1)
+                    colw(fy, fx, c_) = bk(x_,y_,c_,1)
+                  end do
+                end do
+              end do
+              deallocate(bk)
+            end do
+          end do
+          !$omp end parallel do
+        end subroutine aux_cols
+
+
+      end subroutine df_init_sym_aux
+
+      !=================================================================!
+      ! [Nov 2026] last step of the symmetric fitting (Cholesky set or   !
+      ! Gaussian aux basis): per irreducible k2                          !
+      !   V(k2) = sum_R V(R) e^{ik2 R} ,  V^-1/2 from its eigenvalues     !
+      !   (> eig_cut: the cut keeps or drops whole degenerate sets, so   !
+      !   the fit stays symmetric; a pivoted Cholesky would not),        !
+      !   W = T3(k2) V^-1/2 ,  B(k2=0) kept real in dfs_B0,              !
+      !   dfs_big(.,ik) <- Bh(mu,Q,nu0; k1,k2) = sum_R1 W(mu0,nu0 R1,Q) e^{ik1 R1}
+      ! In : dfs_big(nb*npiv, nirr) = T3(mu0 nu, Q; k2) ; Vout(P,Q,R) = (P0|Q R)
+      !=================================================================!
+      subroutine dfs_finish(nb, npiv, nirr, ncell, phase, Vout, eig_cut, lmin, lmax, nkeep)
+        use unitcell_module, only: nfuc
+        integer         , intent(in)  :: nb, npiv, nirr, ncell
+        complex(8)      , intent(in)  :: phase(ncell,ncell)
+        double precision, intent(in)  :: Vout(npiv,npiv,ncell), eig_cut
+        double precision, intent(out) :: lmin, lmax
+        integer         , intent(out) :: nkeep
+        complex(8), allocatable :: Vk(:,:), Vih(:,:), Wk(:,:), Wt(:,:,:,:), work(:)
+        double precision, allocatable :: ew(:), rwork(:)
+        integer :: ik, kk, r, i, j, b, q, lwork, info
+        allocate(Vk(npiv,npiv), Vih(npiv,npiv), ew(npiv), rwork(3*npiv), work(1))
+        call zheev('V','U', npiv, Vk, npiv, ew, work, -1, rwork, info)
+        lwork = max(1, int(dble(work(1)))) ; deallocate(work) ; allocate(work(lwork))
+        allocate(Wk(nb,npiv), Wt(nfuc,npiv,nfuc,ncell))
+        if (allocated(dfs_B0)) deallocate(dfs_B0)
+        allocate(dfs_B0(nb, npiv))
+        lmin = huge(1.d0) ; lmax = 0.d0 ; nkeep = npiv
+        do ik = 1, nirr
+          kk = dfs_kirr(ik)
+          Vk = (0.d0,0.d0)
+          do r = 1, ncell
+            Vk = Vk + Vout(:,:,r)*phase(kk,r)
+          end do
+          Vk = 0.5d0*(Vk + conjg(transpose(Vk)))
+          call zheev('V','U', npiv, Vk, npiv, ew, work, lwork, rwork, info)
+          if (info /= 0) error stop 'df_init_sym: zheev of V(k) failed'
+          Vih = (0.d0,0.d0)
+          do i = 1, npiv
+            if (ew(i) > eig_cut) then
+              lmin = min(lmin, ew(i))
+              do j = 1, npiv
+                Vih(:,j) = Vih(:,j) + Vk(:,i)*conjg(Vk(j,i))/dsqrt(ew(i))
+              end do
+            end if
+          end do
+          nkeep = min(nkeep, count(ew > eig_cut)) ; lmax = max(lmax, maxval(ew))
+          call zgemm('N','N', nb, npiv, npiv, (1.d0,0.d0), dfs_big(1,ik), nb, Vih, npiv, (0.d0,0.d0), Wk, nb)
+          if (kk == 1) dfs_B0 = dble(Wk)                     ! k2 = 0: real
+          ! Wt(mu,Q,nu0,R1) = W(mu0, nu0 R1, Q) ; Bh(.,k1) = sum_R1 Wt(.,R1) e^{i k1 R1}
+          !$omp parallel do default(shared) private(r,b,q) collapse(2)
+          do r = 1, ncell
+            do b = 1, nfuc
+              do q = 1, npiv
+                Wt(:,q,b,r) = Wk((r-1)*nfuc*nfuc + (b-1)*nfuc + 1 : (r-1)*nfuc*nfuc + b*nfuc, q)
+              end do
+            end do
+          end do
+          !$omp end parallel do
+          call zgemm('N','T', nfuc*npiv*nfuc, ncell, ncell, (1.d0,0.d0), Wt, nfuc*npiv*nfuc, phase, ncell, &
+                     (0.d0,0.d0), dfs_big(1,ik), nfuc*npiv*nfuc)
+        end do
+        deallocate(Vk, Vih, ew, rwork, work, Wk, Wt)
+      end subroutine dfs_finish
 
       !-----------------------------------------------------------------!
       ! irreducible k points: dfs_kirr(1:nirr) representatives (Gamma   !

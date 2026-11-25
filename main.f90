@@ -16,6 +16,7 @@ program CI
       use omp_lib , only : omp_get_wtime
       use df_toroidal, only : df_kMO , df_build_chol   ! [Nov 2026] keyword density_fitting
       use symmetry_clifford, only : sym_run   ! [Nov 2026] keyword symmetry
+      use HF_parameter, only : hf_P_last      ! [Nov 2026] keyword fs_correction
 
       implicit none
 
@@ -500,6 +501,14 @@ program CI
           ! [Nov 2026] restart files: the CC amplitudes are only valid with the same
           ! orbitals (phases), so the HF orbitals of the first run are saved and reused
           if (c_checkpoint) call ckpt_orbitals(nBas, nO, coeff_SAO, e, blk)
+          ! [Nov 2026] keyword fs_correction: leading 1/K^2 finite-size correction (electrostatics)
+          if (c_fs_corr) then
+            if (calculation_type == "Tori3D") then
+              call fs_correction_3D(nBas, AO, n_atoms, geometry, charge, hf_P_last, EHF + E_nuc)
+            else
+              write(outfile,'(a)') ' keyword fs_correction: only for Tori3D at present, ignored'
+            end if
+          end if
         call cpu_time(end)
       else 
         call cpu_time(start)

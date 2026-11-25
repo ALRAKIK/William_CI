@@ -530,6 +530,12 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
 
         call print_mulliken_charges(nBas, natom, S, P, Zat)   ! [Nov 2026] real number of functions per atom
 
+        ! [Nov 2026] keyword fs_correction: keep the converged density for the finite-size correction
+        if (c_fs_corr) then
+          if (allocated(hf_P_last)) deallocate(hf_P_last)
+          allocate(hf_P_last(nBas,nBas)) ; hf_P_last = P
+        end if
+
         ! Memory deallocation
 
         deallocate(P,error,error_o,J,K,F,err_diis,F_diis,S_SAO,X_SAO,P_SAO,F_SAO,Fp_SAO,idx,e_sorted)

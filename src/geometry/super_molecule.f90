@@ -363,10 +363,16 @@ subroutine read_keywords(keyword)
         if (trim(line) == 'CC_to_disk')  keyword(35) = 'cc_disk'      ! [Nov 2026] vvvv k-blocks on disk in fast k-CCSD(T)
         if (trim(line) == 'direct')      keyword(36) = 'direct'       ! [Nov 2026] integral-direct HF and MP2 (no stored ERIs)
         if (trim(line) == 'density_fitting' .or. trim(line) == 'DF' .or. trim(line) == 'df') &
-                                         keyword(37) = 'df'           ! [Nov 2026] density fitting for HF and MP2 (file AuxBasis)
-        if (trim(line) == 'df_etb')      keyword(38) = 'df_etb'       ! [Nov 2026] DF with the even-tempered aux basis (not Cholesky fitting)
-        if (trim(line) == 'df_cd_6')     keyword(39) = 'df_cd_6'      ! [Nov 2026] Cholesky fitting tolerance 1e-6 (default 1e-8)
-        if (trim(line) == 'df_cd_10')    keyword(40) = 'df_cd_10'     ! [Nov 2026] Cholesky fitting tolerance 1e-10
+                                         keyword(37) = 'df'           ! [Nov 2026] density fitting for HF and MP2 (+ one aux-set keyword)
+        ! [Nov 2026] density_fitting needs exactly ONE of the next five (aux set choice)
+        if (trim(line) == 'df_etb')      keyword(38) = 'df_etb'       ! [Nov 2026] DF: even-tempered aux basis (PySCF rule)
+        if (trim(line) == 'df_auxfile')  keyword(43) = 'df_auxfile'   ! [Nov 2026] DF: aux basis from the file AuxBasis
+        if (trim(line) == 'df_threshold_6')  keyword(44) = 'df_thr_6'  ! [Nov 2026] DF: Cholesky fitting set from the integrals, tol 1e-6
+        if (trim(line) == 'df_threshold_8')  keyword(45) = 'df_thr_8'  ! [Nov 2026] same, tol 1e-8
+        if (trim(line) == 'df_threshold_10') keyword(46) = 'df_thr_10' ! [Nov 2026] same, tol 1e-10
+        if (trim(line) == 'fs_correction') keyword(47) = 'fs_corr'    ! [Nov 2026] 1/K^2 finite-size correction of the electrostatics
+        if (trim(line) == 'df_cd_6')     keyword(39) = 'df_cd_6'      ! [Nov 2026] renamed (df_threshold_6): read only to stop with a message
+        if (trim(line) == 'df_cd_10')    keyword(40) = 'df_cd_10'     ! [Nov 2026] renamed (df_threshold_10): read only to stop with a message
         if (trim(line) == 'rys_quad')    keyword(41) = 'rys_quad'     ! [Nov 2026] removed: only read to print a note
         if (trim(line) == 'symmetry')    keyword(42) = 'symmetry'     ! [Nov 2026] geometric symmetry: detection + integral check
 

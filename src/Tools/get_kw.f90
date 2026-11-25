@@ -5,6 +5,7 @@ subroutine  get_keywords(keyword)
       implicit none 
 
       character*(10) ,intent(in)  ::   keyword(100)
+      integer                     ::   n_df_choice      ! [Nov 2026] number of DF aux-set keywords
 
       c_integral    = any(keyword == 'Integrals' )
       c_read        = any(keyword == 'Read'      )
@@ -77,10 +78,45 @@ subroutine  get_keywords(keyword)
       ! [Nov 2026] keyword density_fitting: fitted J/K and (ov|ov), no 4-index ERIs stored
       !            (uses the direct-mode plumbing: no ERI array, AO shells and Schwarz bounds)
       c_df          = any(keyword == 'df'       )
-      c_df_etb      = any(keyword == 'df_etb'   )      ! [Nov 2026]
+      ! [Nov 2026] auxiliary set of density_fitting: exactly ONE of
+      !   df_etb          even-tempered Gaussian aux basis (PySCF rule)
+      !   df_auxfile      Gaussian aux basis read from the file AuxBasis
+      !   df_threshold_6  Cholesky fitting set from the integrals, tolerance 1e-6
+      !   df_threshold_8                                         ... 1e-8
+      !   df_threshold_10                                        ... 1e-10
+      ! No implicit default (the fitting error differs by orders of magnitude).
+      if (any(keyword == 'df_cd_6') .or. any(keyword == 'df_cd_10')) &
+        error stop 'keywords df_cd_6 / df_cd_10 were renamed: use df_threshold_6 / df_threshold_10'
+      c_df_etb      = any(keyword == 'df_etb'    )
+      c_df_auxfile  = any(keyword == 'df_auxfile')
+      c_fs_corr     = any(keyword == 'fs_corr')       ! [Nov 2026] finite-size correction
+      c_df_chol     = .false.
       df_cd_tol     = 1.0d-8
-      if (any(keyword == 'df_cd_6' )) df_cd_tol = 1.0d-6
-      if (any(keyword == 'df_cd_10')) df_cd_tol = 1.0d-10
+      n_df_choice   = 0
+      if (c_df_etb)     n_df_choice = n_df_choice + 1
+      if (c_df_auxfile) n_df_choice = n_df_choice + 1
+      if (any(keyword == 'df_thr_6' )) then
+        c_df_chol = .true. ; df_cd_tol = 1.0d-6  ; n_df_choice = n_df_choice + 1
+      end if
+      if (any(keyword == 'df_thr_8' )) then
+        c_df_chol = .true. ; df_cd_tol = 1.0d-8  ; n_df_choice = n_df_choice + 1
+      end if
+      if (any(keyword == 'df_thr_10')) then
+        c_df_chol = .true. ; df_cd_tol = 1.0d-10 ; n_df_choice = n_df_choice + 1
+      end if
+      if (c_df .and. n_df_choice == 0) then
+        write(*,'(a)') ' keyword density_fitting: choose the auxiliary set with ONE more keyword:'
+        write(*,'(a)') '   df_etb           even-tempered Gaussian aux basis (PySCF rule; fit error ~1e-3 Eh)'
+        write(*,'(a)') '   df_auxfile       Gaussian aux basis from the file AuxBasis (tools/make_auxbasis.py)'
+        write(*,'(a)') '   df_threshold_6   Cholesky fitting set from the integrals, tolerance 1e-6  (~1e-5 Eh)'
+        write(*,'(a)') '   df_threshold_8   same, tolerance 1e-8  (~1e-7 Eh)'
+        write(*,'(a)') '   df_threshold_10  same, tolerance 1e-10 (~1e-9 Eh)'
+        error stop 'keyword density_fitting: no auxiliary set chosen'
+      end if
+      if (c_df .and. n_df_choice > 1) &
+        error stop 'keyword density_fitting: give only ONE of df_etb, df_auxfile, df_threshold_6/8/10'
+      if (.not. c_df .and. n_df_choice > 0) &
+        write(*,'(a)') ' note: df_etb / df_auxfile / df_threshold_N without density_fitting: ignored'
       if (c_df) then
         if (.not. c_SAO) error stop 'keyword density_fitting needs SAO (toroidal RHF)'
         if (c_cholesky .or. c_cc_disk .or. c_MCDE .or. c_UHF) &

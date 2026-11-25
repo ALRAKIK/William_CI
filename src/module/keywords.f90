@@ -19,6 +19,8 @@ module keywords
       public  :: c_direct, c_df
       public  :: c_symmetry                         ! [Nov 2026] keyword symmetry
       public  :: c_df_etb, df_cd_tol, s_eig_min   ! [Nov 2026] density fitting: aux set, Cholesky tolerance
+      public  :: c_df_auxfile, c_df_chol          ! [Nov 2026] density fitting: aux set from file / Cholesky set
+      public  :: c_fs_corr                        ! [Nov 2026] finite-size correction (electrostatics)
       public  :: c_physicist
       public  :: c_ccsdt
       public  :: c_fast_ccsdt
@@ -52,7 +54,10 @@ module keywords
       logical :: c_direct   = .false.                                    ! [Nov 2026] keyword direct
       logical :: c_df       = .false.                                    ! [Nov 2026] keyword density_fitting
       logical :: c_symmetry = .false.                                    ! [Nov 2026] keyword symmetry: point symmetry used in V, ERIs, direct J/K, DF
-      logical :: c_df_etb   = .false.                                    ! [Nov 2026] keyword df_etb: even-tempered aux basis instead of Cholesky fitting
+      logical :: c_df_etb   = .false.                                    ! [Nov 2026] keyword df_etb: even-tempered aux basis (PySCF rule)
+      logical :: c_df_auxfile = .false.                                  ! [Nov 2026] keyword df_auxfile: aux basis from the file AuxBasis
+      logical :: c_fs_corr  = .false.                                    ! [Nov 2026] keyword fs_correction
+      logical :: c_df_chol  = .false.                                    ! [Nov 2026] keywords df_threshold_6/8/10: Cholesky fitting set
       logical :: c_physicist
       logical :: c_ccsdt
       logical :: c_fast_ccsdt 
@@ -71,7 +76,7 @@ module keywords
       logical :: c_block_lanczos = .false.                               ! [Nov 2026] keyword block_lanczos
 
       double precision   :: cholesky_tol = 1.0d-6
-      double precision   :: df_cd_tol = 1.0d-8                           ! [Nov 2026] Cholesky fitting tolerance (df_cd_6: 1e-6, df_cd_10: 1e-10)
+      double precision   :: df_cd_tol = 1.0d-8                           ! [Nov 2026] Cholesky fitting tolerance (df_threshold_6/8/10)
       double precision   :: s_eig_min = 1.0d0                            ! [Nov 2026] smallest overlap eigenvalue (set in check_the_overlap)
       character(len=512) :: ckpt_dir = './checkpoint'
 
