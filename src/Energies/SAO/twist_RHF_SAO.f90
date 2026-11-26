@@ -47,7 +47,7 @@ subroutine twist_RHF_SAO(nBas, nO, S, T, V, ERI, ENuc, P0)
       character(len=16) :: tst, tst2
       integer :: stage, Rf, dxyz(3), q, nent, ios, ufile
       double precision :: Estage1, wsum, fval, Wb, Wat, Estar
-      double precision, allocatable :: Fref(:,:), eref(:,:,:), occref(:,:,:), F3(:,:,:,:,:), C3(:,:,:)
+      double precision, allocatable :: Fref(:,:), eref(:,:,:), occref(:,:,:), F3(:,:,:,:,:), S3(:,:,:,:,:), C3(:,:,:)
       complex(dpc), allocatable :: Frr(:,:)
       logical :: have_file
       integer :: ltst, ist, ist2
@@ -314,25 +314,7 @@ subroutine twist_RHF_SAO(nBas, nO, S, T, V, ERI, ENuc, P0)
       ! file twist_reference.dat: if present, its Fock defines the Fermi surface (same surface for every n);
       ! otherwise this run writes it (copy the one of the largest cell next to the other runs)
       inquire(file='twist_reference.dat', exist=have_file)
-      if (have_file) then
-        open(newunit=ufile, file='twist_reference.dat', status='old', action='read')
-        read(ufile,*) q, Rf
-        if (q /= nfuc) error stop 'twist_reference.dat: different number of functions per cell'
-        allocate(F3(-Rf:Rf,-Rf:Rf,-Rf:Rf,nfuc,nfuc), C3(-Rf:Rf,-Rf:Rf,-Rf:Rf)) ; F3 = 0.d0 ; C3 = 0.d0
-        do
-          read(ufile,*,iostat=ios) dxyz, a, b, fval
-          if (ios /= 0) exit
-          F3(dxyz(1),dxyz(2),dxyz(3),a,b) = fval ; C3(dxyz(1),dxyz(2),dxyz(3)) = 1.d0
-        end do
-        close(ufile)
-        do nu = 1, nBas
-          do a = 1, nfuc
-            Fref(a,nu) = ref_value(a, fofb(nu), cellof(nu))
-          end do
-        end do
-        deallocate(F3, C3)
-        write(outfile,'(a,i4,a)') '  reference Fermi surface: read from twist_reference.dat (cell range +-', Rf, ')'
-      else
+      if (.not. have_file) then
         open(newunit=ufile, file='twist_reference.dat', status='replace', action='write')
         Rf = maxval(nn)/2
         write(ufile,'(2i6,3f16.10,a)') nfuc, Rf, Lx/dble(nx), Ly/dble(ny), Lz/dble(nz), &
@@ -346,17 +328,31 @@ subroutine twist_RHF_SAO(nBas, nO, S, T, V, ERI, ENuc, P0)
         end do
         close(ufile)
         write(outfile,'(a)') '  reference Fermi surface: from this run (written to twist_reference.dat)'
+      else
+        write(outfile,'(a)') '  reference Fermi surface: read from twist_reference.dat'
       end if
+      ! [Nov 2026] the reference band is ALWAYS evaluated from the file table, with its full range of cell
+      ! displacements (not truncated to this box): e_ref(k) is then the same function of k for every size n
+      open(newunit=ufile, file='twist_reference.dat', status='old', action='read')
+      read(ufile,*) q, Rf
+      if (q /= nfuc) error stop 'twist_reference.dat: different number of functions per cell'
+      allocate(F3(-Rf:Rf,-Rf:Rf,-Rf:Rf,nfuc,nfuc), S3(-Rf:Rf,-Rf:Rf,-Rf:Rf,nfuc,nfuc), C3(-Rf:Rf,-Rf:Rf,-Rf:Rf))
+      F3 = 0.d0 ; S3 = 0.d0 ; C3 = 0.d0 ; nent = 0
+      do
+        read(ufile,*,iostat=ios) dxyz, a, b, fval, wsum
+        if (ios /= 0) exit
+        F3(dxyz(1),dxyz(2),dxyz(3),a,b) = fval ; S3(dxyz(1),dxyz(2),dxyz(3),a,b) = wsum
+        C3(dxyz(1),dxyz(2),dxyz(3)) = 1.d0 ; nent = nent + 1
+      end do
+      close(ufile)
+      if (nent == 0) error stop 'twist_reference.dat: no entries (old format without the S column?)'
+      write(outfile,'(a,i4,a,i8)') '  reference table: cell range +-', Rf, ' , entries ', nent
       ! reference eigenvalues on every twisted grid and occupations with the exact electron number
       k = 0
       do i = 1, ntw
-        call cell_phases(tw_th(:,i), Pc)
-        call ao_phases(Pc, PHk)
-        Frr = Fref*PHk(1:nfuc,:)
         !$omp parallel do default(shared) private(kb,Ak,Sk,Xk)
         do kb = 1, N_cell
-          call k_block(Frr, Pc, kb, .true., Ak)
-          call k_block_S(Pc, kb, Sk)
+          call ref_block(tw_th(:,i), kb, Ak, Sk)
           call solve_block(Ak, Sk, Xk, eref(:,kb,i))
         end do
         !$omp end parallel do
@@ -366,6 +362,7 @@ subroutine twist_RHF_SAO(nBas, nO, S, T, V, ERI, ENuc, P0)
           end do
         end do
       end do
+      deallocate(F3, S3, C3)
       call fermi_level(k, allE, allW, dble(nO), mu_F)
       ! boundary level E* = highest level needed; states within 1e-9 of it share the remaining electrons
       Estar = -huge(1.d0)
@@ -421,6 +418,32 @@ contains
           if (2*d(q) > nn(q)) d(q) = d(q) - nn(q)
         end do
       end function signed_disp
+
+      ! [Nov 2026] reference Bloch blocks from the file table:  A(a,b) = sum_d F(a,b@d) e^{i k.d a},  k = (2 pi m + theta)/(n a)
+      subroutine ref_block(th, kb, A, B)
+        double precision, intent(in) :: th(3)
+        integer, intent(in) :: kb
+        complex(dpc), intent(out) :: A(nfuc,nfuc), B(nfuc,nfuc)
+        integer :: dx, dy, dz
+        double precision :: kv(3), arg
+        complex(dpc) :: z
+        kv = 0.d0
+        do dx = 1, 3
+          if (nn(dx) > 1) kv(dx) = (2.d0*pi*dble(coord(dx,kb)) + th(dx))/dble(nn(dx))
+        end do
+        A = (0.d0, 0.d0) ; B = (0.d0, 0.d0)
+        do dz = -Rf, Rf
+          do dy = -Rf, Rf
+            do dx = -Rf, Rf
+              if (C3(dx,dy,dz) == 0.d0) cycle
+              arg = kv(1)*dble(dx) + kv(2)*dble(dy) + kv(3)*dble(dz)
+              z = exp(cmplx(0.d0, arg, kind=dpc))
+              A = A + z*F3(dx,dy,dz,:,:) ; B = B + z*S3(dx,dy,dz,:,:)
+            end do
+          end do
+        end do
+        A = 0.5d0*(A + conjg(transpose(A))) ; B = 0.5d0*(B + conjg(transpose(B)))
+      end subroutine ref_block
 
       ! reference Fock F(a, b@c) from the file table F3; half-box displacements averaged over both images
       double precision function ref_value(a, b, c)
