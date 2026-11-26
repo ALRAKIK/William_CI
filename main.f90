@@ -501,12 +501,24 @@ program CI
           ! [Nov 2026] restart files: the CC amplitudes are only valid with the same
           ! orbitals (phases), so the HF orbitals of the first run are saved and reused
           if (c_checkpoint) call ckpt_orbitals(nBas, nO, coeff_SAO, e, blk)
+          ! [Nov 2026] keyword twist_average(_M): grand-canonical twist-averaged RHF (needs stored ERIs)
+          if (c_twist) then
+            if (c_direct .or. c_df) then
+              write(outfile,'(a)') ' keyword twist_average: needs stored ERIs (not with direct / density_fitting), ignored'
+            else
+              call twist_RHF_SAO(nBas, nO, S, T, V, ERI, E_nuc, hf_P_last)
+            end if
+          end if
           ! [Nov 2026] keyword fs_correction: leading 1/K^2 finite-size correction (electrostatics)
           if (c_fs_corr) then
             if (calculation_type == "Tori3D") then
               call fs_correction_3D(nBas, AO, n_atoms, geometry, charge, hf_P_last, EHF + E_nuc)
+            else if (calculation_type == "Tori2D") then           ! [Nov 2026]
+              call fs_correction_lowd(2, nBas, AO, n_atoms, geometry, charge, hf_P_last, EHF + E_nuc)
+            else if (calculation_type == "Tori1D") then           ! [Nov 2026]
+              call fs_correction_lowd(1, nBas, AO, n_atoms, geometry, charge, hf_P_last, EHF + E_nuc)
             else
-              write(outfile,'(a)') ' keyword fs_correction: only for Tori3D at present, ignored'
+              write(outfile,'(a)') ' keyword fs_correction: not available for this calculation type, ignored'
             end if
           end if
         call cpu_time(end)

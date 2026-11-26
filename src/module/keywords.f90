@@ -21,6 +21,8 @@ module keywords
       public  :: c_df_etb, df_cd_tol, s_eig_min   ! [Nov 2026] density fitting: aux set, Cholesky tolerance
       public  :: c_df_auxfile, c_df_chol          ! [Nov 2026] density fitting: aux set from file / Cholesky set
       public  :: c_fs_corr                        ! [Nov 2026] finite-size correction (electrostatics)
+      public  :: c_fs_exact                       ! [Nov 2026] finite-size correction, exact exchange (option B)
+      public  :: c_twist, twist_M                 ! [Nov 2026] keyword twist_average(_M): twist-averaged RHF
       public  :: c_physicist
       public  :: c_ccsdt
       public  :: c_fast_ccsdt
@@ -57,6 +59,9 @@ module keywords
       logical :: c_df_etb   = .false.                                    ! [Nov 2026] keyword df_etb: even-tempered aux basis (PySCF rule)
       logical :: c_df_auxfile = .false.                                  ! [Nov 2026] keyword df_auxfile: aux basis from the file AuxBasis
       logical :: c_fs_corr  = .false.                                    ! [Nov 2026] keyword fs_correction
+      logical :: c_fs_exact = .false.                                    ! [Nov 2026] keyword fs_correction_exact (adds option B)
+      logical :: c_twist    = .false.                                    ! [Nov 2026] keyword twist_average(_M)
+      integer :: twist_M    = 4                                          ! [Nov 2026] twist points per direction (on 0..2pi)
       logical :: c_df_chol  = .false.                                    ! [Nov 2026] keywords df_threshold_6/8/10: Cholesky fitting set
       logical :: c_physicist
       logical :: c_ccsdt

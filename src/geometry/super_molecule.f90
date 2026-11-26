@@ -288,6 +288,8 @@ subroutine read_keywords(keyword)
       character(len=10),intent(out)  :: keyword(100)
       logical                        :: reading_cell
 
+      keyword(49) = ' ' ; keyword(54) = ' '       ! [Nov 2026] twist_average slots (read with len_trim)
+
       do
         read(1, '(A)',iostat=io_stat) line
         if (io_stat /= 0) then
@@ -371,6 +373,13 @@ subroutine read_keywords(keyword)
         if (trim(line) == 'df_threshold_8')  keyword(45) = 'df_thr_8'  ! [Nov 2026] same, tol 1e-8
         if (trim(line) == 'df_threshold_10') keyword(46) = 'df_thr_10' ! [Nov 2026] same, tol 1e-10
         if (trim(line) == 'fs_correction') keyword(47) = 'fs_corr'    ! [Nov 2026] 1/K^2 finite-size correction of the electrostatics
+        if (trim(line) == 'fs_correction_exact') keyword(47) = 'fs_corr'   ! [Nov 2026] same + exact exchange (option B)
+        if (trim(line) == 'fs_correction_exact') keyword(48) = 'fs_exact'
+        ! [Nov 2026] twist_average or twist_average_M : grand-canonical twist-averaged RHF (M twists per direction)
+        if (line(1:13) == 'twist_average') then
+          keyword(49) = 'twist'
+          if (len_trim(line) > 14 .and. line(14:14) == '_') keyword(54) = adjustl(line(15:24))
+        end if
         if (trim(line) == 'df_cd_6')     keyword(39) = 'df_cd_6'      ! [Nov 2026] renamed (df_threshold_6): read only to stop with a message
         if (trim(line) == 'df_cd_10')    keyword(40) = 'df_cd_10'     ! [Nov 2026] renamed (df_threshold_10): read only to stop with a message
         if (trim(line) == 'rys_quad')    keyword(41) = 'rys_quad'     ! [Nov 2026] removed: only read to print a note

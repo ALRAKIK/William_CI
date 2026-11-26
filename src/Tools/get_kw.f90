@@ -90,6 +90,9 @@ subroutine  get_keywords(keyword)
       c_df_etb      = any(keyword == 'df_etb'    )
       c_df_auxfile  = any(keyword == 'df_auxfile')
       c_fs_corr     = any(keyword == 'fs_corr')       ! [Nov 2026] finite-size correction
+      c_twist       = any(keyword == 'twist')         ! [Nov 2026] keyword twist_average(_M)
+      if (c_twist .and. len_trim(keyword(54)) > 0) read(keyword(54),*) twist_M
+      c_fs_exact    = any(keyword == 'fs_exact')      ! [Nov 2026] + exact exchange (option B), keyword fs_correction_exact
       c_df_chol     = .false.
       df_cd_tol     = 1.0d-8
       n_df_choice   = 0

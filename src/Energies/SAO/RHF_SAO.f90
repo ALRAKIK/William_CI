@@ -531,7 +531,7 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
         call print_mulliken_charges(nBas, natom, S, P, Zat)   ! [Nov 2026] real number of functions per atom
 
         ! [Nov 2026] keyword fs_correction: keep the converged density for the finite-size correction
-        if (c_fs_corr) then
+        if (c_fs_corr .or. c_twist) then          ! [Nov 2026] also for keyword twist_average
           if (allocated(hf_P_last)) deallocate(hf_P_last)
           allocate(hf_P_last(nBas,nBas)) ; hf_P_last = P
         end if
