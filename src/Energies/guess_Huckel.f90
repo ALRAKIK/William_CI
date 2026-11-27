@@ -37,8 +37,17 @@ subroutine guess_Huckel_RHF(nBas,c_details,nO,HC,X,ENuc,S,T,V,P)
         end do 
       end do
 
+      ! [Nov 2026] BUG FIX: the Huckel matrix must be diagonalized in the orthonormal basis,
+      ! H' = X^T H X, then C = X C'. Before, the AO matrix itself was diagonalized and its
+      ! eigenvectors multiplied by X: wrong orbital energies and order (e.g. a "degenerate level
+      ! at the cut" at -41 Eh for the Be chain), worst for near-linearly dependent bases.
+      ! Removed vectors (zero columns of the canonical X) are put at the top (+1e4).
+      c(:,:)  = matmul(cp(:,:), X(:,:))
+      cp(:,:) = matmul(transpose(X(:,:)), c(:,:))
+      do i = 1 , nbas
+        if (all(X(:,i) == 0.d0)) cp(i,i) = 1.d4
+      end do
       call diagonalize_matrix(nbas, cp, e)
-
       c(:,:)  = matmul(X(:,:), cp(:,:))
 
       ct(:,:) = transpose(c)

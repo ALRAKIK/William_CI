@@ -49,6 +49,14 @@ subroutine twist_RHF_SAO(nBas, nO, S, T, V, ERI, ENuc, P0)
       double precision :: Estage1, wsum, fval, Wb, Wat, Estar
       double precision, allocatable :: Fref(:,:), eref(:,:,:), occref(:,:,:), F3(:,:,:,:,:), S3(:,:,:,:,:), C3(:,:,:)
       complex(dpc), allocatable :: Frr(:,:)
+      double precision, allocatable :: Wref(:,:)                     ! [Nov 2026]
+      ! [Nov 2026] exact J/K kernels contracted over the cell index (see build_x_kernels)
+      double precision, allocatable :: Wx(:,:,:,:,:,:), Vj(:,:,:,:,:)
+      integer, allocatable :: tn(:,:,:,:), tc(:,:,:,:,:)
+      double precision, allocatable :: tw3(:,:,:,:,:)
+      logical :: use_fast
+      integer :: nmx
+      double precision :: wx_gb
       logical :: have_file
       integer :: ltst, ist, ist2
 
@@ -141,13 +149,22 @@ subroutine twist_RHF_SAO(nBas, nO, S, T, V, ERI, ENuc, P0)
       ! ---- initial Fock rows: core + J(P0) + K(P0) with the twist phases ----
       ! (P0 = converged RHF density of the untwisted torus; the SCF below starts with a Fermi smearing
       !  kT = 0.02 Eh that is reduced by 0.6 per iteration: avoids sticking in a higher aufbau solution)
+      ! [Nov 2026] exact J and K kernels (one pass over the ERIs each) -> every later J and K costs
+      !   O(nfuc^4 N_cell^2) instead of O(nfuc N_bas^3). Env TWIST_FASTX=0: old route (for tests).
+      use_fast = .true.
+      call get_environment_variable('TWIST_FASTX', tst2, ltst, ist2)
+      if (ist2 == 0 .and. ltst > 0) use_fast = (trim(tst2) /= '0')
+      if (use_fast) call build_x_kernels()
+      ! [Nov 2026] the J/K of P0 are only used with TWIST_START=p0 (default: core start overwrites Frow)
+      call get_environment_variable('TWIST_START', tst2, ltst, ist2)
       Qbar = 0.5d0*transpose(P0)                                       ! density coefficients D0(s,l) -> Q(l,s)
-      call j_rows(Qbar, jrow)
+      if (ist2 == 0 .and. trim(tst2) == 'p0') call j_rows(Qbar, jrow)
       do i = 1, ntw
+        if (.not. (ist2 == 0 .and. trim(tst2) == 'p0')) exit
         call cell_phases(tw_th(:,i), Pc)
         call ao_phases(Pc, PHk)
         Dm = 0.5d0*P0*PHk
-        call k_rows(Dm, PHk, Krow)
+        call k_rows(Dm, PHk, Krow, tw_th(:,i))
         do nu = 1, nBas
           do a = 1, nfuc
             Frow(a,nu,i) = (T(a,nu) + V(a,nu))*PHk(a,nu) + 2.d0*PHk(a,nu)*jrow(a,nu) - Krow(a,nu)
@@ -249,7 +266,7 @@ subroutine twist_RHF_SAO(nBas, nO, S, T, V, ERI, ENuc, P0)
           nocc_tw(i) = iocc
           nel = nel + tw_w(i)*2.d0*sum(occf(:,:,i))/dble(N_cell)
           Qbar = Qbar + tw_w(i)*dble(PHk*transpose(Dm))
-          call k_rows(Dm, PHk, Krow)
+          call k_rows(Dm, PHk, Krow, tw_th(:,i))
           do nu = 1, nBas
             do a = 1, nfuc
               Ekin = Ekin + tw_w(i)*2.d0*dble(Dm(nu,a)*T(a,nu)*PHk(a,nu))
@@ -298,19 +315,25 @@ subroutine twist_RHF_SAO(nBas, nO, S, T, V, ERI, ENuc, P0)
       write(outfile,'(a,f20.12,a)') '  Stage 1 E per cell (self-consistent occupations): ', E, ' Eh'
 
       ! ---------------- reference band: real-space Fock (twist phases removed, twist average) ----------------
-      Fref = 0.d0
-      do nu = 1, nBas
-        do a = 1, nfuc
-          wsum = 0.d0 ; fval = 0.d0
-          do i = 1, ntw
-            call cell_phases(tw_th(:,i), Pc)
+      ! [Nov 2026] speed-up: the cell-pair phases Pc (N_cell x N_cell) are built ONCE per twist.
+      !   Before, cell_phases was called inside the (nu, a) loop, i.e. nfuc*nBas*ntw times: this step
+      !   took 60-90 % of the whole twist_average run (n = 16: 11 h). Same sums, same order: same result.
+      allocate(Wref(nfuc,nBas))
+      Fref = 0.d0 ; Wref = 0.d0                                        ! Wref: sum of the weights |z|^2
+      do i = 1, ntw
+        call cell_phases(tw_th(:,i), Pc)
+        !$omp parallel do default(shared) private(nu,a,z)
+        do nu = 1, nBas
+          do a = 1, nfuc
             z = Pc(cellof(a), cellof(nu))
-            fval = fval + tw_w(i)*dble(Frow(a,nu,i)*conjg(z))
-            wsum = wsum + tw_w(i)*abs(z)**2
+            Fref(a,nu) = Fref(a,nu) + tw_w(i)*dble(Frow(a,nu,i)*conjg(z))
+            Wref(a,nu) = Wref(a,nu) + tw_w(i)*abs(z)**2
           end do
-          Fref(a,nu) = fval/wsum
         end do
+        !$omp end parallel do
       end do
+      Fref = Fref/Wref
+      deallocate(Wref)
       ! file twist_reference.dat: if present, its Fock defines the Fermi surface (same surface for every n);
       ! otherwise this run writes it (copy the one of the largest cell next to the other runs)
       inquire(file='twist_reference.dat', exist=have_file)
@@ -698,6 +721,9 @@ contains
         double precision, intent(out) :: jr(nfuc,nBas)
         integer :: a, nu, l, sg
         double precision :: acc
+        if (use_fast) then
+          call j_rows_fast(Q, jr) ; return
+        end if
         !$omp parallel do default(shared) private(a,nu,l,sg,acc) collapse(2)
         do nu = 1, nBas
           do a = 1, nfuc
@@ -714,12 +740,16 @@ contains
       end subroutine j_rows
 
       ! K(a,nu) = sum_{l,s} (a l|s nu) PH(a,l) PH(s,nu) D(l,s)
-      subroutine k_rows(D, PH, Kr)
+      subroutine k_rows(D, PH, Kr, th)
         complex(dpc), intent(in) :: D(nBas,nBas), PH(nBas,nBas)
         complex(dpc), intent(out) :: Kr(nfuc,nBas)
+        double precision, intent(in) :: th(3)
         integer :: a, nu, l, sg
         double precision :: sre, sim, tre, tim
         double precision, allocatable :: Are(:,:), Aim(:,:)
+        if (use_fast) then
+          call k_rows_fast(D, th, Kr) ; return
+        end if
         allocate(Are(nBas,nBas), Aim(nBas,nBas))
         do a = 1, nfuc
           do sg = 1, nBas
@@ -745,5 +775,204 @@ contains
         end do
         deallocate(Are, Aim)
       end subroutine k_rows
+
+      ! =====================================================================================
+      ! [Nov 2026] exact cell-contracted J/K kernels.
+      !  The twisted densities are translation invariant: D(l,s) depends on (f_l, f_s, c_l - c_s).
+      !  K(a,nu) = sum_{l,s} (a l|s nu) PH(1,c_l) PH(c_s,c_nu) D(l,s)
+      !  Per direction, PH(1,c_l) PH(c_s,c_nu) = sum over minimum images of exp(i th E/n), with
+      !  E = e1 + e2 == x_nu + (x_l - x_s) (mod n). With R = rep(x_nu + x_l - x_s) in (-n/2, n/2]
+      !  E = R + n w, w in {-1,0,1}: the phase is exp(i th R/n) * exp(i th w), and R depends only on
+      !  (c_nu, Delta = c_l - c_s). The sum over c_l is therefore done once (kernel Wx, 3^3 classes w),
+      !  exactly, including the half-box cos(th/2) = (e^{i th/2} + e^{-i th/2})/2 factors.
+      !  J(a,nu) = sum_{l,s} (a nu|l s) Q(l,s) with Q translation invariant: kernel Vj, no phases.
+      ! =====================================================================================
+      subroutine img(dd, n, e, w, ne)
+        integer, intent(in) :: dd, n
+        integer, intent(out) :: e(2), ne
+        double precision, intent(out) :: w(2)
+        integer :: m
+        m = modulo(dd, n)
+        if (2*m > n) m = m - n
+        if (2*m == n) then
+          ne = 2 ; e(1) = n/2 ; e(2) = -n/2 ; w = 0.5d0
+        else
+          ne = 1 ; e(1) = m ; w(1) = 1.d0
+        end if
+      end subroutine img
+
+      integer function rep_half(dd, n)
+        integer, intent(in) :: dd, n
+        rep_half = modulo(dd, n)
+        if (2*rep_half > n) rep_half = rep_half - n
+      end function rep_half
+
+      subroutine build_x_kernels()
+        integer :: d, xl, xs, xv, n, e1(2), e2(2), n1, n2, i1, i2, Rr, E, w, q
+        double precision :: w1(2), w2(2), acc(3), v, t0
+        integer :: nu, cnu, cl, cs, iD, f, g, a, l, s, j1, j2, j3, cls
+        integer :: nc(3), ci(3,3)
+        double precision :: cw(3,3)
+        integer :: st1, st2
+        t0 = omp_get_wtime()
+        wx_gb = 8.d0*(28.d0*dble(N_cell)*dble(nfuc)**3*dble(nBas))/1.d9
+        write(outfile,'(a,f10.2,a)') '  [twist] exact cell-contracted J/K kernels, memory ', wx_gb, ' GB'
+        allocate(Wx(27,N_cell,nfuc,nfuc,nfuc,nBas), stat=st1)
+        allocate(Vj(N_cell,nfuc,nfuc,nfuc,nBas), stat=st2)
+        if (st1 /= 0 .or. st2 /= 0) then
+          write(outfile,'(a)') '  [twist] not enough memory for the kernels: old route (one ERI pass per twist)'
+          if (allocated(Wx)) deallocate(Wx)
+          if (allocated(Vj)) deallocate(Vj)
+          use_fast = .false. ; return
+        end if
+        ! per-direction image classes of PH(1,c_l) PH(c_s,c_nu)
+        nmx = maxval(nn)
+        allocate(tn(0:nmx-1,0:nmx-1,0:nmx-1,3), tc(3,0:nmx-1,0:nmx-1,0:nmx-1,3), tw3(3,0:nmx-1,0:nmx-1,0:nmx-1,3))
+        tn = 0 ; tc = 2 ; tw3 = 0.d0
+        do d = 1, 3
+          n = nn(d)
+          do xv = 0, n-1
+            do xs = 0, n-1
+              do xl = 0, n-1
+                if (n < 2) then
+                  tn(xl,xs,xv,d) = 1 ; tc(1,xl,xs,xv,d) = 2 ; tw3(1,xl,xs,xv,d) = 1.d0 ; cycle
+                end if
+                call img(xl, n, e1, w1, n1)
+                call img(xv - xs, n, e2, w2, n2)
+                Rr = rep_half(xv + xl - xs, n)
+                acc = 0.d0
+                do i1 = 1, n1
+                  do i2 = 1, n2
+                    E = e1(i1) + e2(i2)
+                    if (modulo(E - Rr, n) /= 0) error stop 'twist kernel: image class'
+                    w = (E - Rr)/n
+                    if (abs(w) > 1) error stop 'twist kernel: |w| > 1'
+                    acc(w+2) = acc(w+2) + w1(i1)*w2(i2)
+                  end do
+                end do
+                q = 0
+                do w = 1, 3
+                  if (acc(w) /= 0.d0) then
+                    q = q + 1 ; tc(q,xl,xs,xv,d) = w ; tw3(q,xl,xs,xv,d) = acc(w)
+                  end if
+                end do
+                tn(xl,xs,xv,d) = q
+              end do
+            end do
+          end do
+        end do
+        Wx = 0.d0 ; Vj = 0.d0
+        !$omp parallel do default(shared) schedule(dynamic) &
+        !$omp private(nu,cnu,cs,cl,iD,d,nc,ci,cw,g,s,f,l,a,v,j1,j2,j3,cls)
+        do nu = 1, nBas
+          cnu = cellof(nu)
+          do cs = 1, N_cell
+            do cl = 1, N_cell
+              iD = dcell(cs, cl)                       ! index of c_l - c_s
+              do d = 1, 3
+                nc(d)   = tn(coord(d,cl), coord(d,cs), coord(d,cnu), d)
+                ci(:,d) = tc(:, coord(d,cl), coord(d,cs), coord(d,cnu), d)
+                cw(:,d) = tw3(:, coord(d,cl), coord(d,cs), coord(d,cnu), d)
+              end do
+              do g = 1, nfuc
+                s = g + (cs-1)*nfuc
+                do f = 1, nfuc
+                  l = f + (cl-1)*nfuc
+                  do a = 1, nfuc
+                    Vj(iD,f,g,a,nu) = Vj(iD,f,g,a,nu) + ERI(a,nu,l,s)
+                    v = ERI(a,l,s,nu)
+                    if (v == 0.d0) cycle
+                    do j1 = 1, nc(1)
+                      do j2 = 1, nc(2)
+                        do j3 = 1, nc(3)
+                          cls = (ci(j1,1)-1)*9 + (ci(j2,2)-1)*3 + ci(j3,3)
+                          Wx(cls,iD,f,g,a,nu) = Wx(cls,iD,f,g,a,nu) + v*cw(j1,1)*cw(j2,2)*cw(j3,3)
+                        end do
+                      end do
+                    end do
+                  end do
+                end do
+              end do
+            end do
+          end do
+        end do
+        !$omp end parallel do
+        write(outfile,'(a,f10.2,a)') '  [twist] kernels built in ', omp_get_wtime()-t0, ' s'
+        flush(outfile)
+      end subroutine build_x_kernels
+
+      ! K(a,nu) from the kernel: sum_{iD,f,g} D(f,g,iD) e^{i th.R(c_nu,iD)/n} sum_w Wx(w,iD,f,g,a,nu) e^{i th.w}
+      subroutine k_rows_fast(Dt, th, Kr)
+        complex(dpc), intent(in) :: Dt(nBas,nBas)
+        double precision, intent(in) :: th(3)
+        complex(dpc), intent(out) :: Kr(nfuc,nBas)
+        complex(dpc) :: cwt(27), base, dd, sacc, acc(nfuc)
+        integer :: ia, ib, ic, d, nu, cnu, iD, f, g, a, cls, Rr
+        double precision :: arg
+        do ia = 1, 3
+          do ib = 1, 3
+            do ic = 1, 3
+              arg = 0.d0
+              if (nn(1) > 1) arg = arg + th(1)*dble(ia-2)
+              if (nn(2) > 1) arg = arg + th(2)*dble(ib-2)
+              if (nn(3) > 1) arg = arg + th(3)*dble(ic-2)
+              cwt((ia-1)*9 + (ib-1)*3 + ic) = exp(cmplx(0.d0, arg, kind=dpc))
+            end do
+          end do
+        end do
+        !$omp parallel do default(shared) schedule(static) private(nu,cnu,iD,arg,d,Rr,base,g,f,dd,a,sacc,cls,acc)
+        do nu = 1, nBas
+          cnu = cellof(nu)
+          acc = (0.d0, 0.d0)
+          do iD = 1, N_cell
+            arg = 0.d0
+            do d = 1, 3
+              if (nn(d) < 2) cycle
+              Rr = rep_half(coord(d,cnu) + coord(d,iD), nn(d))
+              arg = arg + th(d)*dble(Rr)/dble(nn(d))
+            end do
+            base = exp(cmplx(0.d0, arg, kind=dpc))
+            do g = 1, nfuc
+              do f = 1, nfuc
+                dd = Dt(f + (iD-1)*nfuc, g)*base             ! D(l,s), l in cell iD, s in cell 1
+                if (dd == (0.d0,0.d0)) cycle
+                do a = 1, nfuc
+                  sacc = (0.d0, 0.d0)
+                  do cls = 1, 27
+                    if (Wx(cls,iD,f,g,a,nu) /= 0.d0) sacc = sacc + Wx(cls,iD,f,g,a,nu)*cwt(cls)
+                  end do
+                  acc(a) = acc(a) + dd*sacc
+                end do
+              end do
+            end do
+          end do
+          Kr(:,nu) = acc
+        end do
+        !$omp end parallel do
+      end subroutine k_rows_fast
+
+      ! J(a,nu) = sum_{iD,f,g} Vj(iD,f,g,a,nu) Q(f + (iD-1) nfuc, g)   (Q translation invariant)
+      subroutine j_rows_fast(Q, jr)
+        double precision, intent(in) :: Q(nBas,nBas)
+        double precision, intent(out) :: jr(nfuc,nBas)
+        integer :: nu, iD, f, g, a
+        double precision :: acc(nfuc), qq
+        !$omp parallel do default(shared) private(nu,iD,f,g,a,acc,qq)
+        do nu = 1, nBas
+          acc = 0.d0
+          do g = 1, nfuc
+            do f = 1, nfuc
+              do iD = 1, N_cell
+                qq = Q(f + (iD-1)*nfuc, g)
+                do a = 1, nfuc
+                  acc(a) = acc(a) + Vj(iD,f,g,a,nu)*qq
+                end do
+              end do
+            end do
+          end do
+          jr(:,nu) = acc
+        end do
+        !$omp end parallel do
+      end subroutine j_rows_fast
 
 end subroutine twist_RHF_SAO

@@ -304,7 +304,10 @@ subroutine RHF_SAO(nBas,nO,S,T,V,Hc,ERI,X,ENuc,EHF,e,coeff_SAO,blk,natom,Zat)
       ! error < 1e-6 and not halved over these 5 iterations -> round-off floor
       ! (seen with near linearly dependent basis sets, e.g. cc-pVTZ C chain).
       ! Accepted as converged, with a warning, instead of 100 useless iterations.
-      if (nSCF > 2 .and. abs(EHF - EHF_old) < stall_dE) then
+      ! [Nov 2026] the energy noise grows with the supercell (direct J/K of a 1230-function
+      ! Be chain: ~1e-8 Eh on -438 Eh, so 1e-10 was never reached and the SCF ran to maxSCF):
+      ! tolerance max(1e-10, 2e-10 |E|). The orbital-error condition below is unchanged.
+      if (nSCF > 2 .and. abs(EHF - EHF_old) < max(stall_dE, 2.d-10*abs(EHF))) then
         n_stable = n_stable + 1
       else
         n_stable = 0
